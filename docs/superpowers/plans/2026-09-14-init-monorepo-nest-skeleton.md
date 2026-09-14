@@ -2,11 +2,11 @@
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 subagent-driven-development（推荐）或 executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
-**目标：** 构建极简、易扩展的 Monorepo 项目基础骨架，前端目录占位，后端基于官方 `@nestjs/cli` 初始化原生 Nest.js 服务，并配置本地开发所需的基础依赖容器编排。
+**目标：** 构建极简、易扩展的 Monorepo 项目基础骨架，前端目录占位，后端基于官方 `@nestjs/cli` 初始化原生 Nest.js 服务，支持 Windows 与 macOS 跨平台无缝协同。
 
-**架构：** 根目录使用 pnpm Workspace 统一管理工作区；`apps/web` 为前端占位；`apps/server` 为原生 Nest.js 单应用（保留官方原始架构，不预建空模块）；`docker/` 提供本地 Postgres (pgvector)、Redis、MinIO、MongoDB 一键编排。
+**架构：** 根目录使用 pnpm Workspace 统一管理工作区；`apps/web` 为前端占位；`apps/server` 为原生 Nest.js 单应用（保留官方原始架构，不预建空模块）；配置 `.gitattributes` 保证多端换行符统一。
 
-**技术栈：** Node.js v22、pnpm v10、Nest.js 11、TypeScript、Docker Compose (Postgres 16 + pgvector, Redis 7, MinIO, MongoDB 7)。
+**技术栈：** Node.js v22、pnpm v10、Nest.js 11、TypeScript。
 
 **规格：** [docs/superpowers/specs/2026-09-14-knowledge-hub-architecture-design.md](file:///e:/Study/AI%20Agent/knowledge-hub/docs/superpowers/specs/2026-09-14-knowledge-hub-architecture-design.md)
 
@@ -16,6 +16,7 @@
 - 使用官方 `@nestjs/cli` 生成后端代码，避免手动拼凑产生依赖与配置版本不一致。
 - 根目录使用 pnpm workspace 协调依赖，避免全局污染与幽灵依赖。
 - 所有代码与文档注释使用中文，代码标识符使用英文。
+- 换行符统一使用 LF，由 `.gitattributes` 强制保障。
 
 ---
 
@@ -23,6 +24,7 @@
 
 **文件：**
 - 创建：`.gitignore`
+- 创建：`.gitattributes`
 - 创建：`pnpm-workspace.yaml`
 - 创建：`package.json`
 - 创建：`README.md`
@@ -31,7 +33,10 @@
 - [ ] **步骤 1：创建 `.gitignore` 规则文件**
 配置忽略 `node_modules`、`dist`、`.env*`、`coverage`、`.DS_Store`、日志文件等。
 
-- [ ] **步骤 2：创建 `pnpm-workspace.yaml`**
+- [ ] **步骤 2：创建 `.gitattributes` 规则文件**
+配置 `* text=auto eol=lf` 确保 Windows 与 macOS 跨端协同。
+
+- [ ] **步骤 3：创建 `pnpm-workspace.yaml`**
 声明工作区匹配规则：
 ```yaml
 packages:
@@ -39,15 +44,15 @@ packages:
   - 'packages/*'
 ```
 
-- [ ] **步骤 3：创建根 `package.json`**
+- [ ] **步骤 4：创建根 `package.json`**
 配置私有属性与根级运行脚本（如 `dev:server`、`build:server`）。
 
-- [ ] **步骤 4：创建项目根 `README.md` 与 `apps/web/README.md` 前端接入指南**
+- [ ] **步骤 5：创建项目根 `README.md` 与 `apps/web/README.md` 前端接入指南**
 简要记录项目技术栈与前端接入说明。
 
-- [ ] **步骤 5：验证并 Commit**
+- [ ] **步骤 6：验证并 Commit**
 ```bash
-git add .gitignore pnpm-workspace.yaml package.json README.md apps/web/README.md
+git add .gitignore .gitattributes pnpm-workspace.yaml package.json README.md apps/web/README.md
 git commit -m "chore: 初始化 Monorepo 根工作区与前端占位目录"
 ```
 
@@ -79,36 +84,7 @@ git commit -m "feat(server): 使用官方 Nest CLI 初始化后端服务骨架"
 
 ---
 
-### 任务 3：编写本地开发基础依赖容器编排
-
-**文件：**
-- 创建：`docker/docker-compose.yml`
-- 创建：`docker/postgres/init.sql`
-
-- [ ] **步骤 1：创建 Postgres 初始化脚本 `docker/postgres/init.sql`**
-编写自动启用向量扩展语句：`CREATE EXTENSION IF NOT EXISTS vector;`
-
-- [ ] **步骤 2：编写 `docker/docker-compose.yml`**
-编排以下服务（均配置好端口与持久卷映射）：
-- `postgres` (镜像 `pgvector/pgvector:pg16`, 端口 5432)
-- `redis` (镜像 `redis:7-alpine`, 端口 6379)
-- `minio` (镜像 `minio/minio:latest`, 端口 9000 & 9001)
-- `mongodb` (镜像 `mongo:7.0`, 端口 27017)
-
-- [ ] **步骤 3：验证 Docker Compose 语法有效性**
-```bash
-docker compose -f docker/docker-compose.yml config
-```
-
-- [ ] **步骤 4：Commit**
-```bash
-git add docker/
-git commit -m "chore(docker): 配置本地 Postgres(pgvector)、Redis、MinIO、MongoDB 容器编排"
-```
-
----
-
-### 任务 4：全局依赖安装与端到端运行验证
+### 任务 3：全局依赖安装与端到端运行验证
 
 **文件：**
 - 检查修改：`pnpm-lock.yaml`
