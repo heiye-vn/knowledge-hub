@@ -6,7 +6,12 @@
   "scripts": {
     "dev:server": "pnpm --filter @knowledge-hub/server start:dev",
     "build:server": "pnpm --filter @knowledge-hub/server build",
-    "test:server": "pnpm --filter @knowledge-hub/server test"
+    "test:server": "pnpm --filter @knowledge-hub/server test",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:restart": "docker compose restart",
+    "docker:logs": "docker compose logs -f",
+    "docker:ps": "docker compose ps"
   },
   "packageManager": "pnpm@10.7.0"
 }
