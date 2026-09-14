@@ -1,0 +1,12 @@
+{
+  "name": "knowledge-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "企业级知识库与智能问答系统 (knowledge-hub)",
+  "scripts": {
+    "dev:server": "pnpm --filter @knowledge-hub/server start:dev",
+    "build:server": "pnpm --filter @knowledge-hub/server build",
+    "test:server": "pnpm --filter @knowledge-hub/server test"
+  },
+  "packageManager": "pnpm@10.7.0"
+}

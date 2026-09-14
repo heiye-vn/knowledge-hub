@@ -1,0 +1,27 @@
+# Knowledge Hub 知识库系统
+
+企业级知识库与智能问答系统，采用 Monorepo 统一架构管理。
+
+## 目录布局
+
+- `apps/server`: 基于 Nest.js 的原生后端 API 服务（知识库管理、文档解析、RAG 向量检索与流式对话）
+- `apps/web`: 前端工作台应用（占位中，后续使用 React + Tailwind CSS 构建）
+- `packages/`: 共享工具库与类型定义（按需扩展）
+
+## 快速开始
+
+### 1. 依赖安装
+```bash
+pnpm install
+```
+
+### 2. 启动后端开发服务
+```bash
+pnpm dev:server
+```
+服务启动后可访问：`http://localhost:3000`
+
+### 3. 运行后端测试
+```bash
+pnpm test:server
+```

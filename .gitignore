@@ -1,0 +1,34 @@
+# 依赖与工作区
+node_modules/
+.pnpm-store/
+
+# 构建产物与缓存
+dist/
+build/
+.turbo/
+.cache/
+
+# 环境变量敏感配置
+.env
+.env.local
+.env.*.local
+
+# 日志与临时文件
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 测试产物
+coverage/
+.nyc_output/
+
+# 编辑器与操作系统
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
