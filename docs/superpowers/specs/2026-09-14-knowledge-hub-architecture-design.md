@@ -23,54 +23,35 @@
 
 ---
 
-## 3. Monorepo 工程拓扑结构
+## 3. 极简基础工程拓扑结构 (KISS & YAGNI)
 
 ```text
 knowledge-hub/
-├── .github/                   # CI/CD 流水线配置（预留）
 ├── apps/
-│   ├── server/                # [后端核心服务] Nest.js 原生应用（通过 @nestjs/cli 构建）
+│   ├── server/                # [后端核心服务] 官方 @nestjs/cli 生成的原生 Nest.js 应用（默认极简结构）
 │   │   ├── src/
-│   │   │   ├── common/        # 全局守卫、过滤器、拦截器、管道与装饰器
-│   │   │   ├── config/        # 统一环境配置管理模块 (ConfigModule)
-│   │   │   ├── database/      # 多数据库链接与持久化层 (Postgres, Mongo, Redis)
-│   │   │   ├── storage/       # 对象存储模块 (MinIO 客户端封装)
-│   │   │   ├── queue/         # 异步队列服务 (BullMQ 生产者与消费者)
-│   │   │   ├── modules/       # 业务领域垂直模块 (auth, knowledge, document, rag, chat)
-│   │   │   ├── app.module.ts  # 根模块
-│   │   │   └── main.ts        # 应用启动入口
+│   │   │   ├── app.controller.ts
+│   │   │   ├── app.controller.spec.ts
+│   │   │   ├── app.module.ts
+│   │   │   ├── app.service.ts
+│   │   │   └── main.ts
 │   │   ├── nest-cli.json      # Nest 官方 CLI 配置文件
 │   │   ├── package.json       # @knowledge-hub/server
-│   │   └── tsconfig.json
+│   │   ├── tsconfig.json
+│   │   └── tsconfig.build.json
 │   │
-│   └── web/                   # [前端占位目录]
-│       └── README.md          # 说明文档（记录后续使用 Vite + React + Tailwind 初始化方式）
+│   └── web/                   # [前端占位目录] 暂不建复杂结构，仅保留说明文档
+│       └── README.md          # 说明文档（记录后续接入 React + Tailwind 的指引）
 │
-├── packages/                  # 内部共享库
-│   ├── shared/                # 前后端共享类型与契约 (@knowledge-hub/shared)
-│   │   ├── src/
-│   │   │   ├── constants/     # 通用系统常量、错误码枚举
-│   │   │   ├── enums/         # 文档切片状态、向量模型类型、任务状态
-│   │   │   ├── interfaces/    # 领域核心实体接口
-│   │   │   └── types/         # API 请求/响应契约类型
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   └── tsconfig/              # 共享 TypeScript 基础编译规则
-│       ├── base.json
-│       └── nest.json
+├── docker/                    # 本地基础设施容器化配置（用时再启动）
+│   └── docker-compose.yml     # 包含 Postgres+pgvector, Redis, MinIO, MongoDB 标准服务
 │
-├── docker/                    # 本地基础服务容器化编排
-│   ├── postgres/
-│   │   └── init.sql           # 初始化脚本（自动开启 CREATE EXTENSION IF NOT EXISTS vector;）
-│   └── docker-compose.yml     # 一键启动 Postgres+pgvector, Redis, MinIO, MongoDB
-│
-├── docs/                      # 架构规范与规格说明文档
 ├── .gitignore
-├── package.json               # 根 package.json
-├── pnpm-workspace.yaml        # 工作区声明
-├── turbo.json                 # Turborepo 流水线编排
-└── README.md                  # 项目根说明文档
+├── package.json               # 根 package.json（包含 dev:server 等统一脚本）
+├── pnpm-workspace.yaml        # 工作区声明（关联 apps/* 与 packages/*）
+└── README.md                  # 项目总体说明
 ```
+
 
 ---
 
