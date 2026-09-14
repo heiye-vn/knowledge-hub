@@ -7,6 +7,7 @@ dist/
 build/
 .turbo/
 .cache/
+*.tsbuildinfo
 
 # 环境变量敏感配置
 .env
