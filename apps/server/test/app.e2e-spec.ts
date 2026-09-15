@@ -15,11 +15,29 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+  it('/ (GET) 应当返回统一格式的成功响应', async () => {
+    const res = await request(app.getHttpServer()).get('/').expect(200);
+
+    expect(res.body).toMatchObject({
+      code: 200,
+      message: 'success',
+      data: 'Hello World!',
+    });
+    expect(res.body).toHaveProperty('timestamp');
+  });
+
+  it('/not-found (GET) 应当返回统一格式的 404 异常响应', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/not-found-path')
+      .expect(404);
+
+    expect(res.body).toMatchObject({
+      code: 404,
+      message: 'Cannot GET /not-found-path',
+      error: 'Not Found',
+    });
+    expect(res.body).toHaveProperty('timestamp');
+    expect(res.body).toHaveProperty('path', '/not-found-path');
   });
 
   afterEach(async () => {
