@@ -10,6 +10,7 @@ import { DocumentEntity } from './document/entities/document.entity.js';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { StorageModule } from './storage/storage.module.js';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
       }),
     }),
     DocumentModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [
