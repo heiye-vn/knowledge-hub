@@ -73,6 +73,7 @@
 | **全局切面** | ✅ 已完成 | 全局校验管道、`TransformInterceptor`、`AllExceptionsFilter`、健康检查 `/health` |
 | **文档模块 (Document)** | ✅ 已完成 | 创建（双写+补偿）、列表分页模糊搜索、详情读取、部分字段更新（PATCH）、软删除 |
 | **测试与调试** | ✅ 已完成 | Vitest 单元测试、E2E 测试、`test/manual/document-curl.md` 联调脚本 |
+| **文档摄取与多模态解析** | 📋 设计就绪 | 架构备忘归档于 `docs/superpowers/specs/2026-09-15-document-ingestion-and-parser-design.md`，涵盖 MinerU、RustFS 原文件关联与多源兼容 |
 | **向量检索与 RAG** | ⏳ 规划中 | pgvector 索引构建、文本分块管道（Chunking）、Embedding 模型接入 |
 | **鉴权与团队管理** | ⏳ 规划中 | RBAC 权限控制、JWT 认证、分类团队管理 |
 
