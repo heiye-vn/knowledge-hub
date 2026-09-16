@@ -34,5 +34,8 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# AI 助手本地数据（会话记忆等）
+.workbuddy/
+
 # Docker 本地数据卷
 volumes/
