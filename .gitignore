@@ -26,6 +26,9 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 
+# 本地测试夹具（真实个人文件，不进版本库：简历/考勤表等，体积大且含隐私）
+apps/server/test/fixtures/
+
 # 编辑器与操作系统
 .vscode/*
 !.vscode/settings.json
