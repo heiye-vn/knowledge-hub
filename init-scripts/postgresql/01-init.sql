@@ -39,7 +39,7 @@ COMMENT ON COLUMN kh_document.team_id IS '所属团队/空间ID';
 COMMENT ON COLUMN kh_document.author_id IS '作者/创建者ID';
 COMMENT ON COLUMN kh_document.cover_image IS '封面图片存储路径或URL';
 COMMENT ON COLUMN kh_document.tags IS '标签列表（逗号分隔或JSON字符串）';
-COMMENT ON COLUMN kh_document.status IS '文档状态（0: 草稿, 1: 待发布/处理中, 2: 已发布, 3: 已归档）';
+COMMENT ON COLUMN kh_document.status IS '文档状态（0: 草稿, 1: 已发布, 2: 已归档）';
 COMMENT ON COLUMN kh_document.remark IS '备注说明';
 COMMENT ON COLUMN kh_document.view_count IS '浏览/阅读次数';
 COMMENT ON COLUMN kh_document.like_count IS '点赞次数';
