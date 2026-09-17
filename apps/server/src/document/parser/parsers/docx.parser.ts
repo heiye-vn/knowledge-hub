@@ -1,10 +1,15 @@
 import mammoth from 'mammoth';
 import TurndownService from 'turndown';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { gfm } = require('turndown-plugin-gfm') as {
-  gfm: (service: TurndownService) => void;
-};
+import turndownPluginGfm, { gfm as namedGfm } from 'turndown-plugin-gfm';
 import { cleanMarkdown } from '../utils/markdown.util.js';
+
+// 兼容 ESM 与 CJS 的导出结构差异
+const gfm =
+  namedGfm ??
+  (turndownPluginGfm as unknown as { gfm?: (service: TurndownService) => void })
+    ?.gfm ??
+  (turndownPluginGfm as unknown as (service: TurndownService) => void);
+
 
 /**
  * 将 DOCX 解析为 Markdown。
