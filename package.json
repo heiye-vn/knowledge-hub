@@ -7,6 +7,7 @@
     "dev:server": "pnpm --filter @knowledge-hub/server start:dev",
     "build:server": "pnpm --filter @knowledge-hub/server build",
     "test:server": "pnpm --filter @knowledge-hub/server test",
+    "typecheck:server": "pnpm --filter @knowledge-hub/server typecheck",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:restart": "docker compose restart",

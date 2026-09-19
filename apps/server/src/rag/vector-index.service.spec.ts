@@ -4,9 +4,15 @@ import { ElasticsearchService } from './elasticsearch.service.js';
 import type { DocumentChunk } from './types/rag.types.js';
 import { VectorIndexService } from './vector-index.service.js';
 
-/** ES 8.x 的 hits.total 是 { value, relation } 对象 */
-function totalOf(res: { hits: { total: unknown } }): number {
-  const total = res.hits.total as number | { value: number } | undefined;
+/**
+ * ES 8.x 的 hits.total 是 { value, relation } 对象。
+ * 【易错】这里不能用 `{ hits: { total: unknown } }` 收窄签名——
+ * ES 客户端的 `SearchHitsMetadata.total` 是可选属性，两者不兼容，
+ * `tsc -p tsconfig.json`（含 spec）会报 TS2345，而 `nest build`
+ * 用的 tsconfig.build.json 排除了 spec，本地不易发现。
+ */
+function totalOf(res: { hits?: { total?: unknown } }): number {
+  const total = res.hits?.total as number | { value: number } | undefined;
   return typeof total === 'number' ? total : (total?.value ?? 0);
 }
 
