@@ -23,6 +23,17 @@ const esUp = await isEsUp();
 const DOC_ALIVE = 'vitest-search-alive';
 const DOC_DOWN = 'vitest-search-down';
 
+/**
+ * 构造 1024 维假向量：前 512 维 = a，后 512 维 = b。
+ * 与 `fakeVector(1, 0)` 的余弦相似度恰好等于 a（当 a²+b²=1 时）。
+ */
+function fakeVector(a: number, b: number): number[] {
+  return [
+    ...Array.from({ length: 512 }, () => a),
+    ...Array.from({ length: 512 }, () => b),
+  ];
+}
+
 function chunk(
   documentId: string,
   index: number,
@@ -42,6 +53,7 @@ function chunk(
     teamId: null,
     docStatus,
     publishTime: null,
+    embedding: fakeVector(1, 0),
   };
 }
 
@@ -163,6 +175,50 @@ describe.skipIf(!esUp)('RetrievalService（集成，依赖 localhost:9200）', (
     // 融合分是 RRF 分值量级（0 ~ 1/k），不是原始相似度
     expect(top.score).toBeGreaterThan(0);
     expect(top.score).toBeLessThan(1);
+  });
+
+  it('kNN 低分结果被 RAG_MIN_SCORE 过滤（kNN 必然返回 topK，需设下限）', async () => {
+    // 与库内向量余弦 = 0.3 → ES 的 cosine _score = (1+0.3)/2 = 0.65，低于默认阈值 0.72
+    const cosine = 0.3;
+    const fakeEmbedding = {
+      isConfigured: () => true,
+      embed: async () =>
+        fakeVector(cosine, Math.sqrt(1 - cosine * cosine)),
+    } as unknown as EmbeddingService;
+
+    const strict = new RetrievalService(
+      esService,
+      fakeEmbedding,
+      {
+        get: (k: string, d?: string) =>
+          k === 'RAG_MIN_SCORE' ? '0.72' : d,
+      } as unknown as ConfigService,
+      fakeEntityManager([DOC_ALIVE]),
+    );
+
+    // 阈值内：相关查询应有结果（由上一个用例保证），此处验证「低分全被拦下」
+    const hits = await strict.search({
+      query: '完全无关的查询词',
+      mode: 'vector',
+      topK: 5,
+    });
+    expect(hits).toEqual([]);
+
+    // 阈值放宽到 0 时，同样的查询会重新出现结果 —— 证明过滤确实生效
+    const loose = new RetrievalService(
+      esService,
+      fakeEmbedding,
+      {
+        get: (k: string, d?: string) => (k === 'RAG_MIN_SCORE' ? '0' : d),
+      } as unknown as ConfigService,
+      fakeEntityManager([DOC_ALIVE]),
+    );
+    const looseHits = await loose.search({
+      query: '完全无关的查询词',
+      mode: 'vector',
+      topK: 5,
+    });
+    expect(looseHits.length).toBeGreaterThan(0);
   });
 
   it('向量/混合模式在缺少 Embedding Key 时返回空且不抛异常', async () => {

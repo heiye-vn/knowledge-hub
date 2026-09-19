@@ -79,9 +79,7 @@ export class RetrievalService {
     const filterClauses = this.buildFilters(params.filters);
 
     const queryVector =
-      mode === 'keyword'
-        ? null
-        : await this.embeddingService.embed(query);
+      mode === 'keyword' ? null : await this.embeddingService.embed(query);
 
     let candidates: SearchHit[];
 
@@ -134,7 +132,14 @@ export class RetrievalService {
     return results;
   }
 
-  /** kNN 向量召回 */
+  /**
+   * kNN 向量召回
+   *
+   * ⚠️ **必须过滤低分**：kNN 是「找最近的 K 个」，**永远会返回 topK 条**，
+   * 即使查询与知识库完全无关也会硬凑出结果（实测不相关查询相似度仍有 0.62~0.71）。
+   * 低分结果喂给 LLM 就是噪声，甚至导致幻觉，因此按 `RAG_MIN_SCORE` 设下限。
+   * （BM25 天然无此问题：无词项匹配就不返回。）
+   */
   private async runVectorSearch(
     queryVector: number[],
     size: number,
@@ -157,7 +162,18 @@ export class RetrievalService {
       },
     });
 
-    return this.toSearchHits(res, 'vector');
+    const hits = this.toSearchHits(res, 'vector');
+    // 默认 0.72：由实测校准（详见 .env 注释）。
+    // 注意此处的 score 是 ES 对 cosine 的映射值 (1+cos)/2 ∈ [0,1]，不是原始余弦值。
+    const minScore = Number(this.config.get('RAG_MIN_SCORE', 0.72));
+
+    const kept = hits.filter((h) => (h.scores.vector ?? 0) >= minScore);
+    if (kept.length !== hits.length) {
+      this.logger.debug(
+        `向量召回按 RAG_MIN_SCORE=${minScore} 过滤：${hits.length} → ${kept.length}`,
+      );
+    }
+    return kept;
   }
 
   /** BM25 关键词召回（走 IK 分词） */
@@ -189,7 +205,10 @@ export class RetrievalService {
     return this.toSearchHits(res, 'keyword');
   }
 
-  private toSearchHits(res: unknown, source: 'vector' | 'keyword'): SearchHit[] {
+  private toSearchHits(
+    res: unknown,
+    source: 'vector' | 'keyword',
+  ): SearchHit[] {
     const hits = ((res as any)?.hits?.hits ?? []) as Array<{
       _id: string;
       _score: number | null;
@@ -254,12 +273,10 @@ export class RetrievalService {
     return [...fused.values()].sort((a, b) => b.score - a.score);
   }
 
-
   /** 结构化过滤条件：默认只检索已发布文档 */
-  private buildFilters(filters?: SearchParams['filters']): Record<
-    string,
-    unknown
-  >[] {
+  private buildFilters(
+    filters?: SearchParams['filters'],
+  ): Record<string, unknown>[] {
     const clauses: Record<string, unknown>[] = [
       { term: { doc_status: DocumentStatus.Published } },
     ];
