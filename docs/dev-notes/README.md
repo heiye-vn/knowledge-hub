@@ -33,6 +33,7 @@
 | 文件 | 类型 | 完成时间 | 核心看点 |
 | :--- | :--- | :--- | :--- |
 | [rag-pipeline.md](./rag-pipeline.md) | 功能模块 · RAG 索引与检索管线 | 2026-09-19 | **kNN 必然返回 topK 条**；IK 装了≠生效；原生 RRF 需商业 license；换模型必须重索引 |
+| [async-reindex-pipeline.md](./async-reindex-pipeline.md) | 功能模块 · 异步重建索引管线（阶段二） | 2026-09-19 | **`new Queue()` 连不上也返回实例**（接口会假装可用）；连接错误刷屏需节流；实测证明单次发布不慢，故采用方案 B |
 | [reference-project-alignment.md](./reference-project-alignment.md) | 方法论 · 与参考项目的对照策略 | 2026-09-19 | 三层判断法（模式/实现/缺陷）：什么照搬、什么可换、什么必须改 |
 
 > 两类文件并存：

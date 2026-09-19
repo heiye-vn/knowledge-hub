@@ -368,6 +368,47 @@ export class DocumentService {
   }
 
   /**
+   * 按 ID 批量加载「待索引文档」（PG 元数据 + Mongo 正文）
+   *
+   * 供重建队列的 Worker 使用。参考项目把这段放在 `PipelineOrchestrator` 内部
+   * （`loadDocumentsByIds`），本项目 Orchestrator 只接收已加载的 `PipelineDocument`，
+   * 故加载职责留在调用方，保持「编排器不管数据源」的边界。
+   *
+   * 不存在的文档跳过并记日志，不中断整批。
+   */
+  async loadForIndex(ids: string[]): Promise<PipelineDocument[]> {
+    const result: PipelineDocument[] = [];
+    for (const id of ids) {
+      const doc = await this.em.findOne(DocumentEntity, {
+        where: { id, deleted: false },
+      });
+      if (!doc) {
+        this.logger.warn(`重建跳过：文档不存在或已删除 documentId=${id}`);
+        continue;
+      }
+      const contentDoc = await this.contentModel
+        .findOne({ _id: doc.contentId, deleted: false })
+        .lean();
+      result.push(this.toPipelineDocument(doc, contentDoc?.content ?? ''));
+    }
+    return result;
+  }
+
+  /**
+   * 查询全部「已发布且未删除」的文档 ID
+   *
+   * 用于重建入口在未显式指定 ID 时的**全量重索引**
+   * —— 典型场景：换 embedding 模型后，旧向量与新查询不在同一向量空间，必须全量重建。
+   */
+  async findPublishedIds(): Promise<string[]> {
+    const rows = await this.em.find(DocumentEntity, {
+      where: { deleted: false, status: DocumentStatus.Published },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
+  /**
    * 软删除文档
    * Postgres、Mongo 两侧都将 deleted 置为 true（不物理删正文）
    */

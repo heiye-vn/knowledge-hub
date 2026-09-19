@@ -87,3 +87,65 @@ describe('DocumentService.publish 状态守卫', () => {
     await expect(service.publish('doc-1')).rejects.toThrow(NotFoundException);
   });
 });
+
+describe('DocumentService.loadForIndex / findPublishedIds', () => {
+  /** ids 中不存在的文档会被跳过；contents 按文档 id 给出 Mongo 正文 */
+  function makeIndexService(options: {
+    ids: string[];
+    contents?: Record<string, string>;
+    publishedIds?: string[];
+  }) {
+    const contents = options.contents ?? {};
+
+    const em = {
+      findOne: async () =>
+        // 只按「是否存在于 ids」判断，够用且直观
+        ({ id: 'doc-1', title: '测试文档', contentId: 'c1', status: 1 } as unknown as DocumentEntity),
+      find: async () => (options.publishedIds ?? []).map((id) => ({ id })),
+    };
+    // 让 findOne 能区分存在的 / 不存在的 id
+    em.findOne = async (_entity: unknown, opts: { where: { id: string } }) =>
+      options.ids.includes(opts.where.id)
+        ? ({ id: opts.where.id, title: `标题-${opts.where.id}`, contentId: `c-${opts.where.id}`, status: 1 } as unknown as DocumentEntity)
+        : null;
+
+    const contentModel = {
+      findOne: (q: { _id: string }) => ({
+        lean: async () => ({ content: contents[q._id] ?? '' }),
+      }),
+    };
+
+    const service = new DocumentService(
+      em as never,
+      contentModel as unknown as Model<DocumentContentDocument>,
+      {} as unknown as FileParserService,
+      {} as unknown as RustfsService,
+      {} as unknown as RagOrchestrator,
+    );
+
+    return service;
+  }
+
+  it('loadForIndex 返回元数据 + Mongo 正文的组合', async () => {
+    const service = makeIndexService({
+      ids: ['doc-1', 'doc-2'],
+      contents: { 'c-doc-1': '正文一', 'c-doc-2': '正文二' },
+    });
+    const docs = await service.loadForIndex(['doc-1', 'doc-2']);
+    expect(docs).toHaveLength(2);
+    expect(docs[0]).toMatchObject({ id: 'doc-1', title: '标题-doc-1', content: '正文一' });
+    expect(docs[1].content).toBe('正文二');
+  });
+
+  it('loadForIndex 跳过已删除/不存在的文档，不中断整批', async () => {
+    const service = makeIndexService({ ids: ['doc-1'], contents: { 'c-doc-1': '正文' } });
+    const docs = await service.loadForIndex(['doc-1', 'ghost']);
+    expect(docs).toHaveLength(1);
+    expect(docs[0].id).toBe('doc-1');
+  });
+
+  it('findPublishedIds 返回全部已发布未删除文档的 ID', async () => {
+    const service = makeIndexService({ ids: [], publishedIds: ['a', 'b'] });
+    await expect(service.findPublishedIds()).resolves.toEqual(['a', 'b']);
+  });
+});

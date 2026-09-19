@@ -147,6 +147,25 @@ services:
       retries: 5
       start_period: 40s
 
+  # Redis（BullMQ 队列后端）— 阶段二：文档批量重建索引
+  # 不是发布链路的强依赖：REDIS_ENABLED=false 时应用照常启动，仅批量重建不可用
+  # 开启 appendonly：重建任务属「不能丢」的任务，避免重启后任务消失
+  redis:
+    image: redis:7-alpine
+    container_name: knowledge_hub_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 networks:
   default:
     name: common-network

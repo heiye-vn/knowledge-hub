@@ -22,11 +22,11 @@
 | 参考项目 v3 | 主项目 knowledge-hub | 关系 | 说明 |
 | :--- | :--- | :--- | :--- |
 | `PUT /documents/:id/publish` | 同名接口（阶段一实现） | 🟢 对齐 | 同步写库 + 触发管线；触发失败不回滚已发布状态。**仅草稿/已发布可发布**，归档文档拒绝（守卫见分叉登记 2026-09-19） |
-| `mq/mq.constants.ts`（exchange / queue / routing key） | 阶段二对应 BullMQ 队列名常量 | 🟡 分叉 | topic 交换机 → BullMQ Queue，语义等价 |
-| `mq/messages/pipeline.messages.ts`（`{taskId, type, documentIds}`） | 阶段二 Job 数据结构 | 🟢 对齐 | 字段同名照搬，保持契约形状一致 |
-| `mq/document-pipeline.publisher.ts` | 阶段二 Publisher（入队） | 🟢 对齐 | 职责同：发布后投递，失败只记日志 |
-| `mq/document-pipeline.consumer.ts` | 阶段二 Worker（消费） | 🟡 分叉 | 换成 BullMQ Worker；**并修复丢弃消息的问题** |
-| `mq/rabbitmq.service.ts` | 阶段二 Redis/BullMQ 连接封装 | 🟡 分叉 | 连接管理语义保留 |
+| `mq/mq.constants.ts`（exchange / queue / routing key） | `mq/mq.constants.ts`（队列名 `rag.reindex`）**已实现** | 🟡 分叉 | topic 交换机 + 路由键 → BullMQ 单个队列，路由语义交给 `job.data.type` |
+| `mq/messages/pipeline.messages.ts`（`{taskId, type, documentIds}`） | 同名文件**已实现** | 🟢 对齐 | 字段同名照搬，保持契约形状一致 |
+| `mq/document-pipeline.publisher.ts` | `RagReindexPublisher`**已实现** | 🟢 对齐 | 职责同（投递重建任务）；差异：参考项目是发布后自动投递，本项目publish 保持同步，队列只服务批量重建（方案 B） |
+| `mq/document-pipeline.consumer.ts` | `RagReindexWorker`**已实现** | 🟡 分叉 | 换成 BullMQ Worker；**并修复丢弃消息的问题**（失败抛错 → 自动重试 + 指数退避） |
+| `mq/rabbitmq.service.ts` | 连接配置内联在 Publisher/Worker | 🟡 分叉 | 未单独抽连接服务：BullMQ 的 Queue/Worker 各自管理连接，再包一层无收益 |
 | `pipeline/pipeline.orchestrator.ts` | `RagOrchestrator`（同名职责） | 🟡 分叉 | 管线形状一致（清旧块→分块→嵌入→写 ES）；入参改为已加载的 `PipelineDocument`，加载职责上移到调用方 |
 | `pipeline/chunking.service.ts` | `ChunkingService`（**同名**） | 🟢 对齐 | 分块策略 + heading 前缀补全照搬 |
 | `pipeline/embedding.service.ts` | `EmbeddingService`（**同名**） | 🟡 分叉 | 同为百炼 OpenAI 兼容协议 + 1024 维；模型换为 `qwen3.7-text-embedding-flash`（v3 无可用额度），单批上限 20（v3 为 10） |
@@ -36,6 +36,9 @@
 | （无，散落在 VectorIndexService） | `ElasticsearchService` | 🔵 新增 | 客户端单例 + `kh_chunk` 索引初始化（IK + dense_vector）与维度校验；避免多处各自 new Client |
 | （无） | 删除联动清向量 + 检索侧兜底 | 🔴 超越 | **参考项目缺陷**：软删除不清向量，会召回已删文档。主项目因 ES 无同库事务，额外加检索侧兜底过滤 |
 | （无） | IK 分析器显式配置 | 🔴 超越 | **参考项目缺陷**：IK 装了未用，中文切成单字 |
+| （无） | `POST /rag/reindex` 批量重建入口 | 🔵 新增 | **参考项目缺失**：只有「发布后自动投递」，无手动/批量触发，换 embedding 模型后无法重建存量向量。本项目按方案 B 保持 publish 同步，故必须有显式入口 |
+| （无） | 失败重试 + 指数退避 | 🔴 超越 | **参考项目缺陷**：消费失败 `nack(requeue=false)`，无 DLX 无重试，一次超时该文档索引永久丢失且无感知 |
+| （无） | 队列连通性探测（`waitUntilReady` + 超时） | 🔴 超越 | 【易错】`new Queue()/new Worker()` 只创建对象，连不上也返回实例；据此判「可用」会让接口假装可用、入队时挂住 |
 
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
