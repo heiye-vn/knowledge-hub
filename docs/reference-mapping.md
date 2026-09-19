@@ -29,7 +29,7 @@
 | `mq/rabbitmq.service.ts` | 阶段二 Redis/BullMQ 连接封装 | 🟡 分叉 | 连接管理语义保留 |
 | `pipeline/pipeline.orchestrator.ts` | `RagOrchestrator`（同名职责） | 🟡 分叉 | 管线形状一致（清旧块→分块→嵌入→写 ES）；入参改为已加载的 `PipelineDocument`，加载职责上移到调用方 |
 | `pipeline/chunking.service.ts` | `ChunkingService`（**同名**） | 🟢 对齐 | 分块策略 + heading 前缀补全照搬 |
-| `pipeline/embedding.service.ts` | `EmbeddingService`（**同名**） | 🟢 对齐 | 百炼 `text-embedding-v3`，1024 维，batch ≤ 10 |
+| `pipeline/embedding.service.ts` | `EmbeddingService`（**同名**） | 🟡 分叉 | 同为百炼 OpenAI 兼容协议 + 1024 维；模型换为 `qwen3.7-text-embedding-flash`（v3 无可用额度），单批上限 20（v3 为 10） |
 | `pipeline/vector-index.service.ts` | `VectorIndexService`（**同名**） | 🟢 对齐 | 同栈同名：`kh_chunk` + `dense_vector`；主项目额外显式配置 IK 分析器 |
 | `pipeline/types/pipeline.types.ts` | 同名类型文件 | 🟢 对齐 | `DocumentChunk` 字段保持一致 |
 | （无） | `RetrievalService` | 🔵 新增 | **参考项目缺失**：只有写入没有检索；主项目补 kNN + BM25 混合检索 |
@@ -52,6 +52,7 @@
 | 2026-09-19 | Orchestrator 入参 | `handleRagReindex(type, ids)` 内部按 ID 查 PG+Mongo | `indexDocument(doc: PipelineDocument)`，由调用方加载 | 阶段一同步调用时调用方已有完整文档，避免重复查询；阶段二 consumer 只需「按 ID 加载 → 调用」，复用同一管线 |
 | 2026-09-19 | Embedding 初始化时机 | 构造函数缺 Key 直接 throw | 延迟初始化，首次使用时才构造 | 修参考项目 P1：构造期 throw 会拖垮整个应用启动 |
 | 2026-09-19 | 检索接口路径 | 无 | `/search`（GET + POST），独立于 `/documents` | 检索是独立资源，路径语义更清晰；保留 GET 版便于 curl 快速验证 |
+| 2026-09-19 | Embedding 模型 | `text-embedding-v3`（单批 ≤10） | `qwen3.7-text-embedding-flash`（单批 ≤20） | 账号侧 v3 无可用额度。默认维度同为 1024，索引结构不变；单批上限改为可配置 `EMBEDDING_MAX_BATCH_SIZE` |
 
 > 说明：向量存储在本轮评估过 pgvector，最终**决定与参考项目保持一致使用 Elasticsearch**，
 > 原因是中文 BM25 为硬需求（PG 侧需 `zhparser`，成本高）。评估过程与代价记录在

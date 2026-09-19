@@ -17,7 +17,7 @@
 
 | 决策项 | 结论 |
 | :--- | :--- |
-| Embedding 方案 | 云端阿里云百炼 `text-embedding-v3`，OpenAI 兼容协议，**1024 维** |
+| Embedding 方案 | 云端阿里云百炼 **`qwen3.7-text-embedding-flash`**，OpenAI 兼容协议，**1024 维**（2026-09-19 由 `text-embedding-v3` 切换，见 §9.3） |
 | 向量 + 全文检索 | **Elasticsearch 8.17.0 + IK 中文分词**（与参考项目同栈） |
 | 检索形态 | **混合检索**：向量 kNN + 中文 BM25，RRF 融合 |
 | 异步队列 | **阶段一不做**，`publish` 同步执行；阶段二再引入 Redis + BullMQ |
@@ -122,7 +122,7 @@ apps/server/src/rag/
 ├── rag.module.ts
 ├── rag.orchestrator.ts        # 对应参考 PipelineOrchestrator：加载 → 清旧 → 分块 → 嵌入 → 落库
 ├── chunking.service.ts        # 同名：Markdown 感知递归切分 + heading 前缀补全
-├── embedding.service.ts       # 同名：百炼 text-embedding-v3，batch 钳制 ≤ 10
+├── embedding.service.ts       # 同名：百炼 qwen3.7-text-embedding-flash，batch 钳制 ≤ 20（可配置）
 ├── vector-index.service.ts    # 同名：ES 版写入/清理/建索引（与参考项目同栈）
 ├── retrieval.service.ts       # 新增：参考项目缺失的检索侧（kNN + BM25 + RRF）
 ├── es/
@@ -233,9 +233,10 @@ DELETE /documents/:id
 | `ELASTICSEARCH_NODE` | `http://localhost:9200` | |
 | `EMBEDDING_API_KEY` / `DASHSCOPE_API_KEY` | 无（必填） | 百炼 API Key |
 | `EMBEDDING_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容端点 |
-| `EMBEDDING_MODEL` | `text-embedding-v3` | |
+| `EMBEDDING_MODEL` | `qwen3.7-text-embedding-flash` | 换模型必须**全量重索引** |
 | `EMBEDDING_DIMENSION` | `1024` | **必须等于 mapping 的 `dims`** |
-| `EMBEDDING_BATCH_SIZE` | `10` | 百炼单次上限 10，代码内再钳制 |
+| `EMBEDDING_BATCH_SIZE` | `20` | 实际每批条数，受下一项钳制 |
+| `EMBEDDING_MAX_BATCH_SIZE` | `20` | 模型单次上限：`qwen3.7` 系列 = 20；`text-embedding-v3/v4` = 10 |
 | `RAG_CHUNK_SIZE` | `512`（token）→ 1024 字符 | 换算系数 `CHARS_PER_TOKEN = 2.0` |
 | `RAG_CHUNK_OVERLAP` | `64`（token）→ 128 字符 | |
 | `RAG_TOP_K` | `5` | 最终返回条数 |
@@ -263,6 +264,8 @@ DELETE /documents/:id
 | **鉴权过滤** | 检索不区分可见性 | 随 RBAC 一起做，届时把 `team_id` / 可见性过滤纳入 |
 | **RRF 需商业 License**（实测） | ES 免费版执行 `retriever.rrf` 抛 `security_exception: current license is non-compliant for [RRF]` | 已改为**应用层 RRF**（§5.2）；若未来采购 Platinum 可切回原生，但无实质收益 |
 | **ES 客户端/服务端版本差** | `^8.17.0` 实际装成 8.19.2，服务端为 8.17.0 | 实测可正常通信（ES 保证 8.x 内兼容）；如需严格对齐，把 Dockerfile 一并升到 8.19.x 并换对应 IK 版本 |
+| **换模型需全量重索引** | 不同 embedding 模型向量空间不兼容，**即使维度相同**（1024→1024）也不能混用；旧向量与新查询算相似度无意义 | 切换 `EMBEDDING_MODEL` 后重跑全部已发布文档的索引；阶段二可用批量任务一键重建 |
+| **模型额度/计费** | `text-embedding-v3` 账号无可用额度，已切 `qwen3.7-text-embedding-flash`（0.125 元/百万 tokens） | 若后续额度或价格变化，改 `EMBEDDING_MODEL` 即可，但要重索引（见上一行） |
 
 ---
 
@@ -313,6 +316,27 @@ MinerU 为 Python + PyTorch 视觉模型，按设计备忘（`2026-09-15-documen
 
 **迁移成本**：反向迁移同样集中在 `VectorIndexService` 与 `RetrievalService` 两个类，
 `ChunkingService` / `EmbeddingService` / `RagOrchestrator` 无需改动（模块同名设计的收益）。
+
+### 9.3 Embedding 模型：qwen3.7-text-embedding-flash（原定 text-embedding-v3）
+
+**切换原因（2026-09-19）**：账号侧 `text-embedding-v3` 无可用额度，改用 `qwen3.7-text-embedding-flash`。
+
+**为何这个替换是安全的（关键：维度未变）**
+
+| 项 | text-embedding-v3 | qwen3.7-text-embedding-flash | 影响 |
+| :--- | :--- | :--- | :--- |
+| 默认维度 | 1024 | **1024**（可选 768/512/256） | ✅ `kh_chunk` 的 `dims=1024` **无需重建索引** |
+| 单批上限 | 10 | **20** | ⚠️ 代码钳制常量需同步（已改为可配置的 `EMBEDDING_MAX_BATCH_SIZE`） |
+| 最大输入 | 8K tokens | 128K tokens | ✅ 更宽松，长块不会被截断 |
+| 价格 | — | 0.125 元/百万 tokens | 成本更低 |
+
+**必须注意**：维度相同 ≠ 可以直接换。不同模型的向量空间不兼容，
+若索引中已有 v3 生成的向量，切成 flash 后**必须全量重索引**，否则检索结果无意义。
+（本项目切换时 `kh_chunk` 为空，无需历史重索引。）
+
+**重新评估条件**
+- 该模型额度/价格变化，或出现效果更好的同价位模型 → 改 `EMBEDDING_MODEL` 并全量重索引；
+- 需要 sparse vector / task instruction 等高级能力 → 评估 `qwen3.7-text-embedding`（非 flash 版）。
 
 ---
 

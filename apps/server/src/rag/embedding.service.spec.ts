@@ -38,21 +38,41 @@ describe('EmbeddingService', () => {
     await expect(service.embedBatch([])).resolves.toEqual([]);
   });
 
-  it('batchSize 钳制到 DashScope 上限 10', () => {
+  it('batchSize 钳制到模型上限（qwen3.7 系列默认 20）', () => {
     const clamped = new EmbeddingService(
       fakeConfig({ EMBEDDING_BATCH_SIZE: '50', EMBEDDING_API_KEY: 'sk-test' }),
     );
-    expect((clamped as any).batchSize).toBe(10);
+    expect((clamped as any).batchSize).toBe(20);
 
     const invalid = new EmbeddingService(
       fakeConfig({ EMBEDDING_BATCH_SIZE: 'abc', EMBEDDING_API_KEY: 'sk-test' }),
     );
-    expect((invalid as any).batchSize).toBe(10);
+    expect((invalid as any).batchSize).toBe(20);
 
     const small = new EmbeddingService(
       fakeConfig({ EMBEDDING_BATCH_SIZE: '4', EMBEDDING_API_KEY: 'sk-test' }),
     );
     expect((small as any).batchSize).toBe(4);
+  });
+
+  it('换回 v3/v4 时可用 EMBEDDING_MAX_BATCH_SIZE 下调上限，无需改代码', () => {
+    const v3 = new EmbeddingService(
+      fakeConfig({
+        EMBEDDING_BATCH_SIZE: '50',
+        EMBEDDING_MAX_BATCH_SIZE: '10',
+        EMBEDDING_API_KEY: 'sk-test',
+      }),
+    );
+    expect((v3 as any).batchSize).toBe(10);
+
+    // 非法上限回退到默认 20
+    const broken = new EmbeddingService(
+      fakeConfig({
+        EMBEDDING_MAX_BATCH_SIZE: '0',
+        EMBEDDING_API_KEY: 'sk-test',
+      }),
+    );
+    expect((broken as any).batchSize).toBe(20);
   });
 
   it('维度取配置值，默认 1024', () => {
