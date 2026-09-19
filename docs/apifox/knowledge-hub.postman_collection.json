@@ -5,9 +5,18 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3000" },
-    { "key": "docId", "value": "359687696760705024" },
-    { "key": "keyword", "value": "年假" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "docId",
+      "value": "359687696760705024"
+    },
+    {
+      "key": "keyword",
+      "value": "年假"
+    }
   ],
   "item": [
     {
@@ -20,8 +29,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
             },
             "description": "确认服务是否可用。返回 {\"status\":\"ok\"} 即正常。\n若连接失败：确认服务已启动（默认 3000 端口）。"
           }
@@ -33,8 +46,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/",
-              "host": ["{{baseUrl}}"],
-              "path": [""]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                ""
+              ]
             },
             "description": "占位接口，返回 Hello World，仅用于确认路由已注册。"
           }
@@ -48,16 +65,29 @@
           "name": "创建文档（草稿）",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"title\": \"费用报销管理制度\",\n  \"content\": \"# 费用报销管理制度\\n\\n## 第一章 总则\\n\\n为规范公司费用报销流程，特制定本制度。员工因公产生的差旅费、交通费、业务招待费均可申请报销。\\n\\n## 第二章 报销标准\\n\\n差旅费报销标准：一线城市住宿费每日不超过600元，二线城市不超过400元。交通费凭票据实报销。\\n\\n## 第三章 审批流程\\n\\n报销单需经部门负责人审批后提交财务部审核，金额超过5000元的需总经理审批。发票必须在一个月内提交。\",\n  \"summary\": \"差旅、住宿与报销审批标准\",\n  \"tags\": \"财务,制度\",\n  \"status\": 0,\n  \"isPublic\": true\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/documents",
-              "host": ["{{baseUrl}}"],
-              "path": ["documents"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents"
+              ]
             },
             "description": "双写：MongoDB 存正文，PostgreSQL 存元数据。\n\nstatus 枚举：0 草稿 / 1 已发布 / 2 已归档。默认 0。\n\n✅ 成功后从响应的 data.id 复制雪花 ID，填到集合变量 docId。\n\n注：fileUrl/objectKey 等文件字段由上传链路写入，手工创建时为 null，属正常。"
           }
@@ -69,16 +99,48 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/documents?page=1&pageSize=20&title=&status=",
-              "host": ["{{baseUrl}}"],
-              "path": ["documents"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents"
+              ],
               "query": [
-                { "key": "page", "value": "1", "description": "页码，从 1 开始" },
-                { "key": "pageSize", "value": "20", "description": "每页条数，最大 100" },
-                { "key": "title", "value": "", "description": "标题模糊搜索，留空则不过滤" },
-                { "key": "status", "value": "", "description": "0 草稿 / 1 已发布 / 2 已归档，留空则不过滤" },
-                { "key": "categoryId", "value": "", "disabled": true },
-                { "key": "teamId", "value": "", "disabled": true },
-                { "key": "authorId", "value": "", "disabled": true }
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "页码，从 1 开始"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "description": "每页条数，最大 100"
+                },
+                {
+                  "key": "title",
+                  "value": "",
+                  "description": "标题模糊搜索，留空则不过滤"
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "0 草稿 / 1 已发布 / 2 已归档，留空则不过滤"
+                },
+                {
+                  "key": "categoryId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "teamId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "authorId",
+                  "value": "",
+                  "disabled": true
+                }
               ]
             },
             "description": "仅返回元数据，不含正文。\n\n不需要的过滤条件可勾选取消（Apifox 里点参数前的复选框）。"
@@ -91,8 +153,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/documents/{{docId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["documents", "{{docId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}"
+              ]
             },
             "description": "返回元数据 + Mongo 正文 content。\n\n务必确认 data.id 与集合变量 docId 一致。"
           }
@@ -101,16 +168,30 @@
           "name": "更新文档",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"title\": \"费用报销管理制度（2026修订版）\",\n  \"summary\": \"更新后的摘要\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/documents/{{docId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["documents", "{{docId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}"
+              ]
             },
             "description": "局部更新，字段均可选。\n\n⚠️ 重要：通过本接口把 status 改成 1 **不会触发 RAG 索引**，\n只有 PUT /documents/:id/publish 会触发。\n\n带 content 时会同步更新 Mongo 正文并递增 version。"
           }
@@ -122,8 +203,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/documents/{{docId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["documents", "{{docId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}"
+              ]
             },
             "description": "Postgres 与 Mongo 双库软删，并联动清理该文档在 ES kh_chunk 的向量块。\n\n返回 vectorsCleaned=true 表示 ES 侧已清理成功。\n\nRDS 兜底：即使此处清理失败，检索侧仍会回查 Postgres 过滤掉已删文档。"
           }
@@ -147,18 +233,54 @@
                   "src": "apps/server/test/fixtures/李先生_28岁_76761.pdf",
                   "description": "必填。支持 PDF / DOCX / XLSX / PPTX / TXT / MD，单文件上限 50MB"
                 },
-                { "key": "categoryId", "value": "", "type": "text", "disabled": true },
-                { "key": "teamId", "value": "", "type": "text", "disabled": true },
-                { "key": "authorId", "value": "", "type": "text", "disabled": true },
-                { "key": "tags", "value": "", "type": "text", "disabled": true },
-                { "key": "remark", "value": "", "type": "text", "disabled": true },
-                { "key": "isPublic", "value": "false", "type": "text", "disabled": true }
+                {
+                  "key": "categoryId",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "teamId",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "authorId",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "tags",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "remark",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "isPublic",
+                  "value": "false",
+                  "type": "text",
+                  "disabled": true
+                }
               ]
             },
             "url": {
               "raw": "{{baseUrl}}/documents/upload/parse",
-              "host": ["{{baseUrl}}"],
-              "path": ["documents", "upload", "parse"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "upload",
+                "parse"
+              ]
             },
             "description": "上传 → 解析为 Markdown → 创建**草稿**文档（status=0）。\n\n⚠️ 导入后请在 Body → form-data 里**重新选择本地文件**（原 src 路径不可用）。\n项目自带夹具：apps/server/test/fixtures/ 下有 PDF/DOCX/XLSX/PPTX 样例。\n\n成功后同样从 data.id 取文档 ID 填到变量 docId，再调用「发布文档」。\n\n源文件会存到 RustFS，元数据写入 file_url / object_key / file_name / file_size / file_extension 五列。"
           }
@@ -166,7 +288,7 @@
       ]
     },
     {
-      "name": "RAG 发布与索引",
+      "name": "RAG 发布与重建索引",
       "item": [
         {
           "name": "发布文档并触发 RAG 索引",
@@ -175,10 +297,80 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/documents/{{docId}}/publish",
-              "host": ["{{baseUrl}}"],
-              "path": ["documents", "{{docId}}", "publish"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "publish"
+              ]
             },
             "description": "**核心接口**。设为已发布后同步执行：\n分块 → Embedding（qwen3.7-flash, 1024维）→ 写入 ES kh_chunk。\n\n响应字段：\n- indexed=true：索引成功，chunks 为写入块数\n- indexed=false：链路不可用（ES 未启用或缺少 EMBEDDING_API_KEY），已完成发布但无索引\n\n幂等：重复发布会先 deleteByQuery 清旧块再写入，块数不增长。\n失败时会直接报错（可安全重试）。\n\n阶段一为同步调用，长文档可能耗时数秒。"
+          }
+        },
+        {
+          "name": "重建全部已发布文档（全量重索引）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/rag/reindex",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "rag",
+                "reindex"
+              ]
+            },
+            "description": "**换 embedding 模型后必须执行**：不同模型的向量空间不兼容，旧向量与新查询比对无意义。\n省略 documentIds 即重建全部「已发布且未删除」的文档。\n返回 { taskId, queued }，任务由 BullMQ Worker 异步执行（publish 本身仍是同步的）。\n前置：REDIS_ENABLED=true 且 Redis 已启动，否则返回 503。"
+          }
+        },
+        {
+          "name": "重建指定文档",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentIds\": [\"{{docId}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/rag/reindex",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "rag",
+                "reindex"
+              ]
+            },
+            "description": "只重建指定文档。管线幂等（先清旧块再按 chunkId 覆盖写），重复执行安全。\n前置同全量重建。"
           }
         }
       ]
@@ -193,15 +385,43 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/search?query={{keyword}}&mode=hybrid&topK=5",
-              "host": ["{{baseUrl}}"],
-              "path": ["search"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ],
               "query": [
-                { "key": "query", "value": "{{keyword}}", "description": "查询词，必填" },
-                { "key": "mode", "value": "hybrid", "description": "hybrid 混合 / vector 纯向量 / keyword 纯关键词" },
-                { "key": "topK", "value": "5", "description": "返回条数 1-50" },
-                { "key": "categoryId", "value": "", "disabled": true },
-                { "key": "teamId", "value": "", "disabled": true },
-                { "key": "authorId", "value": "", "disabled": true }
+                {
+                  "key": "query",
+                  "value": "{{keyword}}",
+                  "description": "查询词，必填"
+                },
+                {
+                  "key": "mode",
+                  "value": "hybrid",
+                  "description": "hybrid 混合 / vector 纯向量 / keyword 纯关键词"
+                },
+                {
+                  "key": "topK",
+                  "value": "5",
+                  "description": "返回条数 1-50"
+                },
+                {
+                  "key": "categoryId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "teamId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "authorId",
+                  "value": "",
+                  "disabled": true
+                }
               ]
             },
             "description": "推荐默认用法：kNN 向量 + BM25 关键词双路召回，应用层 RRF 融合。\n\n返回结构要点：\n- score：RRF 融合分（Σ1/(60+rank)），量级 0.0x 是正常的\n- scores.vector / scores.keyword：两路原始分数，可用于对比调优\n- 结果只含 doc_status=1 的文档，且会回查 Postgres 过滤已删文档\n\n改上面的集合变量 keyword 即可换查询词试试。"
@@ -214,12 +434,26 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/search?query=出差住宿能报销多少&mode=vector&topK=5",
-              "host": ["{{baseUrl}}"],
-              "path": ["search"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ],
               "query": [
-                { "key": "query", "value": "出差住宿能报销多少", "description": "语义查询，用词可与原文不同" },
-                { "key": "mode", "value": "vector" },
-                { "key": "topK", "value": "5" }
+                {
+                  "key": "query",
+                  "value": "出差住宿能报销多少",
+                  "description": "语义查询，用词可与原文不同"
+                },
+                {
+                  "key": "mode",
+                  "value": "vector"
+                },
+                {
+                  "key": "topK",
+                  "value": "5"
+                }
               ]
             },
             "description": "纯语义召回，验证向量能力：查询词可以与原文用词完全不同。\n\n⚠️ 低于 RAG_MIN_SCORE（默认 0.72）的结果会被丢弃——\nkNN 必然返回 topK 条，没有门槛会把无关内容也带出来。\n\n未配置 EMBEDDING_API_KEY 时返回空数组且不报错。"
@@ -232,12 +466,25 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/search?query={{keyword}}&mode=keyword&topK=5",
-              "host": ["{{baseUrl}}"],
-              "path": ["search"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ],
               "query": [
-                { "key": "query", "value": "{{keyword}}" },
-                { "key": "mode", "value": "keyword" },
-                { "key": "topK", "value": "5" }
+                {
+                  "key": "query",
+                  "value": "{{keyword}}"
+                },
+                {
+                  "key": "mode",
+                  "value": "keyword"
+                },
+                {
+                  "key": "topK",
+                  "value": "5"
+                }
               ]
             },
             "description": "BM25 + IK 中文分词，不依赖 Embedding Key，随时可用。\n\n与 vector 模式对比即可看出两路召回的差异。\n无词项匹配时会返回空数组（这是正常的，说明 IK 没匹配上）。"
@@ -247,16 +494,29 @@
           "name": "混合检索 hybrid（POST）",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"query\": \"出差住宿能报销多少\",\n  \"mode\": \"hybrid\",\n  \"topK\": 5\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/search",
-              "host": ["{{baseUrl}}"],
-              "path": ["search"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ]
             },
             "description": "POST 版。查询词含特殊字符或较长时用 POST 更稳妥。\n\n校验规则：query 必填；mode 只能是 hybrid/vector/keyword；topK 整数 1-50。\n多余字段会被拒绝（全局启用了 forbidNonWhitelisted）。"
           }
