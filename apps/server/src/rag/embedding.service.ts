@@ -2,17 +2,31 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OpenAIEmbeddings } from '@langchain/openai';
 
-/** DashScope text-embedding-v3 单次请求上限，超过会 400 InvalidParameter */
-const DASHSCOPE_MAX_BATCH = 10;
+/** 默认模型：qwen3.7-text-embedding-flash（1024 维，性价比高，128K 上下文） */
+const DEFAULT_MODEL = 'qwen3.7-text-embedding-flash';
+
+/**
+ * 百炼各文本向量模型「单次请求文本条数」上限（超过会 400 InvalidParameter）：
+ * - `text-embedding-v3` / `text-embedding-v4`：10
+ * - `qwen3.7-text-embedding` / `qwen3.7-text-embedding-flash`：20
+ *
+ * 当前默认模型是 flash（上限 20），故默认取 20。
+ * 换回 v3/v4 时若不想改代码，用 `EMBEDDING_MAX_BATCH_SIZE=10` 覆盖即可。
+ */
+const DEFAULT_MAX_BATCH = 20;
 
 /**
  * 文本向量化服务（LangChain OpenAIEmbeddings + 阿里云百炼 OpenAI 兼容协议）
  *
- * 与参考项目 knowledge-hub-backend 对齐：同模型、同维度、同 batch 钳制、同 stripNewLines=false。
+ * 与参考项目 knowledge-hub-backend 对齐：同维度、同 batch 钳制机制、同 stripNewLines=false；
+ * 模型不同（参考项目 v3，本项目 qwen3.7-flash），但两者默认维度都是 1024，索引结构无需变更。
  *
  * ✅ 相对参考项目的改进（修其 P1）：参考项目在**构造函数**中因缺 API Key 直接 throw，
  * 会拖垮整个应用启动 —— 没配 Key 连 /health 都起不来。
  * 这里改为**延迟初始化**：首次使用时才构造，失败抛明确业务异常并记录日志，不影响启动。
+ *
+ * ⚠️ **换模型 = 全量重索引**：不同模型的向量空间不兼容，即使维度相同，
+ * 旧向量与新查询向量算相似度没有意义。切换 EMBEDDING_MODEL 后必须重跑所有文档的索引。
  */
 @Injectable()
 export class EmbeddingService {
@@ -25,13 +39,23 @@ export class EmbeddingService {
   constructor(private readonly config: ConfigService) {
     this.dimension = Number(this.config.get('EMBEDDING_DIMENSION', 1024));
 
-    const configuredBatch = Number(this.config.get('EMBEDDING_BATCH_SIZE', 10));
-    const valid = Number.isFinite(configuredBatch) && configuredBatch > 0;
-    this.batchSize = Math.min(valid ? configuredBatch : 10, DASHSCOPE_MAX_BATCH);
+    const maxBatchConfigured = Number(
+      this.config.get('EMBEDDING_MAX_BATCH_SIZE', DEFAULT_MAX_BATCH),
+    );
+    const maxBatch =
+      Number.isFinite(maxBatchConfigured) && maxBatchConfigured > 0
+        ? maxBatchConfigured
+        : DEFAULT_MAX_BATCH;
 
-    if (configuredBatch > DASHSCOPE_MAX_BATCH) {
+    const configuredBatch = Number(
+      this.config.get('EMBEDDING_BATCH_SIZE', maxBatch),
+    );
+    const valid = Number.isFinite(configuredBatch) && configuredBatch > 0;
+    this.batchSize = Math.min(valid ? configuredBatch : maxBatch, maxBatch);
+
+    if (configuredBatch > maxBatch) {
       this.logger.warn(
-        `EMBEDDING_BATCH_SIZE=${configuredBatch} 超过 DashScope 上限，已钳制为 ${DASHSCOPE_MAX_BATCH}`,
+        `EMBEDDING_BATCH_SIZE=${configuredBatch} 超过上限 ${maxBatch}，已钳制（上限由 EMBEDDING_MAX_BATCH_SIZE 控制）`,
       );
     }
   }
@@ -77,7 +101,7 @@ export class EmbeddingService {
       'EMBEDDING_BASE_URL',
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
     );
-    const model = this.config.get('EMBEDDING_MODEL', 'text-embedding-v3');
+    const model = this.config.get('EMBEDDING_MODEL', DEFAULT_MODEL);
 
     this.embeddings = new OpenAIEmbeddings({
       apiKey,

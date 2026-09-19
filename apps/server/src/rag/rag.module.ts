@@ -18,7 +18,7 @@ import { VectorIndexService } from './vector-index.service.js';
  * 组成：
  * - ElasticsearchService：客户端 + `kh_chunk` 索引（IK + dense_vector）幂等初始化
  * - ChunkingService：Markdown 感知分块
- * - EmbeddingService：百炼 text-embedding-v3（延迟初始化，缺 Key 不阻断启动）
+ * - EmbeddingService：百炼 qwen3.7-text-embedding-flash，1024 维（延迟初始化，缺 Key 不阻断启动）
  * - VectorIndexService：ES 写入 / 按文档删除
  * - RagOrchestrator：分块 → 嵌入 → 索引 的编排
  * - RetrievalService：kNN + BM25 + RRF 混合检索（参考项目缺失，本项目补齐）
