@@ -107,6 +107,26 @@ export class DocumentEntity {
   @Column({ name: 'is_public', type: 'boolean', default: false })
   isPublic: boolean;
 
+  /** 源文件直链 URL（bucket 匿名只读时可直访；预签名模式下仅参考） */
+  @Column({ name: 'file_url', type: 'varchar', nullable: true })
+  fileUrl?: string | null;
+
+  /** RustFS 对象 Key（删除清理与重解析的依据） */
+  @Column({ name: 'object_key', type: 'varchar', nullable: true })
+  objectKey?: string | null;
+
+  /** 上传时的原始文件名 */
+  @Column({ name: 'file_name', type: 'varchar', nullable: true })
+  fileName?: string | null;
+
+  /** 源文件大小（字节） */
+  @Column({ name: 'file_size', type: 'bigint', nullable: true, transformer: bigintTransformer })
+  fileSize?: string | null;
+
+  /** 源文件扩展名（小写，不含点） */
+  @Column({ name: 'file_extension', type: 'varchar', nullable: true })
+  fileExtension?: string | null;
+
   /** 创建时间 */
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

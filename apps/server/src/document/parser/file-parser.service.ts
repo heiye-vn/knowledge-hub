@@ -76,12 +76,14 @@ export class FileParserService {
         result = await parsePdf(file.buffer, {
           // 存储未启用时不传 uploadImage，PDF 仅输出文本/表格
           uploadImage: this.rustfs.isEnabled()
-            ? (bytes, fileName, contentType) =>
-                this.rustfs.uploadBytes(bytes, {
-                  fileName,
-                  contentType,
-                  prefix: 'pdf-images',
-                })
+            ? async (bytes, fileName, contentType) =>
+                (
+                  await this.rustfs.uploadBytes(bytes, {
+                    fileName,
+                    contentType,
+                    prefix: 'pdf-images',
+                  })
+                ).url
             : undefined,
         });
         break;

@@ -18,13 +18,30 @@ import {
   DocumentContent,
   DocumentContentDocument,
 } from './schemas/document-content.schema.js';
-import { RustfsService } from '../storage/rustfs.service.js';
+import { RustfsService, UploadBytesResult } from '../storage/rustfs.service.js';
 import { FileParserService } from './parser/file-parser.service.js';
 import {
   decodeUploadFilename,
   getExtension,
   titleFromFilename,
 } from './parser/utils/markdown.util.js';
+
+/**
+ * 内部文件元数据（上传链路写入 kh_document，不暴露给 CreateDocumentDto，
+ * 避免客户端伪造 object_key 等存储层字段）
+ */
+export interface DocumentFileInfo {
+  /** 源文件直链 URL */
+  fileUrl: string | null;
+  /** RustFS 对象 Key */
+  objectKey: string | null;
+  /** 原始文件名 */
+  fileName: string;
+  /** 文件大小（字节，bigint 列统一走 string） */
+  fileSize: string;
+  /** 扩展名（小写） */
+  fileExtension: string;
+}
 
 /**
  * 文档服务
@@ -51,8 +68,10 @@ export class DocumentService {
    * 创建文档
    * 流程：生成雪花 ID → 写 Mongo 正文（拿 ObjectId）→ 写 Postgres 元数据
    * 若 Postgres 写入失败，回滚删除已写入的 Mongo 正文，避免脏数据
+   *
+   * @param fileInfo 内部参数：上传链路传入的源文件元数据（在线创建时缺省）
    */
-  async create(dto: CreateDocumentDto) {
+  async create(dto: CreateDocumentDto, fileInfo?: DocumentFileInfo) {
     const id = nextSnowflakeId();
     const wordCount = this.countWords(dto.content);
     const status = dto.status ?? DocumentStatus.Draft;
@@ -86,6 +105,12 @@ export class DocumentService {
         remark: dto.remark,
         isPublic: dto.isPublic ?? false,
         wordCount,
+        // 源文件元数据（在线创建时为 null）
+        fileUrl: fileInfo?.fileUrl ?? null,
+        objectKey: fileInfo?.objectKey ?? null,
+        fileName: fileInfo?.fileName ?? null,
+        fileSize: fileInfo?.fileSize ?? null,
+        fileExtension: fileInfo?.fileExtension ?? null,
         // 创建即发布时，记录发布时间
         publishTime: status === DocumentStatus.Published ? new Date() : null,
         createBy: dto.createBy,
@@ -314,10 +339,10 @@ export class DocumentService {
       throw new BadRequestException(`文件解析失败: ${message}`);
     }
 
-    let fileUrl: string | null = null;
+    let uploadResult: UploadBytesResult | null = null;
     if (this.rustfs.isEnabled()) {
       try {
-        fileUrl = await this.rustfs.uploadBytes(file.buffer, {
+        uploadResult = await this.rustfs.uploadBytes(file.buffer, {
           fileName: originalFilename,
           contentType: file.mimetype || 'application/octet-stream',
           prefix: 'documents',
@@ -333,25 +358,37 @@ export class DocumentService {
 
     const title = titleFromFilename(originalFilename);
 
-    const created = await this.create({
-      title,
-      content: parsedContent,
-      categoryId: meta.categoryId,
-      teamId: meta.teamId,
-      authorId: meta.authorId,
-      tags: meta.tags,
-      remark: meta.remark,
-      createBy: meta.createBy,
-      isPublic: meta.isPublic,
-      status: DocumentStatus.Draft,
-    });
+    const created = await this.create(
+      {
+        title,
+        content: parsedContent,
+        categoryId: meta.categoryId,
+        teamId: meta.teamId,
+        authorId: meta.authorId,
+        tags: meta.tags,
+        remark: meta.remark,
+        createBy: meta.createBy,
+        isPublic: meta.isPublic,
+        status: DocumentStatus.Draft,
+      },
+      {
+        // 持久化源文件元数据，供列表/详情展示、重解析与对象清理反查
+        fileUrl: uploadResult?.url ?? null,
+        objectKey: uploadResult?.key ?? null,
+        fileName: originalFilename,
+        fileSize: String(file.size),
+        fileExtension: extension,
+      },
+    );
+
+    const fileUrl = uploadResult?.url ?? null;
 
     const previewLen = Math.min(200, parsedContent.length);
     const result = {
       documentId: created.id,
       title,
       fileUrl,
-      fileSize: file.size,
+      fileSize: String(file.size),
       fileExtension: extension,
       contentLength: parsedContent.length,
       contentPreview: parsedContent.slice(0, previewLen),

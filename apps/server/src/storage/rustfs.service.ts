@@ -21,6 +21,12 @@ export interface UploadBytesOptions {
   prefix?: string;
 }
 
+/** 上传结果：url 供直接访问，key 供预签名 / 删除 / 重解析 */
+export interface UploadBytesResult {
+  url: string;
+  key: string;
+}
+
 /** RustFS 文件存储（S3 兼容） */
 @Injectable()
 export class RustfsService implements OnModuleInit {
@@ -85,11 +91,11 @@ export class RustfsService implements OnModuleInit {
     return this.enabled && this.client != null;
   }
 
-  /** 上传字节，返回可访问 URL：{publicBase}/{bucket}/{key} */
+  /** 上传字节，返回 { url, key }：url={publicBase}/{bucket}/{key} */
   async uploadBytes(
     bytes: Buffer | Uint8Array,
     options: UploadBytesOptions,
-  ): Promise<string> {
+  ): Promise<UploadBytesResult> {
     if (!this.isEnabled() || !this.client) {
       throw new ServiceUnavailableException(
         'RustFS 未启用或未配置，无法上传文件',
@@ -118,7 +124,7 @@ export class RustfsService implements OnModuleInit {
     this.logger.log(
       `RustFS 上传成功: key=${key}, size=${body.length}, url=${url}`,
     );
-    return url;
+    return { url, key };
   }
 
   private async ensureBucket(): Promise<void> {

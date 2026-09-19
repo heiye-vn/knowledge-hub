@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS kh_document (
     word_count INT NOT NULL DEFAULT 0,
     publish_time TIMESTAMP,
     is_public BOOLEAN NOT NULL DEFAULT false,
+    -- 上传源文件元数据（在线创建的文档为 NULL）
+    file_url VARCHAR,
+    object_key VARCHAR,
+    file_name VARCHAR,
+    file_size BIGINT,
+    file_extension VARCHAR,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     create_by BIGINT,
@@ -48,8 +54,23 @@ COMMENT ON COLUMN kh_document.favourite_count IS '收藏次数';
 COMMENT ON COLUMN kh_document.word_count IS '文档正文字数统计';
 COMMENT ON COLUMN kh_document.publish_time IS '正式发布时间';
 COMMENT ON COLUMN kh_document.is_public IS '是否公开（false: 私有/空间内, true: 全局公开）';
+COMMENT ON COLUMN kh_document.file_url IS '源文件直链 URL（bucket 匿名只读时可直访；预签名模式下仅作参考，运行时用 object_key 动态签名）';
+COMMENT ON COLUMN kh_document.object_key IS 'RustFS 对象 Key（如 documents/2026/09/17/xxx.pdf），删除清理与重解析的依据';
+COMMENT ON COLUMN kh_document.file_name IS '上传时的原始文件名';
+COMMENT ON COLUMN kh_document.file_size IS '源文件大小（字节）';
+COMMENT ON COLUMN kh_document.file_extension IS '源文件扩展名（小写，不含点）';
 COMMENT ON COLUMN kh_document.created_at IS '记录创建时间';
 COMMENT ON COLUMN kh_document.updated_at IS '记录最后更新时间';
 COMMENT ON COLUMN kh_document.create_by IS '创建操作人ID';
 COMMENT ON COLUMN kh_document.update_by IS '最后更新操作人ID';
 COMMENT ON COLUMN kh_document.deleted IS '逻辑删除标记（false: 正常, true: 已删除）';
+
+-- ---------------------------------------------------------------------------
+-- 存量库升级：为 2026-09-19 之前初始化的 kh_document 补文件元数据列。
+-- 新初始化的库走上方 CREATE TABLE 已包含这些列，此段幂等跳过。
+-- ---------------------------------------------------------------------------
+ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_url VARCHAR;
+ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS object_key VARCHAR;
+ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_name VARCHAR;
+ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_size BIGINT;
+ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_extension VARCHAR;
