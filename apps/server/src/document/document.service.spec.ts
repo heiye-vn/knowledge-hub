@@ -98,16 +98,18 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
     const contents = options.contents ?? {};
 
     const em = {
-      findOne: async () =>
-        // 只按「是否存在于 ids」判断，够用且直观
-        ({ id: 'doc-1', title: '测试文档', contentId: 'c1', status: 1 } as unknown as DocumentEntity),
+      // 按「id 是否在 ids 里」区分存在/不存在，够用且直观
+      findOne: async (_entity: unknown, opts: { where: { id: string } }) =>
+        options.ids.includes(opts.where.id)
+          ? ({
+              id: opts.where.id,
+              title: `标题-${opts.where.id}`,
+              contentId: `c-${opts.where.id}`,
+              status: 1,
+            } as unknown as DocumentEntity)
+          : null,
       find: async () => (options.publishedIds ?? []).map((id) => ({ id })),
     };
-    // 让 findOne 能区分存在的 / 不存在的 id
-    em.findOne = async (_entity: unknown, opts: { where: { id: string } }) =>
-      options.ids.includes(opts.where.id)
-        ? ({ id: opts.where.id, title: `标题-${opts.where.id}`, contentId: `c-${opts.where.id}`, status: 1 } as unknown as DocumentEntity)
-        : null;
 
     const contentModel = {
       findOne: (q: { _id: string }) => ({

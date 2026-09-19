@@ -73,6 +73,28 @@ spec 里原本写 `POST /documents/search`（参考项目风格），
 
 ---
 
+## 3.5 收尾时的验证闭环（易错）
+
+`pnpm build:server`（`nest build`）用的是 `tsconfig.build.json`，其中有
+`"exclude": ["**/*spec.ts"]`。**这意味着测试文件的类型错误不会被构建发现。**
+
+2026-09-19 实际踩到：写完 `document.service.spec.ts` / `vector-index.service.spec.ts` 后
+跑 `build` 全绿，但 `tsc --noEmit -p tsconfig.json`（含 spec）报 4 个错——
+两处是 fake 依赖的签名收窄、两处是 ES `SearchHitsMetadata.total` 可选属性导致的签名不兼容。
+
+**因此收尾必须跑三条，缺一不可：**
+
+```bash
+pnpm typecheck:server   # tsc --noEmit -p tsconfig.json（含 spec）
+pnpm test:server        # vitest
+pnpm --filter @knowledge-hub/server lint   # oxlint，只看 error
+```
+
+已把 `typecheck` 固化成脚本（`apps/server/package.json` + 根 `typecheck:server`），
+不要再用 `build` 代替类型检查。
+
+---
+
 ## 4. 需要留意的倾向
 
 讨论过程中出现过、后续要避免的两种偏差：
