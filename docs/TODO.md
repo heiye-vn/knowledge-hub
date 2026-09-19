@@ -7,6 +7,14 @@
 ## 1. 文档与源文件的关联缺失
 
 > 记录时间：2026-09-17
+> **状态：✅ 已解决（2026-09-19）**
+
+**解决方案**：采用原「方案 A + object_key 兼容」的组合——`kh_document` 新增 5 个可空列
+`file_url / object_key / file_name / file_size / file_extension`，
+上传链路（`DocumentService.uploadAndCreateDocument`）经内部参数 `DocumentFileInfo` 写入。
+`RustfsService.uploadBytes` 改为返回 `{ url, key }` 以取得 object_key。
+
+> 以下为原始记录，保留作决策背景。
 
 ### 现状
 
@@ -48,6 +56,14 @@
 ## 2. fileUrl 的存储形态依赖访问策略决策
 
 > 记录时间：2026-09-17
+> **状态：⏳ 待决策（2026-09-19 更新：表结构已兼容两种方案，仅剩策略选择）**
+
+**进展**：第 1 项落地后，`file_url`（直链）与 `object_key`（对象 Key）**两列都已存在**，
+即「方案 A 存直链」与「方案 B 存 key + 动态签名」两种模式在存储层都已支持，无需再改表。
+剩下的只是运行时策略选择：**本地开发配匿名只读即可直访；上线前切预签名，读 `object_key` 动态签名。**
+在此之前，`fileUrl` 字段已写入库但浏览器直开仍会返回 AccessDenied（bucket 私有）。
+
+> 以下为原始记录，保留作决策背景。
 
 ### 现状
 
