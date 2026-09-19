@@ -82,6 +82,44 @@ services:
       mongodb:
         condition: service_healthy
 
+  # Elasticsearch 8.17.0 + IK 中文分词（镜像内置）— RAG 向量与混合检索底座
+  # 镜像由 ./elasticsearch/Dockerfile 构建，ES 与 analysis-ik 版本必须严格一致
+  es:
+    build: ./elasticsearch
+    container_name: knowledge_hub_elasticsearch
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node            # 单节点运行（开发环境）
+      - xpack.security.enabled=false          # 关闭安全认证，免密码访问
+      - xpack.security.http.ssl.enabled=false # 关闭 HTTPS
+      - xpack.security.transport.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m        # 限制 JVM 内存占用
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/es/data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # Kibana（版本必须与 ES 完全一致）— 索引与检索调试控制台
+  # 资源紧张时可不起：docker compose up -d es 单独启动 ES 即可
+  kibana:
+    image: kibana:8.17.0
+    container_name: knowledge_hub_kibana
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://es:9200
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/kibana:/usr/share/kibana/data
+    depends_on:
+      - es
+
   # RustFS（S3 兼容对象存储）— PDF 抽图 / 原文件上传
   # 文档：https://docs.rustfs.com/installation/docker/
   rustfs:

@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  Put,
   Delete,
   Query,
   UseInterceptors,
@@ -62,6 +63,17 @@ export class DocumentController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateDocumentDto) {
     return this.documentService.update(id, dto);
+  }
+
+  /**
+   * 发布文档并触发 RAG 索引（分块 → 嵌入 → 写入 ES kh_chunk）
+   *
+   * 注意：仅本接口会触发索引；直接 PATCH status 不会重建向量。
+   * 管线幂等，重复发布会先清旧块再覆盖写。
+   */
+  @Put(':id/publish')
+  publish(@Param('id') id: string) {
+    return this.documentService.publish(id);
   }
 
   /** 软删除文档 */

@@ -19,6 +19,8 @@ import {
   DocumentContentDocument,
 } from './schemas/document-content.schema.js';
 import { RustfsService, UploadBytesResult } from '../storage/rustfs.service.js';
+import { RagOrchestrator } from '../rag/rag.orchestrator.js';
+import type { PipelineDocument } from '../rag/types/rag.types.js';
 import { FileParserService } from './parser/file-parser.service.js';
 import {
   decodeUploadFilename,
@@ -62,6 +64,7 @@ export class DocumentService {
     private readonly contentModel: Model<DocumentContentDocument>,
     private readonly fileParserService: FileParserService,
     private readonly rustfs: RustfsService,
+    private readonly ragOrchestrator: RagOrchestrator,
   ) {}
 
   /**
@@ -281,6 +284,78 @@ export class DocumentService {
   }
 
   /**
+   * 发布文档：置为已发布 → 触发 RAG 索引（分块 → 嵌入 → 写 ES kh_chunk）
+   *
+   * 阶段一为**同步执行**：索引失败直接上抛，客户端可重试（管线幂等：先删旧块再覆盖写）。
+   *
+   * 降级：ES 不可用或未配置 Embedding Key 时，仍完成发布但 `indexed=false`，
+   * 不让基础设施故障阻断发布动作。
+   */
+  async publish(id: string) {
+    const doc = await this.em.findOne(DocumentEntity, {
+      where: { id, deleted: false },
+    });
+    if (!doc) {
+      throw new NotFoundException(`Document ${id} not found`);
+    }
+
+    if (doc.status !== DocumentStatus.Published) {
+      doc.status = DocumentStatus.Published;
+      if (!doc.publishTime) doc.publishTime = new Date();
+      await this.em.save(doc);
+    }
+
+    const contentDoc = await this.contentModel
+      .findOne({ _id: doc.contentId, deleted: false })
+      .lean();
+    const content = contentDoc?.content ?? '';
+
+    if (!this.ragOrchestrator.isAvailable()) {
+      this.logger.warn(
+        `索引链路不可用，已发布但未建索引：documentId=${id}（检查 ELASTICSEARCH_ENABLED / EMBEDDING_API_KEY）`,
+      );
+      return {
+        id,
+        status: doc.status,
+        publishTime: doc.publishTime,
+        indexed: false,
+        chunks: 0,
+      };
+    }
+
+    const result = await this.ragOrchestrator.indexDocument(
+      this.toPipelineDocument(doc, content),
+    );
+
+    return {
+      id,
+      status: doc.status,
+      publishTime: doc.publishTime,
+      indexed: true,
+      chunks: result.chunks,
+    };
+  }
+
+  /** Postgres 实体 + Mongo 正文 → RAG 管线统一结构 */
+  toPipelineDocument(doc: DocumentEntity, content: string): PipelineDocument {
+    return {
+      id: doc.id,
+      title: doc.title,
+      content,
+      summary: doc.summary,
+      categoryId: doc.categoryId,
+      authorId: doc.authorId,
+      teamId: doc.teamId,
+      status: doc.status,
+      tags: doc.tags,
+      isPublic: doc.isPublic,
+      publishTime: doc.publishTime,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+    };
+  }
+
+  /**
    * 软删除文档
    * Postgres、Mongo 两侧都将 deleted 置为 true（不物理删正文）
    */
@@ -298,7 +373,20 @@ export class DocumentService {
       { _id: doc.contentId },
       { $set: { deleted: true } },
     );
-    return { id, deleted: true };
+
+    // 清理 ES 向量块：跨系统无事务，失败只记日志，不阻断删除（检索侧另有兜底过滤）
+    let vectorsCleaned = false;
+    try {
+      await this.ragOrchestrator.deleteDocument(id);
+      vectorsCleaned = true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `删除文档后清理 ES 向量块失败（检索侧会兜底过滤）：documentId=${id}, ${message}`,
+      );
+    }
+
+    return { id, deleted: true, vectorsCleaned };
   }
 
   /** 上传并解析文件 → 创建草稿文档 */

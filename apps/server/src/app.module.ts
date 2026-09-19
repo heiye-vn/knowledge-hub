@@ -11,6 +11,7 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { StorageModule } from './storage/storage.module.js';
+import { RagModule } from './rag/rag.module.js';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { StorageModule } from './storage/storage.module.js';
     }),
     DocumentModule,
     StorageModule,
+    RagModule,
   ],
   controllers: [AppController],
   providers: [

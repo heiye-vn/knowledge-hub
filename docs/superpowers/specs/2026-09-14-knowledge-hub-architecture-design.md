@@ -1,5 +1,11 @@
 # 知识库项目架构设计与工程骨架规格说明书 (knowledge-hub)
 
+> ⚠️ **部分内容已被后续决策取代（2026-09-19）**
+> 本文 §2 技术栈中「PostgreSQL 16 + pgvector 提供向量相似度检索」以及 §5 数据流里以 PG 承载向量的设计，
+> **已改为 Elasticsearch 8.17 + IK 分词**承载向量与全文检索，原因是中文 BM25 混合检索为硬需求。
+> 详见 [2026-09-19-rag-indexing-pipeline-design.md §9.2](file:///e:/Study/AI%20Agent/knowledge-hub/docs/superpowers/specs/2026-09-19-rag-indexing-pipeline-design.md)。
+> 本文其余部分（Monorepo 骨架、双写隔离、全局切面、大整数处理）仍然有效。
+
 ## 1. 项目背景与目标
 
 本项目旨在构建一个高可用、易扩展的企业级知识库问答与检索系统（knowledge-hub）。系统核心能力包含多格式文档解析摄取、智能分块、向量化索引与混合检索、以及基于大模型的流式 RAG 对话问答。
