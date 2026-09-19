@@ -290,6 +290,11 @@ export class DocumentService {
    *
    * 降级：ES 不可用或未配置 Embedding Key 时，仍完成发布但 `indexed=false`，
    * 不让基础设施故障阻断发布动作。
+   *
+   * 🟢 对齐参考项目 knowledge-hub-backend：仅「草稿 / 已发布」允许发布，
+   * 已归档（Archived）文档不允许重新发布 —— 归档是明确的终态，
+   * 若放开会导致已下线文档被重新向量化并回到检索结果里。
+   * （本条此前遗漏，已对照 v3 补齐。）
    */
   async publish(id: string) {
     const doc = await this.em.findOne(DocumentEntity, {
@@ -297,6 +302,13 @@ export class DocumentService {
     });
     if (!doc) {
       throw new NotFoundException(`Document ${id} not found`);
+    }
+
+    if (
+      doc.status !== DocumentStatus.Draft &&
+      doc.status !== DocumentStatus.Published
+    ) {
+      throw new BadRequestException('当前文档状态不允许发布');
     }
 
     if (doc.status !== DocumentStatus.Published) {
