@@ -53,7 +53,37 @@ pnpm --filter @knowledge-hub/server lint
 
 ---
 
-## 三、 Git 提交规范
+## 三、 接口联调与 Apifox 测试集合规范
+
+### 3.1 存放位置（强制）
+- **所有提供给 Apifox 导入的接口测试集合，一律放在 `docs/apifox/` 目录下**，禁止散落在其他位置。
+- 命名：`<模块或域>.postman_collection.json`，例如 `knowledge-hub.postman_collection.json`。
+- 当前已有集合：`knowledge-hub.postman_collection.json`（覆盖系统 / 文档管理 / 上传解析 / RAG 发布 / 知识检索）。
+
+### 3.2 何时必须更新（强制）
+新增、修改或删除任何 Controller 接口时，**必须在同一次改动中同步更新 `docs/apifox/` 下对应集合**，包括：
+- 新增/变更的路径、HTTP 方法
+- DTO 字段增删改（含是否必填、枚举取值、默认值）
+- 新增业务模块的 folder 分组
+
+不允许出现「代码已改但集合里接口过时或缺失」的情况。
+
+### 3.3 集合编写约定
+- **格式**：Postman Collection **v2.1**（Apifox 原生支持导入，零依赖、零侵入——不要为此引入 `@nestjs/swagger`）。
+- **必须使用集合变量**，不得硬编码：至少包含 `baseUrl`（默认 `http://localhost:3000`）与关键路径参数（如 `docId`、`keyword`）。
+- **每个请求必须写 `description`**：说明用途、预期返回、易踩的坑。
+- **Body 需预填可直接运行的示例值**，并对可选参数使用 `disabled: true` 折叠，避免误传导致校验失败。
+- 按业务域分 folder 组织（如「文档管理」「知识检索」），不要全部平铺。
+
+### 3.4 与实际行为保持一致
+集合描述中涉及的运行时行为必须与代码实现一致。已知易错点：
+- 触发 RAG 索引的**唯一入口**是 `PUT /documents/:id/publish`；通过 `PATCH` 改 `status` **不会**重建向量。
+- 阶段一发布与索引为**同步执行**（无消息队列），响应较慢属正常。
+- `mode=hybrid` 返回的 `score` 是 RRF 融合分（量级 0.0x），原始分在 `scores.vector` / `scores.keyword`。
+
+---
+
+## 四、 Git 提交规范
 
 遵循 **Conventional Commits** 规范，提交说明必须使用 **中文描述**：
 
