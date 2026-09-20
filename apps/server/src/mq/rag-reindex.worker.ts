@@ -4,6 +4,7 @@ import type { Job } from 'bullmq';
 import { Worker } from 'bullmq';
 import { DocumentService } from '../document/document.service.js';
 import { RagOrchestrator } from '../rag/rag.orchestrator.js';
+import { SearchIndexService } from '../search/search-index.service.js';
 import {
   DEFAULT_REDIS_HOST,
   DEFAULT_REDIS_PORT,
@@ -42,6 +43,8 @@ export class RagReindexWorker implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly orchestrator: RagOrchestrator,
     private readonly documentService: DocumentService,
+    /** 重建时同步刷新文档级搜索索引，避免 /rag/reindex 后两侧不一致 */
+    private readonly searchIndexService: SearchIndexService,
   ) {
     this.enabled = this.config.get<string>('REDIS_ENABLED', 'true') !== 'false';
   }
@@ -136,17 +139,37 @@ export class RagReindexWorker implements OnModuleInit, OnModuleDestroy {
 
     const { succeeded, failed } = await this.orchestrator.indexDocuments(docs);
 
-    if (failed.length) {
-      // 抛出以触发重试；管线幂等（先删旧块再覆盖写），重试安全
+    // 文档级搜索索引与向量索引一起重建：
+    // 只重建一侧会导致「语义检索有新数据、全文搜索还是旧的」。
+    let searchFailed: string[] = [];
+    if (this.searchIndexService.isAvailable()) {
+      try {
+        // 批量场景不逐条 refresh，减少 ES 开销
+        await this.searchIndexService.indexDocuments(docs, false);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        searchFailed = docs.map((d) => d.id);
+        this.logger.error(
+          `[Search] 重建失败：taskId=${taskId}, count=${docs.length}, ${message}`,
+        );
+      }
+    } else {
+      this.logger.warn(`[Search] 跳过重建（ES 不可用）：taskId=${taskId}`);
+    }
+
+    const failedIds = [
+      ...new Set([...failed.map((f) => f.documentId), ...searchFailed]),
+    ];
+
+    if (failedIds.length) {
+      // 抛出以触发重试；管线幂等（先删旧块再覆盖写 / _id 覆盖写），重试安全
       throw new Error(
-        `重建部分失败：成功 ${succeeded.length} 篇，失败 ${failed.length} 篇（${failed
-          .map((f) => f.documentId)
-          .join(', ')}）`,
+        `重建部分失败：成功 ${succeeded.length} 篇，失败 ${failedIds.length} 篇（${failedIds.join(', ')}）`,
       );
     }
 
     this.logger.log(
-      `[RAG] 重建完成：taskId=${taskId}, 成功 ${succeeded.length} 篇`,
+      `[RAG+Search] 重建完成：taskId=${taskId}, 成功 ${succeeded.length} 篇`,
     );
   }
 }

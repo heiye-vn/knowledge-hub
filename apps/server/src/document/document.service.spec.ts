@@ -7,6 +7,7 @@ import { DocumentService } from './document.service.js';
 import type { DocumentEntity, DocumentStatus } from './entities/document.entity.js';
 import type { FileParserService } from './parser/file-parser.service.js';
 import type { DocumentContentDocument } from './schemas/document-content.schema.js';
+import type { SearchIndexService } from '../search/search-index.service.js';
 
 /**
  * 发布态守卫的单元测试（不依赖 PG / Mongo / ES，纯 fake）
@@ -25,7 +26,10 @@ function makeDoc(status: DocumentStatus): DocumentEntity {
   } as unknown as DocumentEntity;
 }
 
-function makeService(doc: DocumentEntity | null) {
+function makeService(
+  doc: DocumentEntity | null,
+  opts: { rag?: boolean; search?: boolean } = {},
+) {
   const saved: DocumentEntity[] = [];
 
   const em = {
@@ -38,14 +42,22 @@ function makeService(doc: DocumentEntity | null) {
 
   const contentModel = {
     findOne: () => ({ lean: async () => ({ content: '正文内容' }) }),
+    updateOne: async () => undefined,
   };
 
   const ragOrchestrator = {
-    isAvailable: () => true,
+    isAvailable: () => opts.rag !== false,
     indexDocument: async (d: { id: string }) => ({
       documentId: d.id,
       chunks: 3,
     }),
+    deleteDocument: async () => undefined,
+  };
+
+  const searchIndexService = {
+    isAvailable: () => opts.search !== false,
+    indexDocument: async () => undefined,
+    deleteDocument: async () => undefined,
   };
 
   const service = new DocumentService(
@@ -54,6 +66,7 @@ function makeService(doc: DocumentEntity | null) {
     {} as unknown as FileParserService,
     {} as unknown as RustfsService,
     ragOrchestrator as unknown as RagOrchestrator,
+    searchIndexService as unknown as SearchIndexService,
   );
 
   return { service, saved };
@@ -85,6 +98,53 @@ describe('DocumentService.publish 状态守卫', () => {
   it('文档不存在时抛 NotFound', async () => {
     const { service } = makeService(null);
     await expect(service.publish('doc-1')).rejects.toThrow(NotFoundException);
+  });
+});
+
+/**
+ * 两条索引链路的「可用性分开判定」：
+ * RAG 需要 ES + Embedding Key，Search 只需要 ES。
+ * 没配 Key 时不能把文档搜索一起判死 —— 这是对齐 v4 时刻意保留的分叉。
+ */
+describe('DocumentService.publish 双索引', () => {
+  it('默认两条链路都可用', async () => {
+    const { service } = makeService(makeDoc(0));
+    await expect(service.publish('doc-1')).resolves.toMatchObject({
+      indexed: true,
+      chunks: 3,
+      searchIndexed: true,
+    });
+  });
+
+  it('RAG 不可用（缺 Embedding Key）时，文档搜索仍写入', async () => {
+    const { service } = makeService(makeDoc(0), { rag: false });
+    await expect(service.publish('doc-1')).resolves.toMatchObject({
+      indexed: false,
+      chunks: 0,
+      searchIndexed: true,
+    });
+  });
+
+  it('两条链路都不可用时发布成功但都不索引', async () => {
+    const { service } = makeService(makeDoc(0), {
+      rag: false,
+      search: false,
+    });
+    await expect(service.publish('doc-1')).resolves.toMatchObject({
+      indexed: false,
+      searchIndexed: false,
+    });
+  });
+});
+
+describe('DocumentService.remove 双索引清理', () => {
+  it('删除后同时清理向量块与文档搜索索引', async () => {
+    const { service } = makeService(makeDoc(1));
+    await expect(service.remove('doc-1')).resolves.toMatchObject({
+      deleted: true,
+      vectorsCleaned: true,
+      searchCleaned: true,
+    });
   });
 });
 
@@ -123,6 +183,7 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
       {} as unknown as FileParserService,
       {} as unknown as RustfsService,
       {} as unknown as RagOrchestrator,
+      {} as unknown as SearchIndexService,
     );
 
     return service;
