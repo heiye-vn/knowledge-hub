@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DocumentModule } from '../document/document.module.js';
 import { RagModule } from '../rag/rag.module.js';
+import { SearchModule } from '../search/search.module.js';
 import { RagReindexController } from './rag-reindex.controller.js';
 import { RagReindexPublisher } from './rag-reindex.publisher.js';
 import { RagReindexWorker } from './rag-reindex.worker.js';
@@ -18,7 +19,7 @@ import { RagReindexWorker } from './rag-reindex.worker.js';
  * - `RagReindexController`：`POST /rag/reindex` 触发入口
  */
 @Module({
-  imports: [RagModule, DocumentModule],
+  imports: [RagModule, DocumentModule, SearchModule],
   controllers: [RagReindexController],
   providers: [RagReindexPublisher, RagReindexWorker],
   exports: [RagReindexPublisher],

@@ -8,14 +8,17 @@ import {
 } from './schemas/document-content.schema.js';
 import { FileParserService } from './parser/file-parser.service.js';
 import { RagModule } from '../rag/rag.module.js';
+import { SearchModule } from '../search/search.module.js';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: DocumentContent.name, schema: DocumentContentSchema },
     ]),
-    // 发布时触发 RAG 管线（分块 → 嵌入 → ES）
+    // 发布时触发 RAG 管线（分块 → 嵌入 → ES kh_chunk）
     RagModule,
+    // 发布 / 删除时同步维护文档级搜索索引（ES kh_document）
+    SearchModule,
   ],
   controllers: [DocumentController],
   providers: [DocumentService, FileParserService],

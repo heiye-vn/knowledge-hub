@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DocumentService } from '../document/document.service.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
 import type { RagOrchestrator } from '../rag/rag.orchestrator.js';
+import type { SearchIndexService } from '../search/search-index.service.js';
 import type { ReindexMessage } from './messages/pipeline.messages.js';
 import { RagReindexPublisher } from './rag-reindex.publisher.js';
 import { RagReindexWorker } from './rag-reindex.worker.js';
@@ -29,6 +30,8 @@ function doc(id: string): PipelineDocument {
 function makeWorker(options: {
   loaded?: PipelineDocument[];
   failed?: Array<{ documentId: string; message: string }>;
+  /** 模拟文档搜索索引重建失败 */
+  searchFails?: boolean;
 }) {
   const loadForIndex = vi.fn(
     async (ids: string[]) => options.loaded ?? ids.map(doc),
@@ -37,17 +40,26 @@ function makeWorker(options: {
     succeeded: docs.map((d) => ({ documentId: d.id, chunks: 1 })),
     failed: options.failed ?? [],
   }));
+  const indexSearchDocuments = vi.fn(async (docs: PipelineDocument[]) => {
+    if (options.searchFails) throw new Error('ES bulk 失败');
+    return docs.length;
+  });
 
   const documentService = { loadForIndex } as unknown as DocumentService;
   const orchestrator = { indexDocuments } as unknown as RagOrchestrator;
+  const searchIndexService = {
+    isAvailable: () => true,
+    indexDocuments: indexSearchDocuments,
+  } as unknown as SearchIndexService;
 
   const worker = new RagReindexWorker(
     fakeConfig(),
     orchestrator,
     documentService,
+    searchIndexService,
   );
 
-  return { worker, loadForIndex, indexDocuments };
+  return { worker, loadForIndex, indexDocuments, indexSearchDocuments };
 }
 
 const msg = (over: Partial<ReindexMessage> = {}): ReindexMessage => ({
@@ -93,6 +105,17 @@ describe('RagReindexWorker.processMessage', () => {
   it('全部成功时不抛错', async () => {
     const { worker } = makeWorker({});
     await expect(worker.processMessage(msg())).resolves.toBeUndefined();
+  });
+
+  it('重建时同步刷新文档级搜索索引（两条索引不能只重建一侧）', async () => {
+    const { worker, indexSearchDocuments } = makeWorker({});
+    await worker.processMessage(msg());
+    expect(indexSearchDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it('搜索索引重建失败也算失败，触发重试', async () => {
+    const { worker } = makeWorker({ searchFails: true });
+    await expect(worker.processMessage(msg())).rejects.toThrow(/重建部分失败/);
   });
 });
 

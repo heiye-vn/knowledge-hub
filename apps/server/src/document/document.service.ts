@@ -22,6 +22,7 @@ import { RustfsService, UploadBytesResult } from '../storage/rustfs.service.js';
 import { RagOrchestrator } from '../rag/rag.orchestrator.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
 import { FileParserService } from './parser/file-parser.service.js';
+import { SearchIndexService } from '../search/search-index.service.js';
 import {
   decodeUploadFilename,
   getExtension,
@@ -65,6 +66,8 @@ export class DocumentService {
     private readonly fileParserService: FileParserService,
     private readonly rustfs: RustfsService,
     private readonly ragOrchestrator: RagOrchestrator,
+    /** 文档级全文搜索索引（ES kh_document）；与 RAG 的 kh_chunk 互补 */
+    private readonly searchIndexService: SearchIndexService,
   ) {}
 
   /**
@@ -284,12 +287,15 @@ export class DocumentService {
   }
 
   /**
-   * 发布文档：置为已发布 → 触发 RAG 索引（分块 → 嵌入 → 写 ES kh_chunk）
+   * 发布文档：置为已发布 → 建两条索引
+   *   1. RAG：分块 → 嵌入 → 写 ES `kh_chunk`（需要 ES + Embedding Key）
+   *   2. Search：整篇快照 → 写 ES `kh_document`（只需要 ES）
    *
    * 阶段一为**同步执行**：索引失败直接上抛，客户端可重试（管线幂等：先删旧块再覆盖写）。
    *
    * 降级：ES 不可用或未配置 Embedding Key 时，仍完成发布但 `indexed=false`，
-   * 不让基础设施故障阻断发布动作。
+   * 不让基础设施故障阻断发布动作。两条链路可用性**分开判定**——
+   * 没配 Embedding Key 时文档搜索仍可用，只有语义检索降级。
    *
    * 🟢 对齐参考项目 knowledge-hub-backend：仅「草稿 / 已发布」允许发布，
    * 已归档（Archived）文档不允许重新发布 —— 归档是明确的终态，
@@ -321,31 +327,56 @@ export class DocumentService {
       .findOne({ _id: doc.contentId, deleted: false })
       .lean();
     const content = contentDoc?.content ?? '';
+    const pipelineDoc = this.toPipelineDocument(doc, content);
 
-    if (!this.ragOrchestrator.isAvailable()) {
+    // RAG 与 Search 的可用性**分开判定**：
+    // RAG 需要 ES + Embedding Key；Search 只需要 ES。
+    // 没配 Key 时文档搜索仍应可用，不能一刀切把整条索引链路判死。
+    let chunks = 0;
+    let indexed = false;
+    if (this.ragOrchestrator.isAvailable()) {
+      const result = await this.ragOrchestrator.indexDocument(pipelineDoc);
+      chunks = result.chunks;
+      indexed = true;
+    } else {
       this.logger.warn(
-        `索引链路不可用，已发布但未建索引：documentId=${id}（检查 ELASTICSEARCH_ENABLED / EMBEDDING_API_KEY）`,
+        `RAG 索引链路不可用，已发布但未建向量索引：documentId=${id}（检查 ELASTICSEARCH_ENABLED / EMBEDDING_API_KEY）`,
       );
-      return {
-        id,
-        status: doc.status,
-        publishTime: doc.publishTime,
-        indexed: false,
-        chunks: 0,
-      };
     }
 
-    const result = await this.ragOrchestrator.indexDocument(
-      this.toPipelineDocument(doc, content),
-    );
+    const searchIndexed = await this.indexForSearch(pipelineDoc);
 
     return {
       id,
       status: doc.status,
       publishTime: doc.publishTime,
-      indexed: true,
-      chunks: result.chunks,
+      indexed,
+      chunks,
+      searchIndexed,
     };
+  }
+
+  /**
+   * 写文档级搜索索引（ES kh_document）。
+   * 失败不阻断发布——ES 与 PG 无法共享事务，索引没写上去还有 `POST /rag/reindex` 兜底。
+   */
+  private async indexForSearch(pipelineDoc: PipelineDocument): Promise<boolean> {
+    if (!this.searchIndexService.isAvailable()) {
+      this.logger.warn(
+        `搜索索引链路不可用，已发布但未建文档索引：documentId=${pipelineDoc.id}`,
+      );
+      return false;
+    }
+    try {
+      await this.searchIndexService.indexDocument(pipelineDoc);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `文档搜索索引写入失败（可用 POST /rag/reindex 重建）：documentId=${pipelineDoc.id}, ${message}`,
+      );
+      return false;
+    }
   }
 
   /** Postgres 实体 + Mongo 正文 → RAG 管线统一结构 */
@@ -364,6 +395,9 @@ export class DocumentService {
       publishTime: doc.publishTime,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
+      viewCount: doc.viewCount,
+      likeCount: doc.likeCount,
+      commentCount: doc.commentCount,
     };
   }
 
@@ -439,7 +473,19 @@ export class DocumentService {
       );
     }
 
-    return { id, deleted: true, vectorsCleaned };
+    // 清理文档级搜索索引：与向量块无关，独立 try，避免一侧失败连累另一侧
+    let searchCleaned = false;
+    try {
+      await this.searchIndexService.deleteDocument(id);
+      searchCleaned = true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `删除文档后清理文档搜索索引失败（检索侧会兜底过滤）：documentId=${id}, ${message}`,
+      );
+    }
+
+    return { id, deleted: true, vectorsCleaned, searchCleaned };
   }
 
   /** 上传并解析文件 → 创建草稿文档 */
