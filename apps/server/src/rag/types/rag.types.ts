@@ -48,6 +48,13 @@ export interface PipelineDocument {
   publishTime?: Date | string | null;
   createdAt?: Date | string | null;
   updatedAt?: Date | string | null;
+  /**
+   * 计数类字段：不参与向量检索，仅用于文档级搜索索引与结果排序
+   * （对齐参考项目 v4 写入 kh_document 的 view/like/comment 三列）
+   */
+  viewCount?: number;
+  likeCount?: number;
+  commentCount?: number;
 }
 
 /** 混合检索模式 */
