@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "knowledge-hub 知识库 API",
-    "description": "knowledge-hub 全量接口集合（文档摄取 + RAG 发布检索）。\n\n## 导入方式\nApifox → 项目 → 导入 → 选择 Postman 集合（本文件）→ 确认。\n导入后右上角切换到「开发环境」，baseUrl 默认 http://localhost:3000。\n\n## 推荐测试顺序\n1. 健康检查 —— 确认服务已启动\n2. 创建文档 —— 成功后从响应复制 data.id，填到集合变量 docId\n3. 发布文档（RAG）—— status 变为 1 且 indexed=true，表示已写入 ES kh_chunk\n4. 混合检索 —— 用刚才文档里的关键词验证能否召回\n5. 删除文档 —— 验证 vectorsCleaned=true（联动清理 ES 向量块）\n\n## 注意事项\n- 所有响应统一信封：{ code, message, data, timestamp }，code=200/201 为成功\n- 阶段一发布是**同步执行**（无消息队列），长文档可能耗时数秒\n- mode=vector/hybrid 依赖 EMBEDDING_API_KEY；未配置时返回空数组且不报错\n- 上传解析接口为 multipart/form-data，字段名固定为 file，需在 Body 里重新选择本地文件\n- 路径参数用集合变量 {{docId}}，改一处即可全局生效",
+    "description": "knowledge-hub 全量接口集合（文档摄取 + RAG 发布检索）。\n\n## 导入方式\nApifox → 项目 → 导入 → 选择 Postman 集合（本文件）→ 确认。\n导入后右上角切换到「开发环境」，baseUrl 默认 http://localhost:3000。\n\n## 推荐测试顺序\n1. 健康检查 —— 确认服务已启动\n2. 创建文档 —— 成功后从响应复制 data.id，填到集合变量 docId\n3. 发布文档（RAG）—— status 变为 1 且 indexed=true，表示已写入 ES kh_chunk\n4. 混合检索（块级）—— 用刚才文档里的关键词验证语义召回\n5. 文档级搜索 —— /search/documents 验证关键词命中与 highlight 高亮\n6. 删除文档 —— 验证 vectorsCleaned / searchCleaned 均为 true（联动清理两条 ES 索引）\n\n## 注意事项\n- 所有响应统一信封：{ code, message, data, timestamp }，code=200/201 为成功\n- 阶段一发布是**同步执行**（无消息队列），长文档可能耗时数秒\n- mode=vector/hybrid 依赖 EMBEDDING_API_KEY；未配置时返回空数组且不报错\n- 上传解析接口为 multipart/form-data，字段名固定为 file，需在 Body 里重新选择本地文件\n- 路径参数用集合变量 {{docId}}，改一处即可全局生效",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -211,7 +211,7 @@
                 "{{docId}}"
               ]
             },
-            "description": "Postgres 与 Mongo 双库软删，并联动清理该文档在 ES kh_chunk 的向量块。\n\n返回 vectorsCleaned=true 表示 ES 侧已清理成功。\n\nRDS 兜底：即使此处清理失败，检索侧仍会回查 Postgres 过滤掉已删文档。"
+            "description": "软删除：kh_document.deleted=true + Mongo 正文 deleted=true，不物理删数据。\n同时清理两条 ES 索引：\n- vectorsCleaned：kh_chunk 向量块已清理\n- searchCleaned：kh_document 搜索记录已清理\n\n跨系统无事务，清理失败只记日志、不阻断删除；检索侧另有 PG 复核兜底。"
           }
         }
       ]
@@ -306,7 +306,7 @@
                 "publish"
               ]
             },
-            "description": "**核心接口**。设为已发布后同步执行：\n分块 → Embedding（qwen3.7-flash, 1024维）→ 写入 ES kh_chunk。\n\n响应字段：\n- indexed=true：索引成功，chunks 为写入块数\n- indexed=false：链路不可用（ES 未启用或缺少 EMBEDDING_API_KEY），已完成发布但无索引\n\n幂等：重复发布会先 deleteByQuery 清旧块再写入，块数不增长。\n失败时会直接报错（可安全重试）。\n\n阶段一为同步调用，长文档可能耗时数秒。"
+            "description": "**核心接口**。设为已发布后同步执行两条索引：\n1. RAG：分块 → Embedding（qwen3.7-flash, 1024维）→ 写入 ES kh_chunk\n2. Search：整篇快照 → 写入 ES kh_document\n\n响应字段：\n- indexed / chunks：RAG 链路（需要 ES + EMBEDDING_API_KEY）\n- searchIndexed：文档级搜索链路（**只需要 ES**）\n\n两条链路可用性分开判定：没配 Embedding Key 时 indexed=false 但 searchIndexed 仍可能为 true。\n幂等：两条索引都以文档 ID 为 _id 覆盖写，重复发布不会增长。\n阶段一为同步调用，长文档可能耗时数秒。"
           }
         },
         {
@@ -519,6 +519,75 @@
               ]
             },
             "description": "POST 版。查询词含特殊字符或较长时用 POST 更稳妥。\n\n校验规则：query 必填；mode 只能是 hybrid/vector/keyword；topK 整数 1-50。\n多余字段会被拒绝（全局启用了 forbidNonWhitelisted）。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "文档级全文搜索（ES kh_document）",
+      "item": [
+        {
+          "name": "文档检索（GET，带高亮）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search/documents?query={{keyword}}&page=1&pageSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search",
+                "documents"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "{{keyword}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "**文档级检索**：返回整篇文档列表（区别于 /search 的块级片段）。\n\n响应 hits[].highlight 为 ES 高亮片段（默认 <em> 标签），snippet 优先取 content 高亮，无高亮时退化为正文前 200 字。\n\n默认 status=1（只召回已发布文档）；显式传 status 可覆盖（0 草稿 / 1 已发布 / 2 已归档）。\nES 不可用时返回空结果而非报错。"
+          }
+        },
+        {
+          "name": "文档检索（POST）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{{keyword}}\",\n  \"page\": 1,\n  \"pageSize\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search",
+                "documents"
+              ]
+            },
+            "description": "POST 版。查询词较长或含特殊字符时用 POST 更稳妥。\n\n可选字段：categoryId / authorId / teamId / status（0-2）。\n校验：pageSize 整数 1-50；未知字段会被拒绝（全局 forbidNonWhitelisted）。"
           }
         }
       ]

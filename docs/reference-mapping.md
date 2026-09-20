@@ -39,6 +39,10 @@
 | （无） | `POST /rag/reindex` 批量重建入口 | 🔵 新增 | **参考项目缺失**：只有「发布后自动投递」，无手动/批量触发，换 embedding 模型后无法重建存量向量。本项目按方案 B 保持 publish 同步，故必须有显式入口 |
 | （无） | 失败重试 + 指数退避 | 🔴 超越 | **参考项目缺陷**：消费失败 `nack(requeue=false)`，无 DLX 无重试，一次超时该文档索引永久丢失且无感知 |
 | （无） | 队列连通性探测（`waitUntilReady` + 超时） | 🔴 超越 | 【易错】`new Queue()/new Worker()` 只创建对象，连不上也返回实例；据此判「可用」会让接口假装可用、入队时挂住 |
+| **v4** `pipeline/search-index.service.ts` | `search/search-index.service.ts` | 🟡 分叉 | 同为 ES `kh_document` 文档级索引（upsert / delete）；写入时机改为同步、正文全量、显式 IK（详见分叉登记 2026-09-20） |
+| **v4**（无） | `search/search.controller.ts` → `GET\|POST /search/documents` | 🔵 新增 | **参考项目 v4 仍只写不读**；主项目补齐文档级检索 + 高亮，供搜索结果页使用 |
+| **v4** 无（MQ 单独投递 delete） | `DocumentService.remove` 同步双清 | 🟡 分叉 | 删除时一块清理 `kh_chunk` + `kh_document`，响应带 `vectorsCleaned` / `searchCleaned` |
+| **v4** 无（Search 不参与重建） | `RagReindexWorker` 同步重建两条索引 | 🔵 新增 | 只重建一侧会导致「语义检索是新数据、全文搜索还是旧的」；Search 失败同样抛错触发重试 |
 
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
@@ -65,6 +69,13 @@
 | 2026-09-19 | 源文件元数据 | 不落库（与上传响应同生命周期） | `kh_document` 五列持久化（**已实现**） | 支持列表/详情展示、重解析、对象清理反查 |
 | 2026-09-19 | 双写补偿 | 无（Mongo 先写，PG 失败留脏数据） | PG 失败补偿删除 Mongo 记录（**已实现**） | 主项目编码规范强制要求跨库补偿 |
 | 2026-09-19 | 发布状态守卫 | 仅「草稿 / 已发布」可发布，归档文档拒绝 | 初始实现**漏了该校验**（任何状态都能发布）→ 已补齐为一致（**已实现**） | 此前属**无意偏离**（未登记），对照 v3 时发现。归档是终态，放开会让已下线文档被重新向量化并回到检索结果；已加单测锁住边界 |
+| **2026-09-20** | **Search 索引写入时机**（v4） | MQ 消费者异步写（`search.index.exchange` + `kh.search.index.queue`） | **publish / remove 内同步写**（响应带 `searchIndexed` / `searchCleaned`） | 参考项目 publish 本就全异步；我们 publish 是同步管线（方案 B），Search upsert 是一次 ES 请求（毫秒级），同步可保证 write-your-reads。判据与阈值自适应方案见 [dev-notes/search-index.md](./dev-notes/search-index.md) |
+| **2026-09-20** | **Search 消息结构**（v4） | `SearchIndexMessage`（消息内带文档快照） | **不引入**：直接传 `PipelineDocument` 对象 | 无 MQ 就没有消息体积问题，无需序列化快照 |
+| **2026-09-20** | **索引正文长度**（v4） | `content` 截前 **1000 字** | **全量写入** | 1000 字截断是 MQ 消息体积导致的弱点，长文档后半段搜不到；我们无此约束，且高亮需要完整正文 |
+| **2026-09-20** | **kh_document 分词**（v4） | `title/summary/content` 裸 `text`，**未指定 IK** | 显式 `ik_max_word` / `ik_smart` | 修参考项目 P1 的**第二次复发**（v3 的 kh_chunk 已犯过一次，v4 又犯）。已有单测断言锁住 |
+| **2026-09-20** | **MQ 删除消息类型**（v4） | `ReindexType` 扩 `'DELETE_BY_DOC_IDS'` | **不引入**：删除同步执行 | 枚举扩展是异步化的产物；我们 delete 直接调 `SearchIndexService` / `RagOrchestrator`，无消息类型可分 |
+| **2026-09-20** | **文档级搜索接口**（v4） | **无**（v4 只写索引，没有读接口） | `GET|POST /search/documents`（带 highlight） | 补参考项目 P0「只写不读」在 v4 的延续；`/search` 已被块级检索占用，故加子路径避免破坏既有契约 |
+| **2026-09-20** | **两条索引的可用性判定**（v4） | 一起判定（ES 不可用则全跳过） | **分开判定**：RAG 需 ES + Embedding Key，Search 只需 ES | 没配 Embedding Key 时文档搜索仍应可用，不能一刀切把整条链路判死。已加单测覆盖三种组合 |
 
 ---
 
@@ -96,3 +107,6 @@
 - **检索侧一致性兜底**：ES 清理失败时仍能靠 PG 复核拦住已删文档
 - **索引初始化幂等与并发保护**：单例 Promise + `resource_already_exists` 容错（参考项目多处各自建索引且无锁）
 - **向量维度一致性校验**：启动时比对 `embedding.dims` 与 `EMBEDDING_DIMENSION`，避免写入时才报 400 却不知根因
+- **文档级搜索索引与接口**（2026-09-20）：参考项目 v4 写了 `kh_document` 却没有读接口；主项目补齐并带 highlight
+- **两条索引可用性分开判定**（2026-09-20）：RAG 需 ES + Embedding Key，Search 只需 ES，缺 Key 时搜索仍可用
+- **批量重建覆盖两条索引**（2026-09-20）：`/rag/reindex` 同时刷新 `kh_chunk` 与 `kh_document`，避免两侧数据漂移
