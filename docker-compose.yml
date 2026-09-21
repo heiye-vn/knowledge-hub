@@ -166,6 +166,31 @@ services:
       retries: 5
       start_period: 10s
 
+  # Neo4j（KG 知识图谱存储）— feat-v5：实体关系建图
+  # 不是发布链路的强依赖：NEO4J_ENABLED=false 时应用照常启动，仅图谱不可用
+  # 配置与参考项目 knowledge-hub-backend v5 保持一致（neo4j:latest + apoc 插件）
+  neo4j:
+    image: neo4j:latest
+    container_name: knowledge_hub_neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474" # Web 管理界面（http://localhost:7474）
+      - "7687:7687" # Bolt 协议（代码连接）
+    environment:
+      - NEO4J_AUTH=neo4j/12345678               # 账号：neo4j  密码：12345678
+      - NEO4J_PLUGINS=["apoc"]                  # 安装必备插件
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/neo4j/data:/data
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/neo4j/logs:/logs
+    healthcheck:
+      # Neo4j 5.x 自带 neo4j-admin；用 cypher 探测比端口探测更可靠（端口开了不代表认证可用）
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
 networks:
   default:
     name: common-network
