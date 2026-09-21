@@ -35,6 +35,7 @@
 | [rag-pipeline.md](./rag-pipeline.md) | 功能模块 · RAG 索引与检索管线 | 2026-09-19 | **kNN 必然返回 topK 条**；IK 装了≠生效；原生 RRF 需商业 license；换模型必须重索引 |
 | [async-reindex-pipeline.md](./async-reindex-pipeline.md) | 功能模块 · 异步重建索引管线（阶段二） | 2026-09-19 | **`new Queue()` 连不上也返回实例**（接口会假装可用）；连接错误刷屏需节流；实测证明单次发布不慢，故采用方案 B |
 | [search-index.md](./search-index.md) | 功能模块 · 文档级搜索索引（ES `kh_document`） | 2026-09-20 | **两条索引可用性要分开判定**；同步 vs 异步按「单篇耗时」分层而非二选一；参考项目 v4 第二次没用 IK |
+| [kg-graph.md](./kg-graph.md) | 功能模块 · KG 知识图谱（LLM 抽取 + Neo4j） | 2026-09-20 | **实测揪出三个真 bug**：先截断后校验误杀关系、跨块关系补不回、同形异码（⼯ U+2F2F）；单块抽取实测 19~57s，KG 必须异步 |
 | [reference-project-alignment.md](./reference-project-alignment.md) | 方法论 · 与参考项目的对照策略 | 2026-09-19 | 三层判断法（模式/实现/缺陷）：什么照搬、什么可换、什么必须改 |
 
 > 两类文件并存：

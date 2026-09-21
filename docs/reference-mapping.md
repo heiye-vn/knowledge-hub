@@ -43,6 +43,12 @@
 | **v4**（无） | `search/search.controller.ts` → `GET\|POST /search/documents` | 🔵 新增 | **参考项目 v4 仍只写不读**；主项目补齐文档级检索 + 高亮，供搜索结果页使用 |
 | **v4** 无（MQ 单独投递 delete） | `DocumentService.remove` 同步双清 | 🟡 分叉 | 删除时一块清理 `kh_chunk` + `kh_document`，响应带 `vectorsCleaned` / `searchCleaned` |
 | **v4** 无（Search 不参与重建） | `RagReindexWorker` 同步重建两条索引 | 🔵 新增 | 只重建一侧会导致「语义检索是新数据、全文搜索还是旧的」；Search 失败同样抛错触发重试 |
+| **v5** `pipeline/kg-extraction.schema.ts` | `kg/constants/kg-schema.ts` | 🟢 对齐 | 实体 / 关系类型枚举 + zod 结构化输出 + 归一化函数，同名同形 |
+| **v5** `pipeline/extraction.service.ts` | `kg/extraction.service.ts` | 🟡 分叉 | ChatOpenAI.withStructuredOutput 同款；分叉：Key 回退链、批量并发抽取、实体池/NFKC 校验、上限 30/30 |
+| **v5** `pipeline/graph-build.service.ts` | `kg/graph-build.service.ts` | 🟡 分叉 | 图模型一致（Document-[:HAS_CHUNK]->Chunk-[:MENTIONS]->Entity，实体间 RELATED_TO）；分叉：建约束、UNWIND 批量、失败抛错、块数上限 |
+| **v5** `mq/*` 第三套 RabbitMQ 拓扑 | `mq/kg.graph`（BullMQ 第二队列） | 🟡 分叉 | 消息结构 `KgBuildMessage` 同名同形；实现层沿用 BullMQ 分叉 |
+| **v5**（无，v10 才有） | `kg/kg.controller.ts` 图查询接口 | 🔵 新增 | 实体检索 / 邻居查询 / 统计 + 手动建图入口，补「只写不读」 |
+| **v5** Neo4j（`neo4j:latest`，compose 内无版本锁定） | 同款 compose 配置（按用户指定与参考项目一致） | 🟢 对齐 | apoc 插件同样安装（当前代码未用到，留作后续扩展） |
 
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
@@ -76,6 +82,17 @@
 | **2026-09-20** | **MQ 删除消息类型**（v4） | `ReindexType` 扩 `'DELETE_BY_DOC_IDS'` | **不引入**：删除同步执行 | 枚举扩展是异步化的产物；我们 delete 直接调 `SearchIndexService` / `RagOrchestrator`，无消息类型可分 |
 | **2026-09-20** | **文档级搜索接口**（v4） | **无**（v4 只写索引，没有读接口） | `GET|POST /search/documents`（带 highlight） | 补参考项目 P0「只写不读」在 v4 的延续；`/search` 已被块级检索占用，故加子路径避免破坏既有契约 |
 | **2026-09-20** | **两条索引的可用性判定**（v4） | 一起判定（ES 不可用则全跳过） | **分开判定**：RAG 需 ES + Embedding Key，Search 只需 ES | 没配 Embedding Key 时文档搜索仍应可用，不能一刀切把整条链路判死。已加单测覆盖三种组合 |
+| **2026-09-20** | **KG 抽取的实体上限**（v5） | `KG_MAX_ENTITIES=12` / `KG_MAX_RELATIONS=15` | **30 / 30** | 实测 qwen-plus 单块产出 24~40 个实体 / 20+ 条关系，12 会大量触发截断（见 dev-notes/kg-graph.md 实测数据） |
+| **2026-09-20** | **关系校验顺序**（v5） | 先按上限截断实体，再用截断后集合校验关系 source/target | **先全量池校验关系，再截断实体写入；被保留关系引用到的实体补回** | 修实测揪出的 bug：先截断会误杀关系（关系数归 0）；引用完整性缺失则 Neo4j 侧 MATCH 不到节点、关系静默写不进 |
+| **2026-09-20** | **关系只能同块**（v5） | source/target 必须在同一块的实体集合内 | 文档级实体池（边抽边累积），后续块可引用前面块的实体 | 跨块 / 跨段的关联在参考项目里建不起来 |
+| **2026-09-20** | **实体名匹配**（v5） | 原样字符串比对 | **NFKC 规范化 + 小写**做匹配 key，关系端点回填实体规范名 | 实测样本出现同形异码（`⼯` U+2F2F vs `工` U+5DE5），字符串比对不匹配 → 关系被丢 |
+| **2026-09-20** | **抽取并发**（v5） | 串行逐块调用 | `extractBatch` 并发 `KG_EXTRACT_CONCURRENCY=3` + 块数上限 `KG_MAX_CHUNKS=30` | 实测单块 19~57s，串行一篇 30 块就是小时级 |
+| **2026-09-20** | **Neo4j 唯一约束**（v5） | 无（MERGE 全表扫描） | 启动即建三条唯一约束（entity.name / chunk.chunkId / document.id） | 修参考项目 P1：图越大建图越慢 |
+| **2026-09-20** | **图查询接口**（v5） | **无**（v5~v9 都只写不读，v10 才有） | `GET /kg/entities`、`GET /kg/neighbors`、`GET /kg/stats` | 不重蹈「只写不读」的第三次覆辙 |
+| **2026-09-20** | **BUILD_ALL 入口**（v5） | 消息类型存在但**无任何投递入口**（死代码） | `POST /kg/build` 不传 documentIds 即全量重建 | 换模型 / 修 bug 后需要有补偿入口 |
+| **2026-09-20** | **LLM Key 配置**（v5） | `OPENAI_API_KEY` 必填，缺失直接报错 | 回退链 `LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY` | 百炼 chat 与 embedding 共用同一 Key，不强制再配一个；与既有「延迟初始化不阻断启动」的风格一致 |
+| **2026-09-20** | **KG 模块归属**（v5） | 塞在 `pipeline/` 下 | 独立 `kg/` 模块，且 **KgModule 不导入 DocumentModule**（Worker 直接注入 EntityManager + Mongo 模型加载文档） | DocumentModule 需要 KgModule 的 Publisher 投递任务，反向导入会成模块环 |
+| **2026-09-20** | **写图方式**（v5） | 逐条 `session.run`（一块 30 实体 = 60+ 次往返） | `UNWIND` 批量写实体 / MENTIONS / 关系 | 网络往返是建图耗时的大头之一 |
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "knowledge-hub 知识库 API",
-    "description": "knowledge-hub 全量接口集合（文档摄取 + RAG 发布检索）。\n\n## 导入方式\nApifox → 项目 → 导入 → 选择 Postman 集合（本文件）→ 确认。\n导入后右上角切换到「开发环境」，baseUrl 默认 http://localhost:3000。\n\n## 推荐测试顺序\n1. 健康检查 —— 确认服务已启动\n2. 创建文档 —— 成功后从响应复制 data.id，填到集合变量 docId\n3. 发布文档（RAG）—— status 变为 1 且 indexed=true，表示已写入 ES kh_chunk\n4. 混合检索（块级）—— 用刚才文档里的关键词验证语义召回\n5. 文档级搜索 —— /search/documents 验证关键词命中与 highlight 高亮\n6. 删除文档 —— 验证 vectorsCleaned / searchCleaned 均为 true（联动清理两条 ES 索引）\n\n## 注意事项\n- 所有响应统一信封：{ code, message, data, timestamp }，code=200/201 为成功\n- 阶段一发布是**同步执行**（无消息队列），长文档可能耗时数秒\n- mode=vector/hybrid 依赖 EMBEDDING_API_KEY；未配置时返回空数组且不报错\n- 上传解析接口为 multipart/form-data，字段名固定为 file，需在 Body 里重新选择本地文件\n- 路径参数用集合变量 {{docId}}，改一处即可全局生效",
+    "description": "knowledge-hub 全量接口集合（文档摄取 + RAG 发布检索）。\n\n## 导入方式\nApifox → 项目 → 导入 → 选择 Postman 集合（本文件）→ 确认。\n导入后右上角切换到「开发环境」，baseUrl 默认 http://localhost:3000。\n\n## 推荐测试顺序\n1. 健康检查 —— 确认服务已启动\n2. 创建文档 —— 成功后从响应复制 data.id，填到集合变量 docId\n3. 发布文档（RAG）—— status 变为 1 且 indexed=true，表示已写入 ES kh_chunk\n4. 混合检索（块级）—— 用刚才文档里的关键词验证语义召回\n5. 文档级搜索 —— /search/documents 验证关键词命中与 highlight 高亮\n6. 删除文档 —— 验证 vectorsCleaned / searchCleaned / kgDeleteQueued（联动清理 ES 双索引 + 投递 KG 清理）\n7. 知识图谱 —— POST /kg/build 建图后，用 /kg/entities、/kg/neighbors 验证实体与关系\n\n## 注意事项\n- 所有响应统一信封：{ code, message, data, timestamp }，code=200/201 为成功\n- 阶段一发布是**同步执行**（无消息队列），长文档可能耗时数秒\n- mode=vector/hybrid 依赖 EMBEDDING_API_KEY；未配置时返回空数组且不报错\n- 上传解析接口为 multipart/form-data，字段名固定为 file，需在 Body 里重新选择本地文件\n- 路径参数用集合变量 {{docId}}，改一处即可全局生效",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -588,6 +588,168 @@
               ]
             },
             "description": "POST 版。查询词较长或含特殊字符时用 POST 更稳妥。\n\n可选字段：categoryId / authorId / teamId / status（0-2）。\n校验：pageSize 整数 1-50；未知字段会被拒绝（全局 forbidNonWhitelisted）。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "知识图谱（KG，Neo4j）",
+      "item": [
+        {
+          "name": "手动触发建图（指定文档）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentIds\": [\"{{docId}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/kg/build",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "build"
+              ]
+            },
+            "description": "按文档 ID 投递 KG 建图任务（BullMQ kg.graph 队列，异步执行）。\n\n响应 { taskId, queued }，任务在后台执行（单块抽取实测 19~57s，需耐心）。\n幂等：先清后建 + MERGE，重复触发不会使节点翻倍。\n需要 Redis 与 Neo4j 均可用，否则 503。"
+          }
+        },
+        {
+          "name": "手动触发建图（全量重建）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/kg/build",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "build"
+              ]
+            },
+            "description": "不传 documentIds = 全量重建全部已发布文档。\n\n换 LLM 模型 / 修抽取 bug 后的标准补偿操作（对应 BUILD_ALL 消息）。\n🔴 参考项目的 BUILD_ALL 没有任何投递入口（死代码），这是补齐。"
+          }
+        },
+        {
+          "name": "图规模统计",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kg/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "stats"
+              ]
+            },
+            "description": "返回 { documents, chunks, entities, relations }。\n验证建图是否生效、删除是否清理干净的第一入口。"
+          }
+        },
+        {
+          "name": "实体检索",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kg/entities?keyword=财务部&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "entities"
+              ],
+              "query": [
+                {
+                  "key": "keyword",
+                  "value": "财务部"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "实体名包含匹配（大小写不敏感），按被提及次数倒序。\n\n返回 [{ name, type, description, mentions }]，type 为 PERSON/ORGANIZATION/CONCEPT/DOCUMENT/PROCESS/PRODUCT 等。"
+          }
+        },
+        {
+          "name": "邻居查询",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kg/neighbors?name=财务部&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "neighbors"
+              ],
+              "query": [
+                {
+                  "key": "name",
+                  "value": "财务部"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "某实体的全部 RELATED_TO 关联（不分方向，按权重倒序）。\n\n返回 [{ entity, relation, weight, direction: out|in }]。\n⚠️ 关系语义在 relation 属性上（边类型恒为 RELATED_TO），按属性读语义。"
+          }
+        },
+        {
+          "name": "手动清理文档图谱",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kg/documents/{{docId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "documents",
+                "{{docId}}"
+              ]
+            },
+            "description": "清理某篇文档的图谱（文档 + 块 + 孤儿实体）。\n\n删除文档接口会自动触发，此处用于纠错重置。幂等：文档不存在等价于空操作。"
           }
         }
       ]
