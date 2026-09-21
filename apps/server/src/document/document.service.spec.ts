@@ -28,7 +28,11 @@ function makeDoc(status: DocumentStatus): DocumentEntity {
 
 function makeService(
   doc: DocumentEntity | null,
-  opts: { rag?: boolean; search?: boolean } = {},
+  opts: {
+    rag?: boolean;
+    search?: boolean;
+    kgQueue?: boolean;
+  } = {},
 ) {
   const saved: DocumentEntity[] = [];
 
@@ -60,6 +64,12 @@ function makeService(
     deleteDocument: async () => undefined,
   };
 
+  const kgBuildPublisher = {
+    isAvailable: () => opts.kgQueue !== false,
+    enqueueBuildByDocIds: async () => 'kg-task-id',
+    enqueueDeleteByDocIds: async () => 'kg-task-id',
+  };
+
   const service = new DocumentService(
     em as never,
     contentModel as unknown as Model<DocumentContentDocument>,
@@ -67,6 +77,7 @@ function makeService(
     {} as unknown as RustfsService,
     ragOrchestrator as unknown as RagOrchestrator,
     searchIndexService as unknown as SearchIndexService,
+    kgBuildPublisher as never,
   );
 
   return { service, saved };
@@ -184,6 +195,7 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
       {} as unknown as RustfsService,
       {} as unknown as RagOrchestrator,
       {} as unknown as SearchIndexService,
+      {} as never,
     );
 
     return service;

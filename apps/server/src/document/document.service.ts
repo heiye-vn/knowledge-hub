@@ -23,6 +23,7 @@ import { RagOrchestrator } from '../rag/rag.orchestrator.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
 import { FileParserService } from './parser/file-parser.service.js';
 import { SearchIndexService } from '../search/search-index.service.js';
+import { KgBuildPublisher } from '../kg/kg-build.publisher.js';
 import {
   decodeUploadFilename,
   getExtension,
@@ -68,6 +69,8 @@ export class DocumentService {
     private readonly ragOrchestrator: RagOrchestrator,
     /** 文档级全文搜索索引（ES kh_document）；与 RAG 的 kh_chunk 互补 */
     private readonly searchIndexService: SearchIndexService,
+    /** KG 建图队列生产者；KG 单块抽取实测 19~57s，必须异步投递 */
+    private readonly kgBuildPublisher: KgBuildPublisher,
   ) {}
 
   /**
@@ -346,6 +349,10 @@ export class DocumentService {
 
     const searchIndexed = await this.indexForSearch(pipelineDoc);
 
+    // KG 建图走异步队列：单块 LLM 抽取实测 19~57s（见 kg/extraction-e2e.spec.ts），
+    // 同步会撞网关超时。队列不可用只降级，不阻断发布。
+    const kgTaskId = await this.safeEnqueueKgBuild(id);
+
     return {
       id,
       status: doc.status,
@@ -353,7 +360,27 @@ export class DocumentService {
       indexed,
       chunks,
       searchIndexed,
+      kgQueued: kgTaskId != null,
     };
+  }
+
+  /** 投递 KG 建图任务；失败只记日志（建图是派生数据，可用 POST /kg/build 补偿） */
+  private async safeEnqueueKgBuild(id: string): Promise<string | null> {
+    if (!this.kgBuildPublisher.isAvailable()) {
+      this.logger.warn(
+        `KG 建图队列不可用，已发布但未排队建图：documentId=${id}（可稍后 POST /kg/build 补偿）`,
+      );
+      return null;
+    }
+    try {
+      return await this.kgBuildPublisher.enqueueBuildByDocIds([id]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `KG 建图任务入队失败：documentId=${id}, ${message}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -485,7 +512,21 @@ export class DocumentService {
       );
     }
 
-    return { id, deleted: true, vectorsCleaned, searchCleaned };
+    // KG 图谱清理走异步队列（幂等：文档不存在等价于空操作）
+    let kgDeleteQueued = false;
+    if (this.kgBuildPublisher.isAvailable()) {
+      try {
+        kgDeleteQueued =
+          (await this.kgBuildPublisher.enqueueDeleteByDocIds([id])) != null;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `删除文档后 KG 清理任务入队失败：documentId=${id}, ${message}`,
+        );
+      }
+    }
+
+    return { id, deleted: true, vectorsCleaned, searchCleaned, kgDeleteQueued };
   }
 
   /** 上传并解析文件 → 创建草稿文档 */
