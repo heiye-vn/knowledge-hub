@@ -13,6 +13,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { StorageModule } from './storage/storage.module.js';
 import { RagModule } from './rag/rag.module.js';
 import { MqModule } from './mq/mq.module.js';
+import { KgModule } from './kg/kg.module.js';
 
 @Module({
   imports: [
@@ -44,6 +45,8 @@ import { MqModule } from './mq/mq.module.js';
     RagModule,
     // 阶段二：BullMQ 异步重建队列（publish 仍同步，队列只服务批量重建）
     MqModule,
+    // feat-v5：KG 知识图谱（抽取 + Neo4j 建图 + BullMQ kg.graph 队列）
+    KgModule,
   ],
   controllers: [AppController],
   providers: [
