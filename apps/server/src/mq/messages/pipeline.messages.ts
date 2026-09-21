@@ -16,3 +16,20 @@ export interface ReindexMessage {
   /** 待重建的文档 ID 列表 */
   documentIds?: string[];
 }
+
+/**
+ * KG 建图 / 删图消息（feat-v5，对齐参考项目 v5 `KgBuildMessage`）
+ *
+ * 与参考项目分叉：`BUILD_ALL` 在参考项目里**没有任何投递入口**（死代码），
+ * 本项目 `POST /kg/build` 不传 documentIds 即投递 BUILD_ALL。
+ */
+export type KgBuildType =
+  | 'BUILD_ALL'
+  | 'BUILD_BY_DOC_IDS'
+  | 'DELETE_BY_DOC_IDS';
+
+export interface KgBuildMessage {
+  taskId: string;
+  type: KgBuildType;
+  documentIds?: string[];
+}

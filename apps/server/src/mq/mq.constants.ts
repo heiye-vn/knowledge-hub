@@ -15,6 +15,16 @@
 /** 重建索引队列名 */
 export const RAG_REINDEX_QUEUE = 'rag.reindex';
 
+/**
+ * KG 建图队列名（feat-v5，对齐参考项目 v5 的 `kg.graph.exchange` / `kh.kg.graph.queue`）
+ *
+ * 🔴 为什么 KG 必须走队列，而 v4 的 Search 走同步：
+ * 实测（test/fixtures 两个真实 PDF，qwen-plus）单块抽取 19~57s，
+ * 一篇 2 块的文档就要 38~57 秒 —— 塞进同步 publish 必然撞网关超时。
+ * Search upsert 是毫秒级 ES 请求，才用的同步。
+ */
+export const KG_GRAPH_QUEUE = 'kg.graph';
+
 /** Redis 连接默认值 */
 export const DEFAULT_REDIS_HOST = 'localhost';
 export const DEFAULT_REDIS_PORT = 6379;
@@ -34,6 +44,15 @@ export const DEFAULT_REINDEX_ATTEMPTS = 3;
 
 /** 重试退避基数（毫秒），按 attempts 指数增长 */
 export const DEFAULT_REINDEX_BACKOFF_MS = 5000;
+
+/** KG 建图任务：单任务最大尝试次数（含首次） */
+export const DEFAULT_KG_BUILD_ATTEMPTS = 3;
+
+/** KG 建图任务：重试退避基数（毫秒） */
+export const DEFAULT_KG_BUILD_BACKOFF_MS = 30_000;
+
+/** KG 建图 Worker 并发数。抽取本身有 KG_EXTRACT_CONCURRENCY 控制单篇内的并发，这里限同时处理的篇数 */
+export const DEFAULT_KG_BUILD_CONCURRENCY = 1;
 
 /**
  * 启动时探测 Redis 连通性的超时（毫秒）
