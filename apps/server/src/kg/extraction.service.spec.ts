@@ -8,7 +8,7 @@ import { ExtractionService } from './extraction.service.js';
  * 覆盖的是「归一化规则」，这是唯一能脱离真实 LLM 稳定验证的部分：
  * - 未知类型兜底
  * - 挂空实体的关系必须丢弃
- * - 跨块实体池放行（修参考项目「关系只能同块」的局限）
+ * - 跨块实体池放行（修基线实现「关系只能同块」的局限）
  * - 未配置 Key 时的降级行为
  */
 
@@ -72,7 +72,7 @@ describe('ExtractionService.normalize', () => {
     expect(result.relations).toHaveLength(0);
   });
 
-  it('⭐ 传入实体池后可放行跨块关系（参考项目做不到）', () => {
+  it('⭐ 传入实体池后可放行跨块关系（基线实现做不到）', () => {
     const service = makeService();
     const result = service.normalize(
       {

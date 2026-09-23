@@ -18,7 +18,7 @@ import { ExtractionService } from './extraction.service.js';
  * 用于标定 `KG_MAX_CHUNKS`、`KG_EXTRACT_CONCURRENCY` 与成本预期
  * —— 对应 AGENTS.md「先衡量再动手」。
  *
- * 语料：参考项目 v5 自带的两个测试 PDF（已复制到 test/fixtures/）：
+ * 语料：基线实现 v5 自带的两个测试 PDF（已复制到 test/fixtures/）：
  * - 01-travel-expense-policy.pdf（差旅费报销制度）
  * - 02-production-release-sop.pdf（生产发布 SOP）
  */

@@ -18,10 +18,10 @@ const DEFAULT_MAX_BATCH = 20;
 /**
  * 文本向量化服务（LangChain OpenAIEmbeddings + 阿里云百炼 OpenAI 兼容协议）
  *
- * 与参考项目 knowledge-hub-backend 对齐：同维度、同 batch 钳制机制、同 stripNewLines=false；
- * 模型不同（参考项目 v3，本项目 qwen3.7-flash），但两者默认维度都是 1024，索引结构无需变更。
+ * 与基线实现 对齐：同维度、同 batch 钳制机制、同 stripNewLines=false；
+ * 模型不同（基线实现 v3，本项目 qwen3.7-flash），但两者默认维度都是 1024，索引结构无需变更。
  *
- * ✅ 相对参考项目的改进（修其 P1）：参考项目在**构造函数**中因缺 API Key 直接 throw，
+ * ✅ 相对基线实现的改进（修其 P1）：基线实现在**构造函数**中因缺 API Key 直接 throw，
  * 会拖垮整个应用启动 —— 没配 Key 连 /health 都起不来。
  * 这里改为**延迟初始化**：首次使用时才构造，失败抛明确业务异常并记录日志，不影响启动。
  *

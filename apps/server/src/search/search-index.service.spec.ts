@@ -72,7 +72,7 @@ describe('buildKhDocumentIndexBody', () => {
     );
   });
 
-  it('默认索引名与参考项目 v4 保持一致', () => {
+  it('默认索引名与基线实现 v4 保持一致', () => {
     expect(KH_DOCUMENT_INDEX).toBe('kh_document');
   });
 });

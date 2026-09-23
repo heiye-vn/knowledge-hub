@@ -25,7 +25,7 @@ export interface ChunkParams {
  * - Embedding 有长度上限，超长会被截断丢信息
  * - 检索需要「段落级」命中，整篇召回噪声太大
  *
- * 策略（与参考项目 knowledge-hub-backend 完全一致，便于对照）：
+ * 策略（与基线实现 完全一致，便于对照）：
  * 1. Markdown 感知分隔符（标题 / 代码块 / 段落…）递归切分
  * 2. chunkSize / chunkOverlap 控制块大小与重叠
  * 3. 从块内标题行推断 heading，跨块继承上一标题并前缀补全

@@ -21,13 +21,13 @@ import { GraphBuildService } from './graph-build.service.js';
 /**
  * KG 建图任务的「消费者」（BullMQ Worker）
  *
- * 职责对应参考项目 v5 `mq/document-pipeline.consumer.ts` 的 handleKg
+ * 职责对应基线实现 v5 `mq/document-pipeline.consumer.ts` 的 handleKg
  * → `PipelineOrchestrator.handleKgBuild`。
  *
  * 与 RAG 重建 Worker 的分工：KG 只重建图谱（Neo4j），不碰 ES；
  * RAG 重建（`rag.reindex` 队列）只重建 ES 双索引，不碰 Neo4j —— 两条队列互不连累。
  *
- * 🔴 相对参考项目的修复：它单篇失败只打日志、`BUILD_ALL` 无投递入口；
+ * 🔴 相对基线实现的修复：它单篇失败只打日志、`BUILD_ALL` 无投递入口；
  * 这里失败明细汇总后抛出触发 BullMQ 重试（管线先清后建，重试安全）。
  */
 @Injectable()
@@ -180,7 +180,7 @@ export class KgBuildWorker implements OnModuleInit, OnModuleDestroy {
 
   /**
    * 按 ID 加载文档（元数据 + Mongo 正文）。
-   * 🟡 与参考项目一致由消费侧自己加载；但本项目刻意**不复用 DocumentService.loadForIndex**——
+   * 🟡 与基线实现一致由消费侧自己加载；但本项目刻意**不复用 DocumentService.loadForIndex**——
    * DocumentModule 导入了 KgModule（发布时投递建图任务），反向导入会形成模块环。
    */
   private async loadDocumentsByIds(ids: string[]): Promise<PipelineDocument[]> {

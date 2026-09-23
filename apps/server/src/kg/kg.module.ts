@@ -10,7 +10,7 @@ import { KgBuildWorker } from './kg-build.worker.js';
 import { KgController } from './kg.controller.js';
 
 /**
- * KG 知识图谱模块（feat-v5，对齐参考项目 knowledge-hub-backend v5 的 KG 管道）
+ * KG 知识图谱模块（feat-v5，对齐基线实现 v5 的 KG 管道）
  *
  * 组成：
  * - `ExtractionService`：LLM 结构化抽取实体 / 关系（ChatOpenAI + zod）

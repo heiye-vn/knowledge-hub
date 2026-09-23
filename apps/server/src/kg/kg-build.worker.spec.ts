@@ -104,7 +104,7 @@ describe('KgBuildWorker.processMessage', () => {
     expect(buildBatch).not.toHaveBeenCalled();
   });
 
-  it('⭐ 建图失败汇总后抛错，触发 BullMQ 重试（修参考项目「失败即丢弃」）', async () => {
+  it('⭐ 建图失败汇总后抛错，触发 BullMQ 重试（修基线实现「失败即丢弃」）', async () => {
     const { worker } = makeWorker({
       loaded: [doc('d1')],
       failed: [{ documentId: 'd1', message: 'Neo4j 写入超时' }],

@@ -13,7 +13,7 @@ import { RagReindexWorker } from './rag-reindex.worker.js';
  *
  * 覆盖的是「业务语义」，不是 BullMQ 本身：
  * - Worker：不支持的消息类型 / 空批次直接忽略；**部分失败必须抛错**以触发重试
- *   （这是相对参考项目「失败即丢弃」的关键修复）
+ *   （这是相对基线实现「失败即丢弃」的关键修复）
  * - Publisher：Redis 未启用时降级，不阻断启动，且 enqueue 给出明确错误
  */
 
@@ -95,7 +95,7 @@ describe('RagReindexWorker.processMessage', () => {
     expect(indexDocuments).not.toHaveBeenCalled();
   });
 
-  it('⭐ 部分失败必须抛错，以触发 BullMQ 重试（修参考项目「失败即丢弃」）', async () => {
+  it('⭐ 部分失败必须抛错，以触发 BullMQ 重试（修基线实现「失败即丢弃」）', async () => {
     const { worker } = makeWorker({
       failed: [{ documentId: 'd2', message: 'embedding 超时' }],
     });

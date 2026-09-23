@@ -47,7 +47,7 @@ export interface DocumentFileInfo {
  * - 元数据：kh_document
  * - 正文：kh_document_content（1:1，document_id 主键）
  *
- * 🟡 与参考项目的分叉：参考项目用 PG + Mongo 双库（正文在 Mongo），
+ * 🟡 与基线实现的分叉：基线实现用 PG + Mongo 双库（正文在 Mongo），
  * 本项目于 2026-09-20 切换为单 PostgreSQL——Mongo 侧原始规划的
  * chunks / chat_histories 已分别落在 ES / 未启动，只剩正文一个集合，
  * 为它维护一整套独立数据库得不偿失。
@@ -294,7 +294,7 @@ export class DocumentService {
    * 不让基础设施故障阻断发布动作。两条链路可用性**分开判定**——
    * 没配 Embedding Key 时文档搜索仍可用，只有语义检索降级。
    *
-   * 🟢 对齐参考项目 knowledge-hub-backend：仅「草稿 / 已发布」允许发布，
+   * 🟢 对齐基线实现：仅「草稿 / 已发布」允许发布，
    * 已归档（Archived）文档不允许重新发布 —— 归档是明确的终态，
    * 若放开会导致已下线文档被重新向量化并回到检索结果里。
    * （本条此前遗漏，已对照 v3 补齐。）
@@ -422,7 +422,7 @@ export class DocumentService {
   /**
    * 按 ID 批量加载「待索引文档」（PG 元数据 + 正文，单库两表直查）
    *
-   * 供重建队列的 Worker 使用。参考项目把这段放在 `PipelineOrchestrator` 内部
+   * 供重建队列的 Worker 使用。基线实现把这段放在 `PipelineOrchestrator` 内部
    * （`loadDocumentsByIds`），本项目 Orchestrator 只接收已加载的 `PipelineDocument`，
    * 故加载职责留在调用方，保持「编排器不管数据源」的边界。
    *

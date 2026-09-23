@@ -14,10 +14,10 @@ export interface IndexResult {
 /**
  * RAG 管线编排器：分块 → Embedding → ES kh_chunk
  *
- * 与参考项目 knowledge-hub-backend 的 PipelineOrchestrator 同名同职责（分段一致）。
+ * 与基线实现 的 PipelineOrchestrator 同名同职责（分段一致）。
  *
- * 🟡 与参考项目的**实现层分叉**：
- * - 参考项目：`handleRagReindex(type, ids)` 自己按 ID 查 PG + Mongo 加载文档（因为消费 MQ 消息时只有 ID）
+ * 🟡 与基线实现的**实现层分叉**：
+ * - 基线实现：`handleRagReindex(type, ids)` 自己按 ID 查 PG + Mongo 加载文档（因为消费 MQ 消息时只有 ID）
  * - 本项目：`indexDocument(s)` 接收已加载的 `PipelineDocument`，加载职责留在调用方
  *   理由：阶段一是同步调用，publish 时调用方手上已有完整文档，再查一遍是浪费；
  *   阶段二上 BullMQ 后，consumer 只需「按 ID 加载 → 调 indexDocuments」，复用同一段管线。
@@ -110,7 +110,7 @@ export class RagOrchestrator {
   /**
    * 删除某文档的全部向量块（文档下线 / 删除时调用）
    *
-   * ✅ 相对参考项目的改进（修其 P0）：参考项目文档软删除后**不清 ES 向量块**，
+   * ✅ 相对基线实现的改进（修其 P0）：基线实现文档软删除后**不清 ES 向量块**，
    * 已删文档仍能被检索命中。这里在删除链路显式清理。
    * 注：ES 与 PG 无法共享事务，清理失败只记日志，检索侧还有兜底过滤（见 RetrievalService）。
    */

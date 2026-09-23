@@ -28,10 +28,10 @@ export class KgBuildDto {
 /**
  * KG 知识图谱接口
  *
- * 🔵 **相对参考项目的新增**：
- * - 参考项目 v5 只写了图、没有查询接口（`src/graph/graph.controller.ts` 要到 v10 才有），
+ * 🔵 **相对基线实现的新增**：
+ * - 基线实现 v5 只写了图、没有查询接口（`src/graph/graph.controller.ts` 要到 v10 才有），
  *   本项目在 feat-v5 直接补齐，避免第三次「只写不读」。
- * - 参考项目的 `BUILD_ALL` 消息类型**没有任何投递入口**（死代码）；
+ * - 基线实现的 `BUILD_ALL` 消息类型**没有任何投递入口**（死代码）；
  *   本项目 `POST /kg/build` 不传 documentIds 即全量重建。
  *
  * 触发时机：publish 自动投递单篇建图；此处提供手动批量入口。

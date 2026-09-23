@@ -5,12 +5,12 @@ import type { DocumentChunk } from './types/rag.types.js';
 /**
  * 向量索引存储（写入 ES `kh_chunk`）
  *
- * 职责与参考项目 knowledge-hub-backend 对齐：
+ * 职责与基线实现 对齐：
  * - 按 document_id 删除旧块（重建前先清，保证幂等）
  * - bulk 写入带 embedding 的 chunk，`_id = chunkId` 可覆盖写
  *
- * ✅ 相对参考项目的改进：索引创建/客户端统一委托给 ElasticsearchService，
- * 避免多处各自 new Client 与各自建索引（参考项目里 createIndexIfNotExists 分散且无并发保护）。
+ * ✅ 相对基线实现的改进：索引创建/客户端统一委托给 ElasticsearchService，
+ * 避免多处各自 new Client 与各自建索引（基线实现里 createIndexIfNotExists 分散且无并发保护）。
  */
 @Injectable()
 export class VectorIndexService {

@@ -9,7 +9,7 @@ import { RagReindexWorker } from './rag-reindex.worker.js';
 /**
  * 异步队列模块（BullMQ + Redis）
  *
- * 对应参考项目 `mq/mq.module.ts`（RabbitMQ，且是 @Global）。
+ * 对应基线实现 `mq/mq.module.ts`（RabbitMQ，且是 @Global）。
  * 🟡 分叉：本项目不设 @Global —— 只有控制器和 Worker 用得到队列，
  * 显式导入比全局注入更容易看清依赖。
  *

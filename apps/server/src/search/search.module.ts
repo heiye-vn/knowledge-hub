@@ -6,7 +6,7 @@ import { SearchIndexService } from './search-index.service.js';
 /**
  * 文档级全文搜索模块
  *
- * 对应参考项目 knowledge-hub-backend v4 的 `SearchIndexService`
+ * 对应基线实现 v4 的 `SearchIndexService`
  * （它放在 `pipeline/` 下；本项目 RAG 与 Search 是两个关注点，故独立成模块）。
  *
  * 依赖 `RagModule` 只为复用 `ElasticsearchService` 的单例 client 与降级判定；

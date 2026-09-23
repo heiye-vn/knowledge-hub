@@ -1,7 +1,7 @@
 /**
  * RAG 重建索引消息结构
  *
- * 🟢 与参考项目 knowledge-hub-backend `mq/messages/pipeline.messages.ts` **完全一致**，
+ * 🟢 与基线实现 `mq/messages/pipeline.messages.ts` **完全一致**，
  * 字段同名同形，方便两项目对照与日后迁移。
  */
 
@@ -18,9 +18,9 @@ export interface ReindexMessage {
 }
 
 /**
- * KG 建图 / 删图消息（feat-v5，对齐参考项目 v5 `KgBuildMessage`）
+ * KG 建图 / 删图消息（feat-v5，对齐基线实现 v5 `KgBuildMessage`）
  *
- * 与参考项目分叉：`BUILD_ALL` 在参考项目里**没有任何投递入口**（死代码），
+ * 与基线实现分叉：`BUILD_ALL` 在基线实现里**没有任何投递入口**（死代码），
  * 本项目 `POST /kg/build` 不传 documentIds 即投递 BUILD_ALL。
  */
 export type KgBuildType =

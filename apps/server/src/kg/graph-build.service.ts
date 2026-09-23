@@ -15,7 +15,7 @@ const DEFAULT_MAX_CHUNKS = 30;
 /**
  * KG 知识图谱构建（Neo4j）
  *
- * 对应参考项目 v5 `pipeline/graph-build.service.ts`。
+ * 对应基线实现 v5 `pipeline/graph-build.service.ts`。
  *
  * 图模型：
  * ```
@@ -24,14 +24,14 @@ const DEFAULT_MAX_CHUNKS = 30;
  * ```
  * ⚠️ 实体间**边类型恒为 RELATED_TO**，语义在 `relation` 属性上。
  *
- * ✅ 相对参考项目的改进：
- * - **启动即建唯一约束**（参考项目没建）：`KnowledgeEntity.name` / `DocumentChunk.chunkId` /
+ * ✅ 相对基线实现的改进：
+ * - **启动即建唯一约束**（基线实现没建）：`KnowledgeEntity.name` / `DocumentChunk.chunkId` /
  *   `KnowledgeDocument.id` 没有约束时 MERGE 靠全表扫描，图越大越慢。
- * - **批量抽取（extractBatch，并发 `KG_EXTRACT_CONCURRENCY`）**：参考项目串行逐块调用，
+ * - **批量抽取（extractBatch，并发 `KG_EXTRACT_CONCURRENCY`）**：基线实现串行逐块调用，
  *   实测单块 19~57s，100 块的文档串行就是小时级。
  * - **块数上限 `KG_MAX_CHUNKS`**：超长文档按序截断，防止单篇建图跑小时级。
- * - **写图用 UNWIND 批量**：参考项目逐条 `session.run`，一块 30 实体就是 60+ 次往返。
- * - **全部块抽取失败视为整篇失败并抛错**：参考项目单块失败只打日志，
+ * - **写图用 UNWIND 批量**：基线实现逐条 `session.run`，一块 30 实体就是 60+ 次往返。
+ * - **全部块抽取失败视为整篇失败并抛错**：基线实现单块失败只打日志，
  *   图静默不完整且无感知。部分失败保留成果并计数返回。
  *
  * 降级：Neo4j 不可用时跳过写入（不抛错阻断发布）。
@@ -390,7 +390,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** 唯一约束：没有它 MERGE 退化为全表扫描，图越大建图越慢（参考项目踩坑） */
+  /** 唯一约束：没有它 MERGE 退化为全表扫描，图越大建图越慢（基线实现踩坑） */
   private async ensureConstraints(): Promise<void> {
     if (!this.constraintsReady) {
       this.constraintsReady = this.doEnsureConstraints().catch((err) => {

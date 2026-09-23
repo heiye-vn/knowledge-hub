@@ -10,7 +10,7 @@ import type { SearchIndexService } from '../search/search-index.service.js';
 /**
  * 发布态守卫的单元测试（不依赖 PG / ES，纯 fake）
  *
- * 背景：对照参考项目 knowledge-hub-backend v3 时发现本服务缺失状态校验，
+ * 背景：对照基线实现 v3 时发现本服务缺失状态校验，
  * 已归档（Archived）文档也能被重新发布并重建向量。用测试锁住该边界，防退化。
  */
 
@@ -97,7 +97,7 @@ describe('DocumentService.publish 状态守卫', () => {
     });
   });
 
-  it('已归档文档不允许发布（对齐参考项目 v3）', async () => {
+  it('已归档文档不允许发布（对齐基线实现 v3）', async () => {
     const { service, saved } = makeService(makeDoc(2));
     await expect(service.publish('doc-1')).rejects.toThrow(BadRequestException);
     // 被拒绝时不应产生任何写库动作

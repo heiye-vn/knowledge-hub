@@ -12,7 +12,7 @@ import { VectorIndexService } from './vector-index.service.js';
 /**
  * RAG 模块
  *
- * 命名刻意与参考项目 knowledge-hub-backend 保持一致
+ * 命名刻意与基线实现 保持一致
  * （Chunking / Embedding / VectorIndex / Orchestrator），便于两个项目 grep 对照。
  *
  * 组成：
@@ -21,7 +21,7 @@ import { VectorIndexService } from './vector-index.service.js';
  * - EmbeddingService：百炼 qwen3.7-text-embedding-flash，1024 维（延迟初始化，缺 Key 不阻断启动）
  * - VectorIndexService：ES 写入 / 按文档删除
  * - RagOrchestrator：分块 → 嵌入 → 索引 的编排
- * - RetrievalService：kNN + BM25 + RRF 混合检索（参考项目缺失，本项目补齐）
+ * - RetrievalService：kNN + BM25 + RRF 混合检索（基线实现缺失，本项目补齐）
  */
 @Module({
   imports: [

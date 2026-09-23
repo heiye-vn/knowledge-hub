@@ -16,7 +16,7 @@ import { describeError, logThrottled, waitUntilReady } from '../mq/mq-error.util
 /**
  * KG 建图任务的「生产者」（BullMQ）
  *
- * 职责对应参考项目 v5 `mq/document-pipeline.publisher.ts` 的 triggerKgBuild / triggerKgDelete。
+ * 职责对应基线实现 v5 `mq/document-pipeline.publisher.ts` 的 triggerKgBuild / triggerKgDelete。
  * 实现层分叉（沿用既有登记）：RabbitMQ topic 交换机 → BullMQ 单队列，路由语义由 `job.data.type` 承担。
  *
  * 降级：Redis 不可用时 `isAvailable()` 为 false，发布 / 删除照常执行，只是不建图。

@@ -1,7 +1,7 @@
 /**
  * 知识图谱（KG）共用类型
  *
- * 字段与参考项目 knowledge-hub-backend v5 `pipeline/types/pipeline.types.ts`
+ * 字段与基线实现 v5 `pipeline/types/pipeline.types.ts`
  * 同名同形，便于两项目 grep 对照。
  */
 

@@ -95,19 +95,19 @@ const SNIPPET_LENGTH = 200;
 /**
  * 文档级全文搜索索引（ES `kh_document`）
  *
- * 对应参考项目 knowledge-hub-backend v4 `pipeline/search-index.service.ts`。
+ * 对应基线实现 v4 `pipeline/search-index.service.ts`。
  *
  * 与 `kh_chunk` 的分工：
  * - `kh_chunk`：一篇文档切成多块 + 向量 → 语义检索（`POST /search`）
  * - `kh_document`：一篇文档一条记录 → 关键词全文检索 + 高亮（`POST /search/documents`）
  *
  * 🟡 **有意分叉（已登记 reference-mapping.md）**：
- * - 参考项目由 MQ 消费者异步写；本项目在 publish / remove 里**同步写**。
+ * - 基线实现由 MQ 消费者异步写；本项目在 publish / remove 里**同步写**。
  *   理由见 `docs/dev-notes/search-index.md`：Search upsert 是一次 ES 请求（毫秒级），
  *   同步可保证 write-your-reads——发布完立刻能搜到，异步会出现「发布成功但搜不到」。
- * - 参考项目 content **截前 1000 字**（因 MQ 消息体积）；本项目 publish 时正文已在内存，
+ * - 基线实现 content **截前 1000 字**（因 MQ 消息体积）；本项目 publish 时正文已在内存，
  *   **全量写入**，长文档后半段也能被搜到。
- * - 参考项目 mapping 未指定 IK；本项目显式 `ik_max_word` / `ik_smart`。
+ * - 基线实现 mapping 未指定 IK；本项目显式 `ik_max_word` / `ik_smart`。
  *
  * 降级：ES 不可用时所有写入 / 检索跳过，不阻断业务。
  */

@@ -1,13 +1,13 @@
 /**
  * `kh_document` 索引定义（ES 侧）
  *
- * 与参考项目 knowledge-hub-backend v4 `pipeline/search-index.service.ts` 同名同用途：
+ * 与基线实现 v4 `pipeline/search-index.service.ts` 同名同用途：
  * 一篇文档一条记录，服务于**关键词全文检索**；与 `kh_chunk`（多块 + 向量，服务语义检索）互补。
  *
  * ⚠️ 命名提醒：PG 侧的文档元数据表**也叫 `kh_document`**，两者同名但不是一个东西，
  * 排查日志时要看清是 TypeORM 还是 ES client 打的。索引名可用 `ELASTICSEARCH_DOC_INDEX` 覆盖。
  *
- * ✅ 相对参考项目的改进：参考项目 mapping 里 `title/summary/content` 是裸 `text`，
+ * ✅ 相对基线实现的改进：基线实现 mapping 里 `title/summary/content` 是裸 `text`，
  * **没指定 IK**（它在 v3 的 kh_chunk 上犯过同样的错，v4 又犯一次）→ 中文被切成单字。
  * 这里显式指定 ik_max_word（索引期细粒度提高召回）/ ik_smart（查询期粗粒度提高精度）。
  */

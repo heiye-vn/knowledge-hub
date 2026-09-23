@@ -27,7 +27,7 @@ export interface ExtractionOutcome {
   error?: string;
 }
 
-/** 送进 LLM 的正文上限（防超上下文，参考项目同为 4000） */
+/** 送进 LLM 的正文上限（防超上下文，基线实现同为 4000） */
 const MAX_CONTENT_CHARS = 4000;
 
 /**
@@ -42,14 +42,14 @@ function entityKey(raw: string): string {
 /**
  * 实体 / 关系抽取服务（KG 建图的 LLM 环节）
  *
- * 对应参考项目 v5 `pipeline/extraction.service.ts`。
+ * 对应基线实现 v5 `pipeline/extraction.service.ts`。
  *
- * 🟡 与参考项目的分叉：
+ * 🟡 与基线实现的分叉：
  * - **Key 回退链**：`LLM_API_KEY` → `EMBEDDING_API_KEY` → `OPENAI_API_KEY`。
  *   百炼的 chat 与 embedding 共用同一个 Key，不强制再配一个。
- * - **提供 `extractBatch` + 并发度**：参考项目是串行逐块调用，
+ * - **提供 `extractBatch` + 并发度**：基线实现是串行逐块调用，
  *   100 块的文档就是 100 次串行 LLM 请求（分钟级）。这里按 `KG_EXTRACT_CONCURRENCY` 并发。
- * - **关系可引用文档级实体池**：参考项目要求 source/target 必须在**同一块**的实体集合内，
+ * - **关系可引用文档级实体池**：基线实现要求 source/target 必须在**同一块**的实体集合内，
  *   跨块 / 跨段的关系建不起来；这里放宽为「已出现过的实体即可」。
  *
  * 降级：未配置 Key 时 `isConfigured()` 为 false，抽取阶段报错但不阻断应用启动。
@@ -168,7 +168,7 @@ export class ExtractionService {
   /**
    * 批量抽取（受并发度限制）。单块失败**不中断**其余块，错误随该块返回。
    *
-   * 【易错】参考项目单块失败只打日志并塞空结果，调用方无法区分「这篇文档本来就没实体」
+   * 【易错】基线实现单块失败只打日志并塞空结果，调用方无法区分「这篇文档本来就没实体」
    * 和「LLM 挂了导致整篇没抽到」。这里把 error 一并返回，由上层决定是否重试。
    */
   async extractBatch(
@@ -236,7 +236,7 @@ export class ExtractionService {
     knownEntities?: Set<string>,
   ): ExtractionResult {
     // ① 先建**全量**实体池（不截断、按规范化 key 去重）
-    // 🔴 修参考项目（及本实现初版）的顺序 bug：
+    // 🔴 修基线实现（及本实现初版）的顺序 bug：
     // 若先按 KG_MAX_ENTITIES 截断再校验关系，引用「第 N 个之后实体」的关系会被整片误杀。
     // 实测 qwen-plus 单块产出 24–40 个实体，而默认上限曾为 12 —— 结果就是关系数归 0。
     //

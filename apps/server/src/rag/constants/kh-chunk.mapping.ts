@@ -1,13 +1,13 @@
 /**
  * `kh_chunk` 索引定义
  *
- * 与参考项目 knowledge-hub-backend 同名同结构，便于跨项目对照。
+ * 与基线实现 同名同结构，便于对照。
  *
  * ⚠️ 两条硬约束：
  * 1. `embedding.dims` 建索引后**不可原地修改**。变更 EMBEDDING_DIMENSION 必须删索引重建 + 全量重索引。
  * 2. IK 插件版本必须与 ES 严格一致（8.17.0 ↔ 8.17.0），否则节点起不来。
  *
- * ✅ 相对参考项目的关键改进：参考项目装了 IK 却在 mapping 里没指定 analyzer，
+ * ✅ 相对基线实现的关键改进：基线实现装了 IK 却在 mapping 里没指定 analyzer，
  * `content` 走了默认 standard 分词，中文被切成单字，等于白装。
  * 这里在 content / document_title 上**显式指定** ik_max_word（索引期细粒度，提高召回）
  * 与 ik_smart（查询期粗粒度，提高精度）。
