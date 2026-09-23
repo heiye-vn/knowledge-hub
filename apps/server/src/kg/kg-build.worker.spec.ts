@@ -59,7 +59,6 @@ function makeWorker(options: {
     fakeConfig(),
     graphBuildService as never,
     em as never,
-    {} as never,
   );
   // 绕过私有加载方法：注入假数据源
   Object.defineProperty(worker, 'loadDocumentsByIds', {

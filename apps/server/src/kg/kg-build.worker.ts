@@ -1,16 +1,11 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
 import { InjectEntityManager } from '@nestjs/typeorm';
-import { Model } from 'mongoose';
 import { EntityManager } from 'typeorm';
 import type { Job } from 'bullmq';
 import { Worker } from 'bullmq';
 import { DocumentEntity, DocumentStatus } from '../document/entities/document.entity.js';
-import {
-  DocumentContent,
-  DocumentContentDocument,
-} from '../document/schemas/document-content.schema.js';
+import { DocumentContentEntity } from '../document/entities/document-content.entity.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
 import {
   DEFAULT_KG_BUILD_CONCURRENCY,
@@ -45,12 +40,9 @@ export class KgBuildWorker implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly graphBuildService: GraphBuildService,
-    /** Postgres 实体管理器：按 ID 加载文档元数据 */
+    /** Postgres 实体管理器：按 ID 加载文档元数据与正文（kh_document / kh_document_content） */
     @InjectEntityManager()
     private readonly em: EntityManager,
-    /** Mongo 正文模型 */
-    @InjectModel(DocumentContent.name)
-    private readonly contentModel: Model<DocumentContentDocument>,
   ) {
     this.enabled = this.config.get<string>('REDIS_ENABLED', 'true') !== 'false';
   }
@@ -217,15 +209,15 @@ export class KgBuildWorker implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  /** Postgres 实体 + Mongo 正文 → 管线统一 DTO（与 DocumentService.toPipelineDocument 同形） */
+  /** Postgres 元数据 + 正文（kh_document_content）→ 管线统一 DTO（与 DocumentService.toPipelineDocument 同形） */
   private async toPipelineDocument(doc: DocumentEntity): Promise<PipelineDocument> {
-    const contentDoc = await this.contentModel
-      .findOne({ _id: doc.contentId, deleted: false })
-      .lean();
+    const contentRow = await this.em.findOne(DocumentContentEntity, {
+      where: { documentId: doc.id, deleted: false },
+    });
     return {
       id: doc.id,
       title: doc.title,
-      content: contentDoc?.content ?? '',
+      content: contentRow?.content ?? '',
       summary: doc.summary,
       categoryId: doc.categoryId,
       authorId: doc.authorId,

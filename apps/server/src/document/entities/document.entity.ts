@@ -28,10 +28,6 @@ export class DocumentEntity {
   @Column({ type: 'varchar' })
   title: string;
 
-  /** MongoDB document_content._id */
-  @Column({ name: 'content_id', type: 'varchar', unique: true })
-  contentId: string;
-
   /** 摘要 */
   @Column({ type: 'varchar', nullable: true })
   summary?: string | null;

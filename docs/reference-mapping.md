@@ -93,6 +93,7 @@
 | **2026-09-20** | **LLM Key 配置**（v5） | `OPENAI_API_KEY` 必填，缺失直接报错 | 回退链 `LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY` | 百炼 chat 与 embedding 共用同一 Key，不强制再配一个；与既有「延迟初始化不阻断启动」的风格一致 |
 | **2026-09-20** | **KG 模块归属**（v5） | 塞在 `pipeline/` 下 | 独立 `kg/` 模块，且 **KgModule 不导入 DocumentModule**（Worker 直接注入 EntityManager + Mongo 模型加载文档） | DocumentModule 需要 KgModule 的 Publisher 投递任务，反向导入会成模块环 |
 | **2026-09-20** | **写图方式**（v5） | 逐条 `session.run`（一块 30 实体 = 60+ 次往返） | `UNWIND` 批量写实体 / MENTIONS / 关系 | 网络往返是建图耗时的大头之一 |
+| **2026-09-20** | **文档正文存储** | PG 元数据 + MongoDB 正文（`document_content` 集合）+ 双写补偿 | **单 PostgreSQL**：正文并入 `kh_document_content`（1:1，document_id 主键兼外键），Mongo/Mongoose 整体下线 | Mongo 原始规划的 chunks / chat_histories 已分别落在 ES / 未启动，只剩正文一个集合，维护独立数据库得不偿失；单库事务直接消灭双写补偿整段逻辑。详见 [dev-notes/storage-single-postgres.md](./dev-notes/storage-single-postgres.md) |
 
 ---
 
@@ -115,7 +116,7 @@
 
 ## 五、 主项目已领先参考项目之处
 
-- 双写补偿（PG 失败删 Mongo）
+- **单 PostgreSQL 存储**（2026-09-20）：正文并入 `kh_document_content`（1:1），单库事务彻底取代双写补偿（参考项目仍双库 + 手动补偿）
 - 统一响应信封 + 全局异常过滤（参考项目无）
 - 原生 ESM 规范与工程约定文档（AGENTS.md / docs）
 - 源文件元数据持久化（参考项目缺失）

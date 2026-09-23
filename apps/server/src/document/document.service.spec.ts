@@ -1,16 +1,14 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import type { Model } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import type { RagOrchestrator } from '../rag/rag.orchestrator.js';
 import type { RustfsService } from '../storage/rustfs.service.js';
 import { DocumentService } from './document.service.js';
 import type { DocumentEntity, DocumentStatus } from './entities/document.entity.js';
 import type { FileParserService } from './parser/file-parser.service.js';
-import type { DocumentContentDocument } from './schemas/document-content.schema.js';
 import type { SearchIndexService } from '../search/search-index.service.js';
 
 /**
- * 发布态守卫的单元测试（不依赖 PG / Mongo / ES，纯 fake）
+ * 发布态守卫的单元测试（不依赖 PG / ES，纯 fake）
  *
  * 背景：对照参考项目 knowledge-hub-backend v3 时发现本服务缺失状态校验，
  * 已归档（Archived）文档也能被重新发布并重建向量。用测试锁住该边界，防退化。
@@ -20,7 +18,6 @@ function makeDoc(status: DocumentStatus): DocumentEntity {
   return {
     id: 'doc-1',
     title: '测试文档',
-    contentId: 'content-1',
     status,
     publishTime: null,
   } as unknown as DocumentEntity;
@@ -37,16 +34,18 @@ function makeService(
   const saved: DocumentEntity[] = [];
 
   const em = {
-    findOne: async () => doc,
+    // 元数据查询返回 doc；正文查询（where 带 documentId）返回内容行
+    findOne: async (_entity: unknown, opts2?: { where?: Record<string, unknown> }) => {
+      if (opts2?.where && 'documentId' in opts2.where) {
+        return { documentId: opts2.where.documentId, content: '正文内容' };
+      }
+      return doc;
+    },
     save: async (d: DocumentEntity) => {
       saved.push(d);
       return d;
     },
-  };
-
-  const contentModel = {
-    findOne: () => ({ lean: async () => ({ content: '正文内容' }) }),
-    updateOne: async () => undefined,
+    update: async () => undefined,
   };
 
   const ragOrchestrator = {
@@ -72,7 +71,6 @@ function makeService(
 
   const service = new DocumentService(
     em as never,
-    contentModel as unknown as Model<DocumentContentDocument>,
     {} as unknown as FileParserService,
     {} as unknown as RustfsService,
     ragOrchestrator as unknown as RagOrchestrator,
@@ -160,7 +158,7 @@ describe('DocumentService.remove 双索引清理', () => {
 });
 
 describe('DocumentService.loadForIndex / findPublishedIds', () => {
-  /** ids 中不存在的文档会被跳过；contents 按文档 id 给出 Mongo 正文 */
+  /** ids 中不存在的文档会被跳过；contents 按文档 id 给出正文（kh_document_content） */
   function makeIndexService(options: {
     ids: string[];
     contents?: Record<string, string>;
@@ -169,28 +167,27 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
     const contents = options.contents ?? {};
 
     const em = {
-      // 按「id 是否在 ids 里」区分存在/不存在，够用且直观
-      findOne: async (_entity: unknown, opts: { where: { id: string } }) =>
-        options.ids.includes(opts.where.id)
+      // where 带 documentId → 内容表查询；否则按「id 是否在 ids 里」区分存在/不存在
+      findOne: async (
+        _entity: unknown,
+        opts: { where: { id?: string; documentId?: string; deleted?: boolean } },
+      ) => {
+        if (opts.where.documentId !== undefined) {
+          return { documentId: opts.where.documentId, content: contents[opts.where.documentId] ?? '' };
+        }
+        return options.ids.includes(opts.where.id ?? '')
           ? ({
               id: opts.where.id,
               title: `标题-${opts.where.id}`,
-              contentId: `c-${opts.where.id}`,
               status: 1,
             } as unknown as DocumentEntity)
-          : null,
+          : null;
+      },
       find: async () => (options.publishedIds ?? []).map((id) => ({ id })),
-    };
-
-    const contentModel = {
-      findOne: (q: { _id: string }) => ({
-        lean: async () => ({ content: contents[q._id] ?? '' }),
-      }),
     };
 
     const service = new DocumentService(
       em as never,
-      contentModel as unknown as Model<DocumentContentDocument>,
       {} as unknown as FileParserService,
       {} as unknown as RustfsService,
       {} as unknown as RagOrchestrator,
@@ -201,10 +198,10 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
     return service;
   }
 
-  it('loadForIndex 返回元数据 + Mongo 正文的组合', async () => {
+  it('loadForIndex 返回元数据 + 正文的组合', async () => {
     const service = makeIndexService({
       ids: ['doc-1', 'doc-2'],
-      contents: { 'c-doc-1': '正文一', 'c-doc-2': '正文二' },
+      contents: { 'doc-1': '正文一', 'doc-2': '正文二' },
     });
     const docs = await service.loadForIndex(['doc-1', 'doc-2']);
     expect(docs).toHaveLength(2);
@@ -213,7 +210,7 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
   });
 
   it('loadForIndex 跳过已删除/不存在的文档，不中断整批', async () => {
-    const service = makeIndexService({ ids: ['doc-1'], contents: { 'c-doc-1': '正文' } });
+    const service = makeIndexService({ ids: ['doc-1'], contents: { 'doc-1': '正文' } });
     const docs = await service.loadForIndex(['doc-1', 'ghost']);
     expect(docs).toHaveLength(1);
     expect(docs[0].id).toBe('doc-1');

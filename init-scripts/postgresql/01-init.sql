@@ -5,7 +5,6 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS kh_document (
     id BIGINT PRIMARY KEY,
     title VARCHAR NOT NULL,
-    content_id VARCHAR NOT NULL UNIQUE,
     summary VARCHAR,
     category_id BIGINT,
     team_id BIGINT,
@@ -34,11 +33,23 @@ CREATE TABLE IF NOT EXISTS kh_document (
     deleted BOOLEAN NOT NULL DEFAULT false
 );
 
+-- 文档正文表（与 kh_document 一对一，document_id 同时是主键与外键）
+-- 前身：MongoDB document_content 集合；2026-09-20 切换单 PostgreSQL 时并入
+CREATE TABLE IF NOT EXISTS kh_document_content (
+    document_id BIGINT PRIMARY KEY REFERENCES kh_document(id) ON DELETE CASCADE,
+    content TEXT NOT NULL DEFAULT '',
+    content_length INT NOT NULL DEFAULT 0,
+    content_summary VARCHAR NOT NULL DEFAULT '',
+    version INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT false
+);
+
 -- 表与字段注释
 COMMENT ON TABLE kh_document IS '文档元数据表';
 COMMENT ON COLUMN kh_document.id IS '文档主键ID';
 COMMENT ON COLUMN kh_document.title IS '文档标题';
-COMMENT ON COLUMN kh_document.content_id IS 'MongoDB 文档正文记录主键ID (document_content._id)';
 COMMENT ON COLUMN kh_document.summary IS '文档摘要/简介';
 COMMENT ON COLUMN kh_document.category_id IS '所属知识库分类ID';
 COMMENT ON COLUMN kh_document.team_id IS '所属团队/空间ID';
@@ -64,13 +75,25 @@ COMMENT ON COLUMN kh_document.updated_at IS '记录最后更新时间';
 COMMENT ON COLUMN kh_document.create_by IS '创建操作人ID';
 COMMENT ON COLUMN kh_document.update_by IS '最后更新操作人ID';
 COMMENT ON COLUMN kh_document.deleted IS '逻辑删除标记（false: 正常, true: 已删除）';
+COMMENT ON TABLE kh_document_content IS '文档正文表（Markdown 全文，与 kh_document 一对一）';
+COMMENT ON COLUMN kh_document_content.document_id IS '文档ID（kh_document.id，主键兼外键，ON DELETE CASCADE）';
+COMMENT ON COLUMN kh_document_content.content IS 'Markdown 正文';
+COMMENT ON COLUMN kh_document_content.content_length IS '正文字符数';
+COMMENT ON COLUMN kh_document_content.content_summary IS '正文摘要/预览（未显式传 summary 时取正文前 200 字）';
+COMMENT ON COLUMN kh_document_content.version IS '版本号（每次正文变更 +1）';
+COMMENT ON COLUMN kh_document_content.created_at IS '记录创建时间';
+COMMENT ON COLUMN kh_document_content.updated_at IS '记录最后更新时间';
+COMMENT ON COLUMN kh_document_content.deleted IS '逻辑删除标记（与 kh_document.deleted 同步置位）';
 
 -- ---------------------------------------------------------------------------
--- 存量库升级：为 2026-09-19 之前初始化的 kh_document 补文件元数据列。
--- 新初始化的库走上方 CREATE TABLE 已包含这些列，此段幂等跳过。
+-- 存量库升级（幂等）：
+-- 1) 为 2026-09-19 之前初始化的 kh_document 补文件元数据列；
+-- 2) 2026-09-20 切换单 PostgreSQL：删 Mongo 关联列 content_id，新增 kh_document_content。
+--    新初始化的库走上方 CREATE TABLE 已是目标态，此段幂等跳过。
 -- ---------------------------------------------------------------------------
 ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_url VARCHAR;
 ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS object_key VARCHAR;
 ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_name VARCHAR;
 ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_size BIGINT;
 ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_extension VARCHAR;
+ALTER TABLE kh_document DROP COLUMN IF EXISTS content_id;

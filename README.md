@@ -21,7 +21,7 @@ pnpm dev:server
 ```
 服务启动后可访问：`http://localhost:3000`
 
-### 3. 本地基础设施容器管理 (PostgreSQL + MongoDB)
+### 3. 本地基础设施容器管理（PostgreSQL、Elasticsearch、Redis、RustFS、Neo4j）
 ```bash
 # 后台一键启动所有基础数据库及 Web 管理面板
 pnpm docker:up
@@ -37,7 +37,6 @@ pnpm docker:down
 ```
 
 - PostgreSQL pgAdmin 管理面板：`http://localhost:8088`（账号：admin@admin.com / admin）
-- MongoDB mongo-express 管理面板：`http://localhost:8081`（账号：me_admin / me_123456）
 
 ### 4. 运行后端测试
 ```bash

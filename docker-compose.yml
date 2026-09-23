@@ -38,50 +38,6 @@ services:
     depends_on:
       - postgres
 
-  # MongoDB 主库
-  mongodb:
-    image: mongo:7-jammy
-    container_name: knowledge_hub_mongodb
-    restart: always
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: mongo_user
-      MONGO_INITDB_ROOT_PASSWORD: mongo_pass123
-      MONGO_INITDB_DATABASE: knowledge_hub
-    ports:
-      - "27017:27017"
-    volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/mongo:/data/db
-      - ./init-scripts/mongodb:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "-u", "mongo_user", "-p", "mongo_pass123", "--authenticationDatabase", "admin"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-
-  # MongoDB Web GUI: mongo-express
-  mongo-express:
-    image: mongo-express:1.0.2-20-alpine3.19
-    container_name: knowledge_hub_mongo_express
-    restart: always
-    ports:
-      - "8081:8081"
-    environment:
-      # 连接 mongo 数据库账号（和mongodb服务保持一致）
-      ME_CONFIG_MONGODB_SERVER: mongodb
-      ME_CONFIG_MONGODB_ADMINUSERNAME: mongo_user
-      ME_CONFIG_MONGODB_ADMINPASSWORD: mongo_pass123
-      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
-      # mongo-express 网页登录账号（区分数据库账号）
-      ME_CONFIG_BASICAUTH_ENABLED: "true"
-      ME_CONFIG_BASICAUTH_USERNAME: me_admin
-      ME_CONFIG_BASICAUTH_PASSWORD: me_123456
-      # 编辑器暗色主题
-      ME_CONFIG_OPTIONS_EDITORTHEME: "3024-night"
-    # 等待mongodb健康就绪再启动
-    depends_on:
-      mongodb:
-        condition: service_healthy
-
   # Elasticsearch 8.17.0 + IK 中文分词（镜像内置）— RAG 向量与混合检索底座
   # 镜像由 ./elasticsearch/Dockerfile 构建，ES 与 analysis-ik 版本必须严格一致
   es:

@@ -10,16 +10,15 @@
 ### 2.1 工程结构 (Monorepo)
 项目采用 `pnpm workspace` 管理的多包单体仓库（Monorepo）：
 - `apps/server`: 后端核心微服务（NestJS + Node.js 原生 ESM 模式）。
-- `init-scripts/`: 数据库初始化脚本（PostgreSQL 扩展与初始表结构、MongoDB 索引）。
+- `init-scripts/`: 数据库初始化脚本（PostgreSQL 扩展与初始表结构）。
 - `docs/`: 架构设计文档（`docs/superpowers/specs/`）与实施任务计划（`docs/superpowers/plans/`）。
 - `contexts/`: 项目上下文沉淀文件（`contexts/context.md`）。
 
 ### 2.2 核心技术栈
 - **服务端框架**：NestJS v12 + Express（`"type": "module"` 原生 ESM）
-- **数据库**：
-  - **PostgreSQL 16 + pgvector**：存储文档元数据（`kh_document` 表）、权限、分类、标签及未来的嵌入向量。
-  - **MongoDB 7**：存储超长 Markdown 正文（`document_content` 集合），支持灵活的版本与变动历史。
-- **ORM / ODM**：TypeORM（Postgres）+ Mongoose（MongoDB）
+- **数据库**：**PostgreSQL 16 + pgvector（单库）**：文档元数据（`kh_document`）与 Markdown 正文
+  （`kh_document_content`，1:1）。2026-09-20 前正文存 MongoDB，已整体下线。
+- **ORM**：TypeORM（Mongoose 已随 MongoDB 移除）
 - **ID 生成**：Snowflake（雪花 ID 64 位整型，TypeScript/JS 侧一律用 `string` 承载，PostgreSQL 侧使用 `bigint`）
 - **测试框架**：Vitest + Supertest（单元测试与 E2E 测试）
 - **代码规范**：Oxlint + Prettier
@@ -28,15 +27,14 @@
 
 ## 三、 核心架构规范与设计约定
 
-### 3.1 元数据与正文双写隔离架构
-- **写入链路**：
-  1. 生成雪花 ID (`nextSnowflakeId()`)；
-  2. 先写入 MongoDB `document_content` 集合，获取其 `_id`；
-  3. 将该 `_id` 转换为字符串写入 PostgreSQL `kh_document.content_id`（有唯一键约束）；
-  4. 若 Postgres 事务写入失败，补偿删除刚才写入的 Mongo 记录，杜绝脏数据。
+### 3.1 文档存储架构（单 PostgreSQL，2026-09-20 起）
+- **写入链路**：生成雪花 ID → 单事务内写 `kh_document`（元数据）+ `kh_document_content`（正文），
+  同库事务保证原子性（原 PG + Mongo 双写补偿已随 MongoDB 下线删除）。
 - **查询链路**：
-  - 列表分页查询：只查 PostgreSQL，极大减轻正文大字段的 I/O 负担；
-  - 详情查询：先根据主键查 PostgreSQL，再根据 `contentId` 查询 Mongo 正文拼接返回。
+  - 列表分页查询：只查 `kh_document`，不碰正文表，避免大字段 I/O；
+  - 详情查询：按主键查 `kh_document`，再按 `documentId` 查 `kh_document_content` 拼接返回。
+- `kh_document_content` 与 `kh_document` 一对一：`document_id` 同时是主键与外键
+  （DDL 层 `ON DELETE CASCADE`）；实体侧不建 ORM 级关联，按 ID 直查。
 
 ### 3.2 全局切面（AOP）标准
 - **成功响应**：由 `TransformInterceptor` 统一包装为标准信封格式：
@@ -69,9 +67,9 @@
 
 | 模块名称 | 状态 | 关键实现 |
 | :--- | :--- | :--- |
-| **基础骨架** | ✅ 已完成 | Monorepo、Docker Compose 编排、PostgreSQL + MongoDB 容器健康就绪 |
+| **基础骨架** | ✅ 已完成 | Monorepo、Docker Compose 编排（PostgreSQL、Elasticsearch、Redis、RustFS、Neo4j）、单 PG 存储切换 |
 | **全局切面** | ✅ 已完成 | 全局校验管道、`TransformInterceptor`、`AllExceptionsFilter`、健康检查 `/health` |
-| **文档模块 (Document)** | ✅ 已完成 | 创建（双写+补偿）、列表分页模糊搜索、详情读取、部分字段更新（PATCH）、软删除 |
+| **文档模块 (Document)** | ✅ 已完成 | 创建（单库事务双表）、列表分页模糊搜索、详情读取、部分字段更新（PATCH）、软删除 |
 | **测试与调试** | ✅ 已完成 | Vitest 单元测试、E2E 测试、`test/manual/document-curl.md` 联调脚本 |
 | **文档摄取与多模态解析** | 📋 设计就绪 | 架构备忘归档于 `docs/superpowers/specs/2026-09-15-document-ingestion-and-parser-design.md`，涵盖 MinerU、RustFS 原文件关联与多源兼容 |
 | **向量检索与 RAG** | ⏳ 规划中 | pgvector 索引构建、文本分块管道（Chunking）、Embedding 模型接入 |

@@ -9,7 +9,7 @@
 在根目录下执行所有统一任务，严禁私自在子目录执行未约定的脚本：
 
 ```bash
-# 启动本地开发依赖环境（PostgreSQL、MongoDB 等）
+# 启动本地开发依赖环境（PostgreSQL、Elasticsearch、Redis 等）
 pnpm docker:up
 
 # 启动服务端开发环境（带热重载 watch 模式）
@@ -32,10 +32,13 @@ pnpm --filter @knowledge-hub/server lint
 
 ## 二、 架构与编码铁律
 
-### 2.1 双存储隔离规范（PostgreSQL + MongoDB）
-- **元数据**：必须放入 PostgreSQL（`kh_document` 表及相关关系表）。
-- **超长大文本正文**：必须放入 MongoDB（`document_content` 集合）。
-- **数据一致性保证**：新增业务实体时，若涉及跨库写入，必须编写异常补偿逻辑（如 Postgres 写入失败时，补偿物理删除刚写入的 Mongo 记录）。
+### 2.1 存储规范（单 PostgreSQL，2026-09-20 起）
+- **元数据与正文**：统一存 PostgreSQL——`kh_document`（元数据）+ `kh_document_content`（正文，1:1，
+  `document_id` 同时是主键与外键，DDL 层 `ON DELETE CASCADE`）。
+- **大文本必须放独立内容表**，严禁往 `kh_document` 加正文列（列表查询会拖出几 MB 正文）；
+  实体侧不建 ORM 级 `@OneToOne`，与 `category_id` 等一样作裸列按 ID 直查。
+- **同库多表写入一律用 `em.transaction()`** 保证原子性。原「跨库双写补偿」规范随 MongoDB 下线而作废。
+- 【易错】`em.update()` 不走实体生命周期，**不会自动更新 `@UpdateDateColumn`**，需手动带 `updatedAt`。
 
 ### 2.2 雪花 ID 与大整数处理
 - 所有核心业务实体的主键 ID 必须由雪花算法生成（`nextSnowflakeId()`）。
@@ -50,6 +53,17 @@ pnpm --filter @knowledge-hub/server lint
 - `apps/server/package.json` 配置了 `"type": "module"`。
 - 本地模块导入必须包含 `.js` 扩展名（例如 `import { Foo } from './foo.js'`）。
 - 引入 CommonJS 依赖时，注意处理 ESM/CJS interop（解构 `.default`），防止运行时抛出 `xxx is not a constructor`。
+
+### 2.5 文件编辑操作规范（强制）
+- ⚠️ **严禁在一条消息里对同一个文件发起多个 Edit**。Edit 是「读-改-写」非原子操作，
+  并行调用时**全部返回成功，但只有最后写入的那份生效**，前面的修改被静默覆盖。
+  - 实际事故（2026-09-23 存储切换）：`document.service.ts` 被改成新旧混合体，
+    `publish` 调用了已被覆盖掉的 `loadContent` 方法，编译必然失败。
+- 同一文件多处改动的**唯一两种可行做法**：
+  1. **串行**：一条消息只发一个 Edit，确认生效后再发下一个；
+  2. **Write 全量重写**：先 Read 通读整个文件，再一次性 Write 出目标状态 —— 改动点多时优先用这个。
+- 不同文件之间可以并行（互不影响）。
+- 收尾自查：`grep` 关键旧标识确认已清零，再跑 `pnpm typecheck:server` 兜底，不要只信 Edit 的 Successfully。
 
 ---
 

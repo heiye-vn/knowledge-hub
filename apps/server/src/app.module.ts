@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { DocumentModule } from './document/document.module.js';
 import { DocumentEntity } from './document/entities/document.entity.js';
+import { DocumentContentEntity } from './document/entities/document-content.entity.js';
 
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
@@ -18,6 +18,8 @@ import { KgModule } from './kg/kg.module.js';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // 🟡 单 PostgreSQL 存储（2026-09-20 起）：正文并入 kh_document_content，
+    // MongoDB/Mongoose 已整体移除（原 Mongo 侧只剩正文一个集合，得不偿失）
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -27,17 +29,8 @@ import { KgModule } from './kg/kg.module.js';
         username: config.get<string>('POSTGRES_USER', 'user'),
         password: config.get<string>('POSTGRES_PASSWORD', '123456'),
         database: config.get<string>('POSTGRES_DB', 'knowledge_hub'),
-        entities: [DocumentEntity],
+        entities: [DocumentEntity, DocumentContentEntity],
         synchronize: false,
-      }),
-    }),
-    MongooseModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        uri: config.get<string>(
-          'MONGO_URI',
-          'mongodb://mongo_user:mongo_pass123@localhost:27017/knowledge_hub?authSource=admin',
-        ),
       }),
     }),
     DocumentModule,

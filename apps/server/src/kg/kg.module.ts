@@ -1,11 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { MongooseModule } from '@nestjs/mongoose';
 import { DocumentEntity } from '../document/entities/document.entity.js';
-import {
-  DocumentContent,
-  DocumentContentSchema,
-} from '../document/schemas/document-content.schema.js';
+import { DocumentContentEntity } from '../document/entities/document-content.entity.js';
 import { RagModule } from '../rag/rag.module.js';
 import { ExtractionService } from './extraction.service.js';
 import { GraphBuildService } from './graph-build.service.js';
@@ -24,17 +20,14 @@ import { KgController } from './kg.controller.js';
  *
  * 🟡 **刻意不导入 DocumentModule**：DocumentModule 需要本模块的 `KgBuildPublisher`
  * 来在发布 / 删除时投递任务，反向导入会形成模块环。
- * 加载文档（按 ID 查 PG + Mongo）由 `KgBuildWorker` 直接注入 EntityManager 与
- * DocumentContent 模型完成，与 `DocumentService.loadForIndex` 同形。
+ * 加载文档（按 ID 查 kh_document + kh_document_content，单库两表）由
+ * `KgBuildWorker` 直接注入 EntityManager 完成，与 `DocumentService.loadForIndex` 同形。
  */
 @Module({
   imports: [
     // 建图复用 RAG 同款分块（ChunkingService），保证图谱粒度与向量块一致
     RagModule,
-    TypeOrmModule.forFeature([DocumentEntity]),
-    MongooseModule.forFeature([
-      { name: DocumentContent.name, schema: DocumentContentSchema },
-    ]),
+    TypeOrmModule.forFeature([DocumentEntity, DocumentContentEntity]),
   ],
   controllers: [KgController],
   providers: [ExtractionService, GraphBuildService, KgBuildPublisher, KgBuildWorker],
