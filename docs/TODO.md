@@ -154,3 +154,22 @@ S3 风格 XML 错误 `AccessDenied`。该问题与上面第 1 项联动：**决�
 - **ES 客户端 8.19.2 / 服务端 8.17.0**：实测兼容（ES 保证 8.x 内互通），如需严格对齐需同步升级镜像与 IK。
 - **Embedding 模型为 `qwen3.7-text-embedding-flash`**（1024 维 / 单批 ≤20 / 128K 上下文 / 0.125 元每百万 tokens）。
   原定 `text-embedding-v3` 因账号无额度弃用。**换任何模型都必须全量重索引**，维度相同也不例外。
+
+---
+
+## 6. 对象存储双模式（阿里云 OSS 与本地 RustFS）
+
+> 记录时间：2026-09-24
+> **状态：✅ 已完成（2026-09-24 在分支 `v2-two-storage-mode` 上实现）**
+
+**背景**：系统原先仅依赖本地 Docker 运行的 RustFS（S3 兼容）存储原文件与 PDF 抽图。开发者具备已开通的 500G 阿里云 OSS 资源包，需要将生产/云端存储平滑迁移至阿里云 OSS，同时保留本地 RustFS 代码以便离线开发或回切。
+
+**解决方案**：
+- 引入策略模式（Driver Pattern）：抽象 `StorageDriver` 接口（`uploadBytes` / `isEnabled`）；
+- 驱动实现：
+  - `AliyunOssDriver`：基于现有的 `@aws-sdk/client-s3` 接入阿里云 OSS S3 兼容协议（Virtual-Hosted 模式），零引入外部庞大 SDK，支持自定义 CDN 域名；
+  - `RustfsDriver`：完整保留本地 RustFS 的 Path-Style 存储与自动建桶逻辑；
+- 统一门面与兼容层：
+  - `StorageService` 根据 `STORAGE_DRIVER=oss|rustfs` 动态调度，未指定且配置 OSS Key 时智能优选 OSS；
+  - `RustfsService` 保留向下兼容导出，现有上层模块（`DocumentService` 与 `FileParserService`）零成本平滑适配。
+
