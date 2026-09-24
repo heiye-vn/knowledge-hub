@@ -1,183 +1,35 @@
-import {
-  CreateBucketCommand,
-  HeadBucketCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
-import {
-  Injectable,
-  Logger,
-  OnModuleInit,
-  ServiceUnavailableException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'crypto';
-import { extname } from 'path';
+import { Injectable } from '@nestjs/common';
+import { StorageService } from './storage.service.js';
+import type {
+  UploadBytesOptions,
+  UploadBytesResult,
+  StorageDriver,
+} from './storage.interface.js';
 
-export interface UploadBytesOptions {
-  fileName: string;
-  contentType: string;
-  /** 对象 key 前缀，默认 documents */
-  prefix?: string;
-}
+export type { UploadBytesOptions, UploadBytesResult, StorageDriver };
 
-/** 上传结果：url 供直接访问，key 供预签名 / 删除 / 重解析 */
-export interface UploadBytesResult {
-  url: string;
-  key: string;
-}
-
-/** RustFS 文件存储（S3 兼容） */
+/**
+ * 历史向下兼容代理服务：RustfsService
+ *
+ * 现已平滑重构为统一存储门面 StorageService 的代理层，
+ * 支持在不改动既有业务代码的情况下，无缝切换阿里云 OSS 与本地 RustFS。
+ */
 @Injectable()
-export class RustfsService implements OnModuleInit {
-  private readonly logger = new Logger(RustfsService.name);
-  private client: S3Client | null = null;
-  private enabled = false;
-  private bucket = '';
-  private publicBaseUrl = '';
-
-  constructor(private readonly config: ConfigService) {}
-
-  onModuleInit() {
-    this.enabled =
-      this.config.get<string>('RUSTFS_ENABLED', 'true').toLowerCase() !==
-      'false';
-
-    if (!this.enabled) {
-      this.logger.warn('RustFS 已禁用（RUSTFS_ENABLED=false），文件上传将跳过');
-      return;
-    }
-
-    const endpoint = this.config.get<string>(
-      'RUSTFS_ENDPOINT',
-      'http://localhost:9000',
-    );
-    const accessKey = this.config.get<string>(
-      'RUSTFS_ACCESS_KEY',
-      'rustfsadmin',
-    );
-    const secretKey = this.config.get<string>(
-      'RUSTFS_SECRET_KEY',
-      'rustfsadmin',
-    );
-    const region = this.config.get<string>('RUSTFS_REGION', 'us-east-1');
-    this.bucket = this.config.get<string>('RUSTFS_BUCKET', 'knowledge-hub');
-    this.publicBaseUrl = (
-      this.config.get<string>('RUSTFS_PUBLIC_URL') || endpoint
-    ).replace(/\/$/, '');
-
-    this.client = new S3Client({
-      endpoint,
-      region,
-      credentials: {
-        accessKeyId: accessKey,
-        secretAccessKey: secretKey,
-      },
-      forcePathStyle: true,
-    });
-
-    this.logger.log(
-      `RustFS 已配置: endpoint=${endpoint}, bucket=${this.bucket}, public=${this.publicBaseUrl}`,
-    );
-
-    void this.ensureBucket().catch((err) => {
-      this.logger.warn(
-        `RustFS 初始化 bucket 失败（首次上传时会重试）: ${err instanceof Error ? err.message : err}`,
-      );
-    });
-  }
+export class RustfsService implements StorageDriver {
+  constructor(private readonly storageService: StorageService) {}
 
   isEnabled(): boolean {
-    return this.enabled && this.client != null;
+    return this.storageService.isEnabled();
   }
 
-  /** 上传字节，返回 { url, key }：url={publicBase}/{bucket}/{key} */
-  async uploadBytes(
+  uploadBytes(
     bytes: Buffer | Uint8Array,
     options: UploadBytesOptions,
   ): Promise<UploadBytesResult> {
-    if (!this.isEnabled() || !this.client) {
-      throw new ServiceUnavailableException(
-        'RustFS 未启用或未配置，无法上传文件',
-      );
-    }
-
-    await this.ensureBucket();
-
-    const prefix = (options.prefix ?? 'documents').replace(/^\/+|\/+$/g, '');
-    const ext = extname(options.fileName) || guessExt(options.contentType);
-    const safeBase = sanitizeBaseName(options.fileName);
-    const key = `${prefix}/${formatDatePath()}/${safeBase}-${randomUUID()}${ext}`;
-    const body = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
-
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        Body: body,
-        ContentType: options.contentType,
-        ContentLength: body.length,
-      }),
-    );
-
-    const url = `${this.publicBaseUrl}/${this.bucket}/${key}`;
-    this.logger.log(
-      `RustFS 上传成功: key=${key}, size=${body.length}, url=${url}`,
-    );
-    return { url, key };
+    return this.storageService.uploadBytes(bytes, options);
   }
 
-  private async ensureBucket(): Promise<void> {
-    if (!this.client) return;
-
-    try {
-      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
-      return;
-    } catch {
-      // bucket 不存在则创建
-    }
-
-    try {
-      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
-      this.logger.log(`RustFS bucket 已创建: ${this.bucket}`);
-    } catch (err) {
-      // 并发创建时可能已存在
-      const message = err instanceof Error ? err.message : String(err);
-      if (
-        !/BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists/i.test(
-          message,
-        )
-      ) {
-        throw err;
-      }
-    }
-  }
-}
-
-function formatDatePath(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}/${m}/${day}`;
-}
-
-function sanitizeBaseName(fileName: string): string {
-  const base = fileName.replace(/\.[^.]+$/, '') || 'file';
-  return base.replace(/[^\w\u4e00-\u9fff.-]+/g, '_').slice(0, 64);
-}
-
-function guessExt(contentType: string): string {
-  switch (contentType) {
-    case 'image/png':
-      return '.png';
-    case 'image/jpeg':
-      return '.jpg';
-    case 'image/webp':
-      return '.webp';
-    case 'application/pdf':
-      return '.pdf';
-    default:
-      return '';
+  getActiveDriverName(): string {
+    return this.storageService.getActiveDriverName();
   }
 }
