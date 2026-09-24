@@ -23,7 +23,8 @@ import {
 } from './document-status.js';
 import { DocumentContentEntity } from './entities/document-content.entity.js';
 import { DocumentReviewService } from './document-review.service.js';
-import { RustfsService, UploadBytesResult } from '../storage/rustfs.service.js';
+import { StorageService } from '../storage/storage.service.js';
+import type { UploadBytesResult } from '../storage/storage.interface.js';
 import { RagOrchestrator } from '../rag/rag.orchestrator.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
 import { FileParserService } from './parser/file-parser.service.js';
@@ -42,7 +43,7 @@ import {
 export interface DocumentFileInfo {
   /** 源文件直链 URL */
   fileUrl: string | null;
-  /** RustFS 对象 Key */
+  /** 对象存储 Key */
   objectKey: string | null;
   /** 原始文件名 */
   fileName: string;
@@ -100,7 +101,7 @@ export class DocumentService {
     @InjectEntityManager()
     private readonly em: EntityManager,
     private readonly fileParserService: FileParserService,
-    private readonly rustfs: RustfsService,
+    private readonly storage: StorageService,
     private readonly ragOrchestrator: RagOrchestrator,
     /** 文档级全文搜索索引（ES kh_document）；与 RAG 的 kh_chunk 互补 */
     private readonly searchIndexService: SearchIndexService,
@@ -826,20 +827,20 @@ export class DocumentService {
     }
 
     let uploadResult: UploadBytesResult | null = null;
-    if (this.rustfs.isEnabled()) {
+    if (this.storage.isEnabled()) {
       try {
-        uploadResult = await this.rustfs.uploadBytes(file.buffer, {
+        uploadResult = await this.storage.uploadBytes(file.buffer, {
           fileName: originalFilename,
           contentType: file.mimetype || 'application/octet-stream',
           prefix: 'documents',
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`原文件上传 RustFS 失败：${message}`);
+        this.logger.error(`原文件上传存储服务失败：${message}`);
         throw new BadRequestException(`原文件上传失败: ${message}`);
       }
     } else {
-      this.logger.warn('RustFS 未启用，跳过原文件上传');
+      this.logger.warn('对象存储未启用，跳过原文件上传');
     }
 
     const title = titleFromFilename(originalFilename);

@@ -169,3 +169,21 @@ S3 风格 XML 错误 `AccessDenied`。该问题与上面第 1 项联动：**决�
 | **审核超时策略** | 待审任务可无限期挂着，`pending-count` 只增不减 | 有 SLA 要求时加超时字段与自动流转（超时驳回 / 升级），配合定时任务 |
 | **索引失败补偿任务表** | 审核通过 / 发布后索引构建失败时只记日志，靠人工 `POST /rag/reindex` 兜底（该接口扫的是已发布文档，可覆盖） | 出现「发布成功但搜不到」的反馈且需要自动愈合时做；与 KG 队列共用一套失败任务表更划算 |
 | **审核记录清理** | `kh_document_review` 未加外键，文档硬删后审核流水会成为孤儿数据 | 需要物理删除文档或做数据保留策略时定（软删除当前不受影响） |
+
+---
+
+## 7. 对象存储双模式（阿里云 OSS 与本地 RustFS）
+
+> 记录时间：2026-09-24
+> **状态：✅ 已完成（2026-09-24 在分支 `v2-two-storage-mode` 上实现）**
+
+**背景**：系统原先仅依赖本地 Docker 运行的 RustFS（S3 兼容）存储原文件与 PDF 抽图。开发者具备已开通的 500G 阿里云 OSS 资源包，需要将生产/云端存储平滑迁移至阿里云 OSS，同时保留本地 RustFS 代码以便离线开发或回切。
+
+**解决方案**：
+- 引入策略模式（Driver Pattern）：抽象 `StorageDriver` 接口（`uploadBytes` / `isEnabled`）；
+- 驱动实现：
+  - `AliyunOssDriver`：基于现有的 `@aws-sdk/client-s3` 接入阿里云 OSS S3 兼容协议（Virtual-Hosted 模式），零引入外部庞大 SDK，支持自定义 CDN 域名；
+  - `RustfsDriver`：完整保留本地 RustFS 的 Path-Style 存储与自动建桶逻辑；
+- 统一门面与兼容层：
+  - `StorageService` 根据 `STORAGE_DRIVER=oss|rustfs` 动态调度，未指定且配置 OSS Key 时智能优选 OSS；
+  - `RustfsService` 保留向下兼容导出，现有上层模块（`DocumentService` 与 `FileParserService`）零成本平滑适配。

@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { RustfsService } from '../../storage/rustfs.service.js';
+import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../../storage/storage.service.js';
 import { parseDocx } from './parsers/docx.parser.js';
+import { parseImageWithVlm } from './parsers/image.parser.js';
 import { parsePdf } from './parsers/pdf.parser.js';
 import { parsePlainText } from './parsers/plain-text.parser.js';
 import { parsePptx } from './parsers/pptx.parser.js';
@@ -15,6 +17,10 @@ const SUPPORTED_EXTENSIONS = new Set([
   'pptx',
   'txt',
   'md',
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
 ]);
 
 export interface ParseInput {
@@ -33,7 +39,10 @@ export interface ParseInput {
 export class FileParserService {
   private readonly logger = new Logger(FileParserService.name);
 
-  constructor(private readonly rustfs: RustfsService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly config: ConfigService,
+  ) {}
 
   /** 是否为已支持的扩展名（大小写不敏感） */
   isSupported(extension: string): boolean {
@@ -51,6 +60,7 @@ export class FileParserService {
    * - pdf：可选提取图片并上传到 rustfs（`pdf-images/` 前缀）
    * - xlsx：exceljs 优先，失败降级 officeparser（见 parseXlsxWithFallback）
    * - pptx / docx / txt / md：直接调用对应 parser
+   * - png / jpg / jpeg / webp：调用视觉大模型 (VLM, 需配置独立 VLM_API_KEY)
    */
   async parse(file: ParseInput): Promise<string> {
     const extension = getExtension(file.originalname);
@@ -75,10 +85,10 @@ export class FileParserService {
       case 'pdf':
         result = await parsePdf(file.buffer, {
           // 存储未启用时不传 uploadImage，PDF 仅输出文本/表格
-          uploadImage: this.rustfs.isEnabled()
+          uploadImage: this.storage.isEnabled()
             ? async (bytes, fileName, contentType) =>
                 (
-                  await this.rustfs.uploadBytes(bytes, {
+                  await this.storage.uploadBytes(bytes, {
                     fileName,
                     contentType,
                     prefix: 'pdf-images',
@@ -96,6 +106,17 @@ export class FileParserService {
       case 'txt':
       case 'md':
         result = parsePlainText(file.buffer);
+        break;
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+      case 'webp':
+        result = await parseImageWithVlm(file.buffer, extension, {
+          apiKey: this.config.get<string>('VLM_API_KEY'),
+          model: this.config.get<string>('VLM_MODEL') || 'qwen3.8-flash',
+          baseUrl: this.config.get<string>('VLM_BASE_URL'),
+          timeoutMs: Number(this.config.get('VLM_TIMEOUT_MS', 60000)),
+        });
         break;
       default:
         throw new BadRequestException(`不支持的文件格式: ${extension}`);
