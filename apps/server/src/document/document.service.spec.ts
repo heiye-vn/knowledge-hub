@@ -221,3 +221,74 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
     await expect(service.findPublishedIds()).resolves.toEqual(['a', 'b']);
   });
 });
+
+describe('DocumentService 图片上传解析闭环', () => {
+  it('支持上传并解析 png 图片文件，落库并持久化 fileExtension 为 png', async () => {
+    let savedDoc: Record<string, unknown> | null = null;
+    let savedContent: Record<string, unknown> | null = null;
+
+    const mockEm = {
+      transaction: async (cb: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          create: (_entity: unknown, data: Record<string, unknown>) => data,
+          save: async (data: Record<string, unknown>) => {
+            if ('title' in data) savedDoc = data;
+            if ('content' in data) savedContent = data;
+            return data;
+          },
+        };
+        return cb(tx);
+      },
+    };
+
+    const mockParser = {
+      isSupported: (ext: string) => ['png', 'jpg', 'pdf'].includes(ext),
+      supportedList: () => 'png, jpg, pdf',
+      parse: async () => '# 解析出的架构图\n\n- 前端组件\n- 网关层',
+    };
+
+    const mockRustfs = {
+      isEnabled: () => true,
+      uploadBytes: async () => ({
+        url: 'http://rustfs/documents/arch.png',
+        key: 'documents/arch.png',
+      }),
+    };
+
+    const service = new DocumentService(
+      mockEm as never,
+      mockParser as never,
+      mockRustfs as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const fakeFile = {
+      originalname: 'system-architecture.png',
+      buffer: Buffer.from('fake-png-binary'),
+      size: 1024,
+      mimetype: 'image/png',
+    } as unknown as Express.Multer.File;
+
+    const result = await service.uploadAndCreateDocument(fakeFile, {
+      remark: '系统架构快照',
+    });
+
+    expect(result.title).toBe('system-architecture');
+    expect(result.fileExtension).toBe('png');
+    expect(result.fileUrl).toBe('http://rustfs/documents/arch.png');
+    expect(result.contentPreview).toContain('解析出的架构图');
+    expect(savedDoc).toMatchObject({
+      title: 'system-architecture',
+      fileExtension: 'png',
+      fileUrl: 'http://rustfs/documents/arch.png',
+      objectKey: 'documents/arch.png',
+      status: 0,
+    });
+    expect(savedContent).toMatchObject({
+      content: '# 解析出的架构图\n\n- 前端组件\n- 网关层',
+    });
+  });
+});
+
