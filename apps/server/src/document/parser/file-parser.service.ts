@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RustfsService } from '../../storage/rustfs.service.js';
+import { StorageService } from '../../storage/storage.service.js';
 import { parseDocx } from './parsers/docx.parser.js';
 import { parseImageWithVlm } from './parsers/image.parser.js';
 import { parsePdf } from './parsers/pdf.parser.js';
@@ -40,7 +40,7 @@ export class FileParserService {
   private readonly logger = new Logger(FileParserService.name);
 
   constructor(
-    private readonly rustfs: RustfsService,
+    private readonly storage: StorageService,
     private readonly config: ConfigService,
   ) {}
 
@@ -85,10 +85,10 @@ export class FileParserService {
       case 'pdf':
         result = await parsePdf(file.buffer, {
           // 存储未启用时不传 uploadImage，PDF 仅输出文本/表格
-          uploadImage: this.rustfs.isEnabled()
+          uploadImage: this.storage.isEnabled()
             ? async (bytes, fileName, contentType) =>
                 (
-                  await this.rustfs.uploadBytes(bytes, {
+                  await this.storage.uploadBytes(bytes, {
                     fileName,
                     contentType,
                     prefix: 'pdf-images',

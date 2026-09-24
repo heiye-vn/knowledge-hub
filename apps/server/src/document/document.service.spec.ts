@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import type { RagOrchestrator } from '../rag/rag.orchestrator.js';
-import type { RustfsService } from '../storage/rustfs.service.js';
+import type { StorageService } from '../storage/storage.service.js';
 import { DocumentService } from './document.service.js';
 import type { DocumentEntity, DocumentStatus } from './entities/document.entity.js';
 import type { FileParserService } from './parser/file-parser.service.js';
@@ -72,7 +72,7 @@ function makeService(
   const service = new DocumentService(
     em as never,
     {} as unknown as FileParserService,
-    {} as unknown as RustfsService,
+    {} as unknown as StorageService,
     ragOrchestrator as unknown as RagOrchestrator,
     searchIndexService as unknown as SearchIndexService,
     kgBuildPublisher as never,
@@ -189,7 +189,7 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
     const service = new DocumentService(
       em as never,
       {} as unknown as FileParserService,
-      {} as unknown as RustfsService,
+      {} as unknown as StorageService,
       {} as unknown as RagOrchestrator,
       {} as unknown as SearchIndexService,
       {} as never,
