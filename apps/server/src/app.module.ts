@@ -6,6 +6,7 @@ import { AppService } from './app.service.js';
 import { DocumentModule } from './document/document.module.js';
 import { DocumentEntity } from './document/entities/document.entity.js';
 import { DocumentContentEntity } from './document/entities/document-content.entity.js';
+import { DocumentReviewEntity } from './document/entities/document-review.entity.js';
 
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
@@ -29,7 +30,7 @@ import { KgModule } from './kg/kg.module.js';
         username: config.get<string>('POSTGRES_USER', 'user'),
         password: config.get<string>('POSTGRES_PASSWORD', '123456'),
         database: config.get<string>('POSTGRES_DB', 'knowledge_hub'),
-        entities: [DocumentEntity, DocumentContentEntity],
+        entities: [DocumentEntity, DocumentContentEntity, DocumentReviewEntity],
         synchronize: false,
       }),
     }),

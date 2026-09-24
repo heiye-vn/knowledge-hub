@@ -49,6 +49,11 @@
 | **v5** `mq/*` 第三套 RabbitMQ 拓扑 | `mq/kg.graph`（BullMQ 第二队列） | 🟡 分叉 | 消息结构 `KgBuildMessage` 同名同形；实现层沿用 BullMQ 分叉 |
 | **v5**（无，v10 才有） | `kg/kg.controller.ts` 图查询接口 | 🔵 新增 | 实体检索 / 邻居查询 / 统计 + 手动建图入口，补「只写不读」 |
 | **v5** Neo4j（`neo4j:latest`，compose 内无版本锁定） | 同款 compose 配置（按用户指定与参考项目一致） | 🟢 对齐 | apoc 插件同样安装（当前代码未用到，留作后续扩展） |
+| **v6** `document/document-review.service.ts` | 同名服务 | 🟡 分叉 | 职责收窄为只读写 `kh_document_review`，状态迁移与索引联动留在 `DocumentService` —— 两边都要读写文档表，双向依赖要么循环 DI，要么把「改状态 + 建索引」复制两份 |
+| **v6** `kh_document_review` 表 | 同名同形 + 部分唯一索引 | 🔴 超越 | `uq_kh_document_review_pending` 把「一文档一条待审」下沉到数据库；参考项目只在应用层 `findOne` 判空，并发提审会插进两条 |
+| **v6** `PUT :id/publish` 需审分支 | 同名接口，语义扩展 | 🟡 分叉 | 需审时转待审核（不建索引）；**归档一律拒绝** —— 参考项目把 Archived 放进可发布集合，且需审模式下会漏到免审直发分支，等于绕过审核 |
+| **v6** `archive` / `save-draft` | 同名接口 | 🟢 对齐 | 同样仅已发布可调用；差异在实现层：本项目同步清理三条索引并回传清理结果，参考项目为异步 MQ 投递 |
+| **v6** 审核人来源 | 请求体传 `reviewerId` / `reviewerName` | 🟡 分叉 | 鉴权接入前同样由调用方传入，但在 DTO 注释与 dev-notes 明确标为临时方案；参考项目默认兜底成「审核员」且不标注 |
 
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
@@ -94,6 +99,13 @@
 | **2026-09-20** | **KG 模块归属**（v5） | 塞在 `pipeline/` 下 | 独立 `kg/` 模块，且 **KgModule 不导入 DocumentModule**（Worker 直接注入 EntityManager + Mongo 模型加载文档） | DocumentModule 需要 KgModule 的 Publisher 投递任务，反向导入会成模块环 |
 | **2026-09-20** | **写图方式**（v5） | 逐条 `session.run`（一块 30 实体 = 60+ 次往返） | `UNWIND` 批量写实体 / MENTIONS / 关系 | 网络往返是建图耗时的大头之一 |
 | **2026-09-20** | **文档正文存储** | PG 元数据 + MongoDB 正文（`document_content` 集合）+ 双写补偿 | **单 PostgreSQL**：正文并入 `kh_document_content`（1:1，document_id 主键兼外键），Mongo/Mongoose 整体下线 | Mongo 原始规划的 chunks / chat_histories 已分别落在 ES / 未启动，只剩正文一个集合，维护独立数据库得不偿失；单库事务直接消灭双写补偿整段逻辑。详见 [dev-notes/storage-single-postgres.md](./dev-notes/storage-single-postgres.md) |
+| **2026-09-24** | **审核职责归属**（v6） | 审核服务既改文档状态又投递 MQ，与文档服务双向耦合 | 审核服务只管 `kh_document_review`；状态迁移 + 索引联动由 `DocumentService` 编排 | 索引联动只有一处出口不会漏；依赖单向也不需要 forwardRef |
+| **2026-09-24** | **归档能否重新发布**（v6） | 可发布集合含 Archived，且需审模式下会漏到免审直发分支 | 归档定为终态，两种模式都拒绝 | 修缺陷：归档文档能绕过审核直接上线，重新回到检索结果里 |
+| **2026-09-24** | **待审唯一性**（v6） | 应用层 `findOne(review_result IS NULL)` 判空 | 部分唯一索引 `WHERE review_result IS NULL` 兜底，唯一冲突转 400 | 修缺陷：应用层判空挡不住并发，两个请求会各插一条待审 |
+| **2026-09-24** | **索引与状态的一致性**（v6） | 审核通过后投递 MQ，失败只 `logger.warn`，无补偿 | 审核流水 + 文档状态同事务提交；索引在事务外构建，失败时文档已是 Published，可用 `POST /rag/reindex` 兜底 | ES / Neo4j 无法与 PG 共享事务，把「可恢复」作为设计目标，而不是假装不会失败 |
+| **2026-09-24** | **删除时的索引清理**（v6） | 无条件投递 unpublish | 仅已发布才清索引 | 草稿 / 待审 / 归档本就不在索引里，无条件清理只是给 ES 与 Neo4j 增加无谓写放大 |
+| **2026-09-24** | **创建即发布是否建索引**（v6） | 免审模式下 create(Published) 会投递 MQ | 同：免审创建即发布也建索引 | 保持「Published 是索引唯一入口」自洽，否则这条规则自己破了 |
+
 
 ---
 

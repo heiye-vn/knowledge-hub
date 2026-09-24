@@ -13,16 +13,24 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { DocumentService } from './document.service.js';
+import { DocumentReviewService } from './document-review.service.js';
 import { CreateDocumentDto } from './dto/create-document.dto.js';
 import { UpdateDocumentDto } from './dto/update-document.dto.js';
 import { QueryDocumentDto } from './dto/query-document.dto.js';
 import { UploadParseDto } from './dto/upload-parse.dto.js';
+import {
+  QueryReviewTasksDto,
+  ReviewDecisionDto,
+} from './dto/review.dto.js';
 import { FileInterceptor } from '@nestjs/platform-express';
 
 /** 文档接口 */
 @Controller('documents')
 export class DocumentController {
-  constructor(private readonly documentService: DocumentService) {}
+  constructor(
+    private readonly documentService: DocumentService,
+    private readonly reviewService: DocumentReviewService,
+  ) {}
 
   /** 创建文档 */
   @Post()
@@ -47,6 +55,41 @@ export class DocumentController {
     return this.documentService.uploadAndCreateDocument(file, meta);
   }
 
+  // -------------------------------------------------------------------------
+  // 审核工作台
+  // ⚠️ 必须注册在 @Get(':id') 之前，否则会被 :id 路由吃掉（Nest 按声明顺序匹配）
+  // -------------------------------------------------------------------------
+
+  /** 审核任务列表（默认待办；status=pending|approved|rejected） */
+  @Get('reviews/tasks')
+  listReviewTasks(@Query() query: QueryReviewTasksDto) {
+    return this.reviewService.listTasks(query);
+  }
+
+  /** 待审核数量（工作台角标） */
+  @Get('reviews/tasks/pending-count')
+  pendingReviewCount() {
+    return this.reviewService.getPendingCount();
+  }
+
+  /** 审核通过：文档转已发布并建三条索引 */
+  @Post('reviews/tasks/:taskId/approve')
+  approveReview(
+    @Param('taskId') taskId: string,
+    @Body() dto: ReviewDecisionDto,
+  ) {
+    return this.documentService.approveReview(taskId, dto);
+  }
+
+  /** 审核驳回：文档回草稿，作者改稿后可再次提交（reviewComment 必填） */
+  @Post('reviews/tasks/:taskId/reject')
+  rejectReview(
+    @Param('taskId') taskId: string,
+    @Body() dto: ReviewDecisionDto,
+  ) {
+    return this.documentService.rejectReview(taskId, dto);
+  }
+
   /** 分页查询文档列表（仅元数据） */
   @Get()
   findAll(@Query() query: QueryDocumentDto) {
@@ -59,16 +102,20 @@ export class DocumentController {
     return this.documentService.findOne(id);
   }
 
-  /** 更新文档 */
+  /** 更新文档（待审核中不可改正文/标题；不允许改状态，状态走专用接口） */
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateDocumentDto) {
     return this.documentService.update(id, dto);
   }
 
   /**
-   * 发布文档并触发 RAG 索引（分块 → 嵌入 → 写入 ES kh_chunk）
+   * 发布文档并触发索引（分块 → 嵌入 → 写入 ES kh_chunk）
    *
-   * 注意：仅本接口会触发索引；直接 PATCH status 不会重建向量。
+   * DOCUMENT_REQUIRE_APPROVAL=true（默认）时本接口等价「提交审核」：
+   * 文档转为待审核（3）且不建索引，需由审核员 approve 后才进索引。
+   * 设为 false 时免审直发，立即建三条索引。
+   *
+   * 注意：仅本接口会触发索引；直接 PATCH status 会被拒绝（不允许改状态）。
    * 管线幂等，重复发布会先清旧块再覆盖写。
    */
   @Put(':id/publish')
@@ -76,7 +123,37 @@ export class DocumentController {
     return this.documentService.publish(id);
   }
 
-  /** 软删除文档 */
+  /** 提交审核：草稿 / 已发布 → 待审核（原为已发布会先清索引） */
+  @Post(':id/reviews/submit')
+  submitReview(@Param('id') id: string) {
+    return this.documentService.submitForReview(id);
+  }
+
+  /** 当前待审任务（无则 null） */
+  @Get(':id/reviews/current')
+  getCurrentReview(@Param('id') id: string) {
+    return this.reviewService.getCurrentReview(id);
+  }
+
+  /** 该文档全部审核记录（含已通过 / 已驳回），按提交时间倒序 */
+  @Get(':id/reviews/history')
+  getReviewHistory(@Param('id') id: string) {
+    return this.reviewService.getReviewHistory(id);
+  }
+
+  /** 归档：已发布 → 已归档（终态），清索引但保留正文 */
+  @Put(':id/archive')
+  archive(@Param('id') id: string) {
+    return this.documentService.archive(id);
+  }
+
+  /** 下架编辑：已发布 → 草稿，清索引后可改内容再重新发布 / 提审 */
+  @Put(':id/save-draft')
+  saveAsDraft(@Param('id') id: string) {
+    return this.documentService.saveAsDraft(id);
+  }
+
+  /** 软删除文档（已发布的同时清索引，其余状态本就不在索引里） */
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.documentService.remove(id);

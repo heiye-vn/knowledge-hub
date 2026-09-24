@@ -56,7 +56,7 @@ COMMENT ON COLUMN kh_document.team_id IS '所属团队/空间ID';
 COMMENT ON COLUMN kh_document.author_id IS '作者/创建者ID';
 COMMENT ON COLUMN kh_document.cover_image IS '封面图片存储路径或URL';
 COMMENT ON COLUMN kh_document.tags IS '标签列表（逗号分隔或JSON字符串）';
-COMMENT ON COLUMN kh_document.status IS '文档状态（0: 草稿, 1: 已发布, 2: 已归档）';
+COMMENT ON COLUMN kh_document.status IS '文档状态（0: 草稿, 1: 已发布, 2: 已归档, 3: 待审核）';
 COMMENT ON COLUMN kh_document.remark IS '备注说明';
 COMMENT ON COLUMN kh_document.view_count IS '浏览/阅读次数';
 COMMENT ON COLUMN kh_document.like_count IS '点赞次数';
@@ -97,3 +97,42 @@ ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_name VARCHAR;
 ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_size BIGINT;
 ALTER TABLE kh_document ADD COLUMN IF NOT EXISTS file_extension VARCHAR;
 ALTER TABLE kh_document DROP COLUMN IF EXISTS content_id;
+
+-- ---------------------------------------------------------------------------
+-- 文档发布审核记录
+-- 一次「提交审核」一行；review_result 为 NULL 表示待审，通过 / 驳回后回填。
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS kh_document_review (
+    id BIGINT PRIMARY KEY,                          -- 审核记录 ID（雪花）
+    document_id BIGINT NOT NULL,                    -- 被审文档 ID → kh_document.id
+    reviewer_id BIGINT,                             -- 审核人 ID；待审时为 NULL
+    reviewer_name VARCHAR,                          -- 审核人姓名
+    review_result SMALLINT,                         -- NULL=待审 1=通过 2=驳回
+    review_comment VARCHAR,                         -- 审核意见（驳回必填）
+    before_status SMALLINT NOT NULL,                -- 提审前文档状态（0 草稿 / 1 已发布）
+    reviewed_at TIMESTAMP,                          -- 审核完成时间
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),    -- 提交审核时间
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- 按文档查审核历史
+CREATE INDEX IF NOT EXISTS idx_kh_document_review_document_id
+    ON kh_document_review(document_id);
+
+-- 🔴 修基线实现缺陷：其「同一文档只能有一条待审」只在应用层判空，并发提审会插进两条。
+-- 这里用部分唯一索引把约束下沉到数据库：一个文档最多一条 review_result IS NULL 的记录。
+-- 顺带覆盖待办列表的查询模式（部分索引只装待审行，历史越久越不吃亏）。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_kh_document_review_pending
+    ON kh_document_review(document_id) WHERE review_result IS NULL;
+
+COMMENT ON TABLE kh_document_review IS '文档发布审核记录表';
+COMMENT ON COLUMN kh_document_review.id IS '审核记录主键ID（雪花）';
+COMMENT ON COLUMN kh_document_review.document_id IS '被审文档ID（kh_document.id）';
+COMMENT ON COLUMN kh_document_review.reviewer_id IS '审核人ID（待审时为 NULL，接入鉴权后从登录态取）';
+COMMENT ON COLUMN kh_document_review.reviewer_name IS '审核人姓名';
+COMMENT ON COLUMN kh_document_review.review_result IS '审核结果（NULL: 待审, 1: 通过, 2: 驳回）';
+COMMENT ON COLUMN kh_document_review.review_comment IS '审核意见（驳回时必填）';
+COMMENT ON COLUMN kh_document_review.before_status IS '提交审核前的文档状态（区分首次提审与已发布改稿重审）';
+COMMENT ON COLUMN kh_document_review.reviewed_at IS '审核完成时间';
+COMMENT ON COLUMN kh_document_review.created_at IS '提交审核时间';
+COMMENT ON COLUMN kh_document_review.updated_at IS '记录最后更新时间';

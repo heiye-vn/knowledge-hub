@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "knowledge-hub 知识库 API",
-    "description": "knowledge-hub 全量接口集合（文档摄取 + RAG 发布检索）。\n\n## 导入方式\nApifox → 项目 → 导入 → 选择 Postman 集合（本文件）→ 确认。\n导入后右上角切换到「开发环境」，baseUrl 默认 http://localhost:3000。\n\n## 推荐测试顺序\n1. 健康检查 —— 确认服务已启动\n2. 创建文档 —— 成功后从响应复制 data.id，填到集合变量 docId\n3. 发布文档（RAG）—— status 变为 1 且 indexed=true，表示已写入 ES kh_chunk\n4. 混合检索（块级）—— 用刚才文档里的关键词验证语义召回\n5. 文档级搜索 —— /search/documents 验证关键词命中与 highlight 高亮\n6. 删除文档 —— 验证 vectorsCleaned / searchCleaned / kgDeleteQueued（联动清理 ES 双索引 + 投递 KG 清理）\n7. 知识图谱 —— POST /kg/build 建图后，用 /kg/entities、/kg/neighbors 验证实体与关系\n\n## 注意事项\n- 所有响应统一信封：{ code, message, data, timestamp }，code=200/201 为成功\n- 阶段一发布是**同步执行**（无消息队列），长文档可能耗时数秒\n- mode=vector/hybrid 依赖 EMBEDDING_API_KEY；未配置时返回空数组且不报错\n- 上传解析接口为 multipart/form-data，字段名固定为 file，需在 Body 里重新选择本地文件\n- 路径参数用集合变量 {{docId}}，改一处即可全局生效",
+    "description": "knowledge-hub 全量接口集合（文档摄取 + RAG 发布检索）。\n\n## 导入方式\nApifox → 项目 → 导入 → 选择 Postman 集合（本文件）→ 确认。\n导入后右上角切换到「开发环境」，baseUrl 默认 http://localhost:3000。\n\n## 推荐测试顺序\n1. 健康检查 —— 确认服务已启动\n2. 创建文档 —— 成功后从响应复制 data.id，填到集合变量 docId\n3. 发布 / 提审 —— 默认开启审核（DOCUMENT_REQUIRE_APPROVAL=true）：publish 只提交审核，status 变 3 且不建索引；关掉开关后 publish 直发，status 变 1 且 indexed=true\n3.1 审核通过 —— 待审列表拿到 reviewTaskId 后 approve，文档转 1 并写入三条索引\n4. 混合检索（块级）—— 用刚才文档里的关键词验证语义召回\n5. 文档级搜索 —— /search/documents 验证关键词命中与 highlight 高亮\n6. 删除文档 —— 验证 vectorsCleaned / searchCleaned / kgDeleteQueued（联动清理 ES 双索引 + 投递 KG 清理）\n7. 知识图谱 —— POST /kg/build 建图后，用 /kg/entities、/kg/neighbors 验证实体与关系\n\n## 注意事项\n- 所有响应统一信封：{ code, message, data, timestamp }，code=200/201 为成功\n- 阶段一发布是**同步执行**（无消息队列），长文档可能耗时数秒\n- mode=vector/hybrid 依赖 EMBEDDING_API_KEY；未配置时返回空数组且不报错\n- 文档状态：0 草稿 / 1 已发布 / 2 已归档（终态）/ 3 待审核；**PATCH 不允许改 status**，状态一律走 publish / archive / save-draft / 审核接口\n- 待审核文档不可编辑正文或标题（PATCH 返回 400）\n- 上传解析接口为 multipart/form-data，字段名固定为 file，需在 Body 里重新选择本地文件\n- 路径参数用集合变量 {{docId}}，改一处即可全局生效",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -16,6 +16,10 @@
     {
       "key": "keyword",
       "value": "年假"
+    },
+    {
+      "key": "reviewTaskId",
+      "value": ""
     }
   ],
   "item": [
@@ -306,7 +310,7 @@
                 "publish"
               ]
             },
-            "description": "**核心接口**。设为已发布后同步执行两条索引：\n1. RAG：分块 → Embedding（qwen3.7-flash, 1024维）→ 写入 ES kh_chunk\n2. Search：整篇快照 → 写入 ES kh_document\n\n响应字段：\n- indexed / chunks：RAG 链路（需要 ES + EMBEDDING_API_KEY）\n- searchIndexed：文档级搜索链路（**只需要 ES**）\n\n两条链路可用性分开判定：没配 Embedding Key 时 indexed=false 但 searchIndexed 仍可能为 true。\n幂等：两条索引都以文档 ID 为 _id 覆盖写，重复发布不会增长。\n阶段一为同步调用，长文档可能耗时数秒。"
+            "description": "**索引写入的唯一入口**。行为受 DOCUMENT_REQUIRE_APPROVAL 控制：\n- true（默认，不设置即 true）：只提交审核 —— 文档转待审核（status=3）、**不建任何索引**，返回 { status: 3, reviewId, pendingApproval: true }，需审核通过后才会进索引\n- false：免审直发 —— 置为已发布并同步建两条索引\n  1. RAG：分块 → Embedding（qwen3.7-flash, 1024维）→ 写入 ES kh_chunk\n  2. Search：整篇快照 → 写入 ES kh_document\n\n响应字段（免审路径）：\n- indexed / chunks：RAG 链路（需要 ES + EMBEDDING_API_KEY）\n- searchIndexed：文档级搜索链路（**只需要 ES**）\n- kgQueued：KG 建图任务是否入队\n\n两条链路可用性分开判定：没配 Embedding Key 时 indexed=false 但 searchIndexed 仍可能为 true。\n幂等：两条索引都以文档 ID 为 _id 覆盖写，重复发布不会增长。\n只允许草稿 / 已发布调用：已归档是终态（400），待审核中重复发布也拒绝（400）。\n阶段一为同步调用，长文档可能耗时数秒。"
           }
         },
         {
@@ -371,6 +375,232 @@
               ]
             },
             "description": "只重建指定文档。管线幂等（先清旧块再按 chunkId 覆盖写），重复执行安全。\n前置同全量重建。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "文档审核与状态流转",
+      "item": [
+        {
+          "name": "提交审核（草稿 / 已发布 → 待审核）",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/reviews/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "reviews",
+                "submit"
+              ]
+            },
+            "description": "把文档置为待审核（status=3）并落一条审核流水。\n\n- 原状态为草稿：只写流水，不涉及索引\n- 原状态为已发布：**先清掉三条索引**（审核期间不该再被检索到），响应 indexesCleaned 给出清理结果\n\nDOCUMENT_REQUIRE_APPROVAL=true（默认）时，PUT /documents/:id/publish 走的也是这条链路，本接口只是把「提审」单独暴露出来（已发布文档改稿后重审用）。\n同一文档同时只能有一条待审记录：重复提交返回 400「该文档已有待审核任务」。"
+          }
+        },
+        {
+          "name": "当前待审任务",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/reviews/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "reviews",
+                "current"
+              ]
+            },
+            "description": "返回该文档唯一一条 review_result 为 NULL 的审核记录；没有待审任务时返回 null。\n从这里复制 id 填到集合变量 reviewTaskId，供 approve / reject 使用。"
+          }
+        },
+        {
+          "name": "审核任务列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/reviews/tasks?status=pending&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "reviews",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "审核员工作台列表。status=pending（默认，省略同义）/ approved / rejected。\n返回 { items, total, page, pageSize }，按提交时间倒序。"
+          }
+        },
+        {
+          "name": "待审核数量",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/reviews/tasks/pending-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "reviews",
+                "tasks",
+                "pending-count"
+              ]
+            },
+            "description": "工作台角标用的计数（纯数字）。"
+          }
+        },
+        {
+          "name": "审核通过",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/documents/reviews/tasks/{{reviewTaskId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "reviews",
+                "tasks",
+                "{{reviewTaskId}}",
+                "approve"
+              ]
+            },
+            "description": "审核通过 → 文档置为已发布（status=1）并同步建三条索引：\nRAG 向量块（indexed / chunks）、文档级搜索（searchIndexed）、KG 建图入队（kgQueued）。\n\n审核流水与文档状态在同一个 PG 事务里提交；索引构建在事务外，万一失败文档已是已发布状态，可用 POST /rag/reindex 兜底重建。\nreviewComment / reviewerId / reviewerName 均为可选（项目尚未接入鉴权，审核人暂由调用方传入，接入登录后改为从登录态取值）。\n重复处理同一任务返回 400「该审核任务已处理」。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reviewComment\": \"内容符合规范，准予发布\",\n  \"reviewerId\": \"20001\",\n  \"reviewerName\": \"审核员张三\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "审核驳回",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/documents/reviews/tasks/{{reviewTaskId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "reviews",
+                "tasks",
+                "{{reviewTaskId}}",
+                "reject"
+              ]
+            },
+            "description": "审核驳回 → 文档回草稿（status=0），作者改稿后可再次 submit / publish。\n**reviewComment 必填**，空串会返回 400「驳回意见不能为空」。\n驳回不再清索引：若这次提审来自已发布，索引在提审时已经清掉了。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reviewComment\": \"请补充操作步骤与负责人信息\",\n  \"reviewerId\": \"20001\",\n  \"reviewerName\": \"审核员张三\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "审核历史",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/reviews/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "reviews",
+                "history"
+              ]
+            },
+            "description": "该文档全部审核记录（含已通过 / 已驳回），按提交时间倒序。\nbeforeStatus 字段可区分「首次提审」与「已发布改稿重审」。"
+          }
+        },
+        {
+          "name": "归档（已发布 → 已归档）",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/archive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "archive"
+              ]
+            },
+            "description": "仅**已发布**文档可归档。归档是终态，不允许再发布或提审。\n清三条索引但保留正文（vectorsCleaned / searchCleaned / kgDeleteQueued 给出清理结果）；清索引失败只记日志，不阻断状态流转。\n非已发布状态调用返回 400「只有已发布文档可以归档」。"
+          }
+        },
+        {
+          "name": "下架编辑（已发布 → 草稿）",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/save-draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "save-draft"
+              ]
+            },
+            "description": "已发布文档下架回草稿，清掉索引后可改内容，再走 publish / submit 重新上线。\n仅已发布可调用，其余状态返回 400。"
           }
         }
       ]
