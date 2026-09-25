@@ -23,8 +23,19 @@ import {
   ReviewDecisionDto,
 } from './dto/review.dto.js';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
+import { RoleCode } from '../common/constants/roles.js';
+import type { AuthUser } from '../auth/auth-user.interface.js';
 
-/** 文档接口 */
+/**
+ * 文档接口
+ *
+ * 鉴权约定：全接口需登录（全局 JwtAuthGuard）；写操作的操作人字段
+ * （authorId / createBy / updateBy / 审核人）一律从登录态取，
+ * DTO 里的同名字段仅作显式覆盖（兼容脚本调用）；审核工作台需
+ * ROLE_REVIEWER 或 ROLE_ADMIN。
+ */
 @Controller('documents')
 export class DocumentController {
   constructor(
@@ -34,8 +45,8 @@ export class DocumentController {
 
   /** 创建文档 */
   @Post()
-  create(@Body() dto: CreateDocumentDto) {
-    return this.documentService.create(dto);
+  create(@Body() dto: CreateDocumentDto, @CurrentUser() user: AuthUser) {
+    return this.documentService.create(dto, undefined, user);
   }
 
   /** 上传文件并解析为 Markdown，创建草稿（form-data 字段名: file） */
@@ -48,11 +59,12 @@ export class DocumentController {
   uploadAndParse(
     @UploadedFile() file: Express.Multer.File,
     @Body() meta: UploadParseDto,
+    @CurrentUser() user: AuthUser,
   ) {
     if (!file) {
       throw new BadRequestException('请上传文件（form-data 字段名: file）');
     }
-    return this.documentService.uploadAndCreateDocument(file, meta);
+    return this.documentService.uploadAndCreateDocument(file, meta, user);
   }
 
   // -------------------------------------------------------------------------
@@ -62,32 +74,44 @@ export class DocumentController {
 
   /** 审核任务列表（默认待办；status=pending|approved|rejected） */
   @Get('reviews/tasks')
+  @Roles(RoleCode.REVIEWER, RoleCode.ADMIN)
   listReviewTasks(@Query() query: QueryReviewTasksDto) {
     return this.reviewService.listTasks(query);
   }
 
   /** 待审核数量（工作台角标） */
   @Get('reviews/tasks/pending-count')
+  @Roles(RoleCode.REVIEWER, RoleCode.ADMIN)
   pendingReviewCount() {
     return this.reviewService.getPendingCount();
   }
 
-  /** 审核通过：文档转已发布并建三条索引 */
+  /** 审核通过：文档转已发布并建三条索引（审核人取自登录态） */
   @Post('reviews/tasks/:taskId/approve')
+  @Roles(RoleCode.REVIEWER, RoleCode.ADMIN)
   approveReview(
     @Param('taskId') taskId: string,
     @Body() dto: ReviewDecisionDto,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.documentService.approveReview(taskId, dto);
+    return this.documentService.approveReview(taskId, dto, {
+      reviewerId: user.userId,
+      reviewerName: user.realName ?? user.username,
+    });
   }
 
   /** 审核驳回：文档回草稿，作者改稿后可再次提交（reviewComment 必填） */
   @Post('reviews/tasks/:taskId/reject')
+  @Roles(RoleCode.REVIEWER, RoleCode.ADMIN)
   rejectReview(
     @Param('taskId') taskId: string,
     @Body() dto: ReviewDecisionDto,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.documentService.rejectReview(taskId, dto);
+    return this.documentService.rejectReview(taskId, dto, {
+      reviewerId: user.userId,
+      reviewerName: user.realName ?? user.username,
+    });
   }
 
   /** 分页查询文档列表（仅元数据） */
@@ -104,8 +128,12 @@ export class DocumentController {
 
   /** 更新文档（待审核中不可改正文/标题；不允许改状态，状态走专用接口） */
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateDocumentDto) {
-    return this.documentService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateDocumentDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.documentService.update(id, dto, user);
   }
 
   /**

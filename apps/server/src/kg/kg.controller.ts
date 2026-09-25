@@ -12,6 +12,8 @@ import { IsArray, IsOptional, IsString } from 'class-validator';
 import { GraphBuildService } from './graph-build.service.js';
 import { KgBuildPublisher } from './kg-build.publisher.js';
 import { GraphEntitiesDto, GraphNeighborsDto } from './dto/graph-query.dto.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
+import { RoleCode } from '../common/constants/roles.js';
 
 /** 手动建图 / 删图请求体 */
 export class KgBuildDto {
@@ -45,6 +47,7 @@ export class KgController {
 
   /** 手动触发建图：传 documentIds 建指定文档，省略则全量重建已发布文档 */
   @Post('build')
+  @Roles(RoleCode.ADMIN)
   async build(@Body() dto: KgBuildDto) {
     if (!this.kgBuildPublisher.isAvailable()) {
       throw new ServiceUnavailableException(
@@ -73,6 +76,7 @@ export class KgController {
 
   /** 手动清理某篇文档的图谱（删除链路会自动触发，此处用于纠错） */
   @Delete('documents/:id')
+  @Roles(RoleCode.ADMIN)
   async removeGraph(@Param('id') id: string) {
     if (!this.graphBuildService.isAvailable()) {
       throw new ServiceUnavailableException('Neo4j 不可用');

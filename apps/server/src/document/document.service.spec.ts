@@ -255,7 +255,12 @@ describe('DocumentService 发布审核流程', () => {
 
   it('审核通过：转已发布并建索引', async () => {
     const { service } = makeService(makeDoc(3));
-    await expect(service.approveReview('review-1')).resolves.toMatchObject({
+    await expect(
+      service.approveReview('review-1', {}, {
+        reviewerId: '1000000000000000002',
+        reviewerName: '审核员张三',
+      }),
+    ).resolves.toMatchObject({
       status: Status.Published,
       indexed: true,
       chunks: 3,
@@ -265,7 +270,11 @@ describe('DocumentService 发布审核流程', () => {
   it('审核驳回：回草稿', async () => {
     const { service } = makeService(makeDoc(3));
     await expect(
-      service.rejectReview('review-1', { reviewComment: '请补充操作步骤' }),
+      service.rejectReview(
+        'review-1',
+        { reviewComment: '请补充操作步骤' },
+        { reviewerId: '1000000000000000002', reviewerName: '审核员张三' },
+      ),
     ).resolves.toMatchObject({
       status: Status.Draft,
       reviewId: 'review-1',

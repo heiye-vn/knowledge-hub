@@ -23,6 +23,7 @@ import {
 } from './document-status.js';
 import { DocumentContentEntity } from './entities/document-content.entity.js';
 import { DocumentReviewService } from './document-review.service.js';
+import type { AuthUser } from '../auth/auth-user.interface.js';
 import { StorageService } from '../storage/storage.service.js';
 import type { UploadBytesResult } from '../storage/storage.interface.js';
 import { RagOrchestrator } from '../rag/rag.orchestrator.js';
@@ -63,6 +64,12 @@ export interface IndexBuildResult {
   searchIndexed: boolean;
   /** KG 建图任务是否入队 */
   kgQueued: boolean;
+}
+
+/** 审核操作人（从登录态取，客户端不可传入伪造） */
+export interface ReviewActor {
+  reviewerId: string;
+  reviewerName: string;
 }
 
 /** 清索引结果 */
@@ -122,8 +129,13 @@ export class DocumentService {
    * 待审核必须由 publish / submit 发起（要留审核流水），归档是终态，都不能凭空创建。
    *
    * @param fileInfo 内部参数：上传链路传入的源文件元数据（在线创建时缺省）
+   * @param actor 当前登录用户：authorId / createBy 未显式传入时自动落到操作人
    */
-  async create(dto: CreateDocumentDto, fileInfo?: DocumentFileInfo) {
+  async create(
+    dto: CreateDocumentDto,
+    fileInfo?: DocumentFileInfo,
+    actor?: AuthUser,
+  ) {
     const requestedStatus = dto.status ?? DocumentStatus.Draft;
     if (
       requestedStatus !== DocumentStatus.Draft &&
@@ -151,7 +163,7 @@ export class DocumentService {
         summary: dto.summary,
         categoryId: dto.categoryId,
         teamId: dto.teamId,
-        authorId: dto.authorId,
+        authorId: dto.authorId ?? actor?.userId ?? null,
         coverImage: dto.coverImage,
         tags: dto.tags,
         status,
@@ -166,8 +178,8 @@ export class DocumentService {
         fileExtension: fileInfo?.fileExtension ?? null,
         // 创建即发布时，记录发布时间
         publishTime: status === DocumentStatus.Published ? new Date() : null,
-        createBy: dto.createBy,
-        updateBy: dto.createBy,
+        createBy: dto.createBy ?? actor?.userId ?? null,
+        updateBy: dto.createBy ?? actor?.userId ?? null,
         deleted: false,
       });
       const savedDoc = await tx.save(doc);
@@ -280,8 +292,10 @@ export class DocumentService {
    * - 待审核文档禁止改正文 / 标题（否则审核通过的内容与提交时不是同一份）
    * - PATCH 不允许改 status，状态一律走 publish / archive / save-draft / 审核接口
    *   （这些接口才带索引联动，直接改 status 会留下「已发布但无索引」的脏状态）
+   *
+   * @param actor 当前登录用户：updateBy 未显式传入时自动落到操作人
    */
-  async update(id: string, dto: UpdateDocumentDto) {
+  async update(id: string, dto: UpdateDocumentDto, actor?: AuthUser) {
     const doc = await this.em.findOne(DocumentEntity, {
       where: { id, deleted: false },
     });
@@ -344,6 +358,7 @@ export class DocumentService {
     if (dto.remark !== undefined) doc.remark = dto.remark;
     if (dto.isPublic !== undefined) doc.isPublic = dto.isPublic;
     if (dto.updateBy !== undefined) doc.updateBy = dto.updateBy;
+    else if (actor?.userId) doc.updateBy = actor.userId;
 
     const saved = await this.em.save(doc);
     const finalContent = newContent ?? (await this.loadContent(id));
@@ -437,12 +452,12 @@ export class DocumentService {
    * 索引构建放在事务外——ES / Neo4j 无法与 PG 共享事务，
    * 且索引失败时文档已是 Published，可用 POST /rag/reindex 重建（该接口扫的就是已发布文档）。
    */
-  async approveReview(taskId: string, dto: ReviewDecisionDto = {}) {
+  async approveReview(taskId: string, dto: ReviewDecisionDto = {}, actor: ReviewActor) {
     const { review, doc } = await this.em.transaction(async (tx) => {
       const approved = await this.reviewService.approve(
         taskId,
-        dto.reviewerId,
-        dto.reviewerName,
+        actor.reviewerId,
+        actor.reviewerName,
         dto.reviewComment,
         tx,
       );
@@ -476,13 +491,13 @@ export class DocumentService {
   }
 
   /** 审核驳回：待审核 → 草稿，作者改稿后可再次提交（索引在提审时已清，此处无需再清） */
-  async rejectReview(taskId: string, dto: ReviewDecisionDto = {}) {
+  async rejectReview(taskId: string, dto: ReviewDecisionDto = {}, actor: ReviewActor) {
     const { review, doc } = await this.em.transaction(async (tx) => {
       const rejected = await this.reviewService.reject(
         taskId,
         dto.reviewComment ?? '',
-        dto.reviewerId,
-        dto.reviewerName,
+        actor.reviewerId,
+        actor.reviewerName,
         tx,
       );
 
@@ -788,10 +803,11 @@ export class DocumentService {
     return { id, deleted: true, ...cleanup };
   }
 
-  /** 上传并解析文件 → 创建草稿文档 */
+  /** 上传并解析文件 → 创建草稿文档（authorId/createBy 自动落到当前登录用户） */
   async uploadAndCreateDocument(
     file: Express.Multer.File,
     meta: UploadParseDto = {},
+    actor?: AuthUser,
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('文件不能为空');
@@ -866,6 +882,7 @@ export class DocumentService {
         fileSize: String(file.size),
         fileExtension: extension,
       },
+      actor,
     );
 
     const fileUrl = uploadResult?.url ?? null;

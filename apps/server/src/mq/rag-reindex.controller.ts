@@ -8,6 +8,8 @@ import {
 import { DocumentService } from '../document/document.service.js';
 import { ReindexDto } from './dto/reindex.dto.js';
 import { RagReindexPublisher } from './rag-reindex.publisher.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
+import { RoleCode } from '../common/constants/roles.js';
 
 /**
  * 触发 RAG 重建索引
@@ -32,6 +34,7 @@ export class RagReindexController {
    * - 省略：重建全部已发布文档（换模型后的标准操作）
    */
   @Post('reindex')
+  @Roles(RoleCode.ADMIN)
   async reindex(@Body() dto: ReindexDto) {
     if (!this.publisher.isAvailable()) {
       throw new ServiceUnavailableException(

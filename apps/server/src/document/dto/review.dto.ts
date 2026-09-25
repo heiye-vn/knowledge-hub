@@ -30,23 +30,11 @@ export class QueryReviewTasksDto {
 
 /**
  * 审核通过 / 驳回请求体
- *
- * 🟡 reviewerId / reviewerName 暂时由调用方传入：项目尚未接入鉴权（auth 属后续迭代），
- * 服务层无从得知操作人。接入登录后应改为从登录态取值，本 DTO 对应字段随之废弃。
+ * 审核人身份（ID / 姓名）从登录态（JWT）取，不在 body 传入 —— 客户端无法伪造审核人。
  */
 export class ReviewDecisionDto {
   /** 审核意见（驳回时必填） */
   @IsOptional()
   @IsString()
   reviewComment?: string;
-
-  /** 审核人 ID */
-  @IsOptional()
-  @IsString()
-  reviewerId?: string;
-
-  /** 审核人姓名 */
-  @IsOptional()
-  @IsString()
-  reviewerName?: string;
 }

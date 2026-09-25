@@ -70,16 +70,16 @@ export class DocumentReviewService {
   /** 审核通过：回填审核人与意见（文档状态与索引由调用方负责） */
   async approve(
     reviewId: string,
-    reviewerId?: string,
-    reviewerName?: string,
+    reviewerId: string,
+    reviewerName: string,
     reviewComment?: string,
     tx?: EntityManager,
   ): Promise<DocumentReviewEntity> {
     const review = await this.loadPendingReview(reviewId, tx);
 
     review.reviewResult = ReviewResult.Approved;
-    review.reviewerId = reviewerId ?? null;
-    review.reviewerName = reviewerName ?? null;
+    review.reviewerId = reviewerId;
+    review.reviewerName = reviewerName;
     review.reviewComment = reviewComment?.trim() || null;
     review.reviewedAt = new Date();
 
@@ -90,8 +90,8 @@ export class DocumentReviewService {
   async reject(
     reviewId: string,
     reviewComment: string,
-    reviewerId?: string,
-    reviewerName?: string,
+    reviewerId: string,
+    reviewerName: string,
     tx?: EntityManager,
   ): Promise<DocumentReviewEntity> {
     if (!reviewComment?.trim()) {
@@ -101,8 +101,8 @@ export class DocumentReviewService {
     const review = await this.loadPendingReview(reviewId, tx);
 
     review.reviewResult = ReviewResult.Rejected;
-    review.reviewerId = reviewerId ?? null;
-    review.reviewerName = reviewerName ?? null;
+    review.reviewerId = reviewerId;
+    review.reviewerName = reviewerName;
     review.reviewComment = reviewComment.trim();
     review.reviewedAt = new Date();
 
