@@ -53,7 +53,14 @@
 | **v6** `kh_document_review` 表 | 同名同形 + 部分唯一索引 | 🔴 超越 | `uq_kh_document_review_pending` 把「一文档一条待审」下沉到数据库；参考项目只在应用层 `findOne` 判空，并发提审会插进两条 |
 | **v6** `PUT :id/publish` 需审分支 | 同名接口，语义扩展 | 🟡 分叉 | 需审时转待审核（不建索引）；**归档一律拒绝** —— 参考项目把 Archived 放进可发布集合，且需审模式下会漏到免审直发分支，等于绕过审核 |
 | **v6** `archive` / `save-draft` | 同名接口 | 🟢 对齐 | 同样仅已发布可调用；差异在实现层：本项目同步清理三条索引并回传清理结果，参考项目为异步 MQ 投递 |
-| **v6** 审核人来源 | 请求体传 `reviewerId` / `reviewerName` | 🟡 分叉 | 鉴权接入前同样由调用方传入，但在 DTO 注释与 dev-notes 明确标为临时方案；参考项目默认兜底成「审核员」且不标注 |
+| **v6** 审核人来源 | 请求体传 `reviewerId` / `reviewerName` | 🟡 分叉 | 鉴权接入前同样由调用方传入，但在 DTO 注释与 dev-notes 明确标为临时方案；参考项目默认兜底成「审核员」且不标注。**feat-v7 已收口**：审核人改从 JWT 取（见 v7 行） |
+| **v7** `kh_user` / `kh_role` / `kh_user_role` 三表 | 同名同形（雪花主键 + bigint transformer + 未删除用户名唯一索引） | 🟢 对齐 | 表结构照搬模式；差异：建表并入主项目单文件 `01-init.sql`（参考项目 init.sql 同理，均只在空数据卷时执行） |
+| **v7** `user/user.service.ts`（无 controller，仅服务层） | `user/user.module.ts` 独立模块导出 UserService | 🟡 分叉 | 模块边界更清晰（仓储注册在 UserModule 而非 AuthModule）；账户管理 CRUD 双方都未实现 |
+| **v7** `auth` 五接口（register / login / refresh / me / reviewer-ids） | 同名六接口（多 `logout`） | 🟡 分叉 | 契约形状一致（双令牌 + expiresIn 秒 + userInfo）；新增登出吊销（见分叉登记 2026-09-25） |
+| **v7** 双令牌共用一个 `JWT_SECRET`，payload.type 区分 | **独立双密钥** `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | 🔴 超越 | 共用密钥时任一泄露两枚令牌同时失守；独立密钥 + type 校验双保险，且验签密钥不同让「拿 refresh 调业务」在密码学层面不可行 |
+| **v7** `JwtAuthGuard` + `RolesGuard`（APP_GUARD 全局注册） | 同构双守卫 + `@Public` / `@Roles` / `@CurrentUser` | 🟢 对齐 | 注册方式、执行顺序（先 JWT 后 Roles）、401/403 语义一致；额外对 kg/reindex 管理端点标 `@Roles(ADMIN)`（参考项目未做） |
+| **v7** 审核人从请求体取（已废弃） | 从 `@CurrentUser()` 取，`ReviewDecisionDto` 删除对应字段 | 🔴 超越 | 客户端无法伪造审核人；`DocumentReviewService.approve/reject` 审核人参数改必填，不再兜底「审核员」 |
+| **v7** 操作人字段靠 DTO 显式传 | `create` / `update` / `uploadAndCreateDocument` 注入 actor，`authorId` / `createBy` / `updateBy` 自动落登录用户（DTO 显式传值优先，兼容脚本） | 🔵 新增 | 参考项目也有 actor 注入，但本项目的 fileInfo 第二参使签名不同；语义一致 |
 
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
@@ -105,6 +112,11 @@
 | **2026-09-24** | **索引与状态的一致性**（v6） | 审核通过后投递 MQ，失败只 `logger.warn`，无补偿 | 审核流水 + 文档状态同事务提交；索引在事务外构建，失败时文档已是 Published，可用 `POST /rag/reindex` 兜底 | ES / Neo4j 无法与 PG 共享事务，把「可恢复」作为设计目标，而不是假装不会失败 |
 | **2026-09-24** | **删除时的索引清理**（v6） | 无条件投递 unpublish | 仅已发布才清索引 | 草稿 / 待审 / 归档本就不在索引里，无条件清理只是给 ES 与 Neo4j 增加无谓写放大 |
 | **2026-09-24** | **创建即发布是否建索引**（v6） | 免审模式下 create(Published) 会投递 MQ | 同：免审创建即发布也建索引 | 保持「Published 是索引唯一入口」自洽，否则这条规则自己破了 |
+| **2026-09-25** | **令牌签名密钥**（v7） | access / refresh 共用一个 `JWT_SECRET`，仅靠 payload.type 区分 | **独立双密钥** `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | 共用密钥时任一泄露两枚令牌同时失守；独立密钥让「拿 refresh 调业务接口」在验签层就不可行，且两把密钥可独立轮换 |
+| **2026-09-25** | **登出与令牌吊销**（v7） | 无登出接口、无黑名单，refresh 签发后 7 天内无法作废 | `POST /auth/logout` 拉黑 refresh 的 jti（Redis `SETEX`，TTL=剩余有效期），refresh 前查黑名单 | 短期内改密码 / 踢人无从谈起是鉴权闭环的硬缺口；复用项目既有 Redis（BullMQ 同源），Redis 不可用时降级放行（与队列可用性同风格） |
+| **2026-09-25** | **管理端点的角色控制**（v7） | 全局守卫装了但只对审核接口标过角色，kg / reindex 未标 | `POST /kg/build`、`DELETE /kg/documents/:id`、`POST /rag/reindex` 标 `@Roles(ADMIN)` | 全量重建 / 删图是高危运维操作，只要求登录等于全员可触发 |
+| **2026-09-25** | **JWT 校验后的用户时效性**（v7） | 未明确（payload 快照 vs 回库） | `JwtStrategy.validate` 每请求回库重建 AuthUser（含角色） | 角色变更 / 禁用账户即时生效；每请求多两次查询，换取权限不滞后 |
+| **2026-09-25** | **审核员反查的角色常量**（v7） | `getReviewerIds()` 硬编码字符串 `'ROLE_REVIEWER'` | 使用 `RoleCode.REVIEWER` 常量 | 改角色编码时一处定义全局生效，避免字符串漂移 |
 
 
 ---
