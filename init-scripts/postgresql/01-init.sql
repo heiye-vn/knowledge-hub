@@ -136,3 +136,74 @@ COMMENT ON COLUMN kh_document_review.before_status IS '提交审核前的文档�
 COMMENT ON COLUMN kh_document_review.reviewed_at IS '审核完成时间';
 COMMENT ON COLUMN kh_document_review.created_at IS '提交审核时间';
 COMMENT ON COLUMN kh_document_review.updated_at IS '记录最后更新时间';
+
+-- ---------------------------------------------------------------------------
+-- 用户 / 角色 / 用户-角色关联（feat-v7 鉴权）
+-- 用户与角色多对多，kh_user_role 承接；角色用 role_code 编码标识。
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS kh_user (
+    id BIGINT PRIMARY KEY,                          -- 用户 ID（雪花）
+    username VARCHAR(50) NOT NULL,                  -- 登录用户名
+    password VARCHAR(255) NOT NULL,                 -- 密码（bcrypt 哈希）
+    email VARCHAR(100),                             -- 邮箱（可选）
+    real_name VARCHAR(50),                          -- 真实姓名 / 显示名
+    avatar VARCHAR(500),                            -- 头像 URL
+    status SMALLINT NOT NULL DEFAULT 1,             -- 0 禁用 1 启用
+    last_login_at TIMESTAMP,                        -- 最后登录时间
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),    -- 创建时间
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),    -- 更新时间
+    deleted BOOLEAN NOT NULL DEFAULT false          -- 软删除标记
+);
+
+-- 用户名唯一（仅约束未删除用户，软删后允许同名重建）
+CREATE UNIQUE INDEX IF NOT EXISTS uk_kh_user_username
+    ON kh_user(username) WHERE deleted = false;
+
+CREATE TABLE IF NOT EXISTS kh_role (
+    id BIGINT PRIMARY KEY,                          -- 角色 ID（雪花）
+    role_name VARCHAR(50) NOT NULL,                 -- 角色名称（展示用）
+    role_code VARCHAR(50) NOT NULL UNIQUE,          -- 角色编码（ROLE_ADMIN / ROLE_REVIEWER / ROLE_USER）
+    description VARCHAR(200),                       -- 角色描述
+    status SMALLINT NOT NULL DEFAULT 1              -- 0 禁用 1 启用
+);
+
+CREATE TABLE IF NOT EXISTS kh_user_role (
+    id BIGINT PRIMARY KEY,                          -- 关联 ID（雪花）
+    user_id BIGINT NOT NULL REFERENCES kh_user(id), -- 用户 ID
+    role_id BIGINT NOT NULL REFERENCES kh_role(id), -- 角色 ID
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),    -- 分配时间
+    UNIQUE (user_id, role_id)
+);
+CREATE INDEX IF NOT EXISTS idx_kh_user_role_user_id ON kh_user_role(user_id);
+
+COMMENT ON TABLE kh_user IS '用户表';
+COMMENT ON COLUMN kh_user.id IS '用户主键ID（雪花）';
+COMMENT ON COLUMN kh_user.username IS '登录用户名（未删除范围内唯一）';
+COMMENT ON COLUMN kh_user.password IS '密码哈希（bcrypt, cost=10）';
+COMMENT ON COLUMN kh_user.status IS '账户状态（0: 禁用, 1: 启用）';
+COMMENT ON COLUMN kh_user.last_login_at IS '最后登录时间（登录成功时更新）';
+COMMENT ON COLUMN kh_user.deleted IS '逻辑删除标记';
+COMMENT ON TABLE kh_role IS '角色表';
+COMMENT ON COLUMN kh_role.role_code IS '角色编码（ROLE_ADMIN / ROLE_REVIEWER / ROLE_USER）';
+COMMENT ON TABLE kh_user_role IS '用户-角色关联表（多对多）';
+
+-- 预置角色
+INSERT INTO kh_role (id, role_name, role_code, description) VALUES
+    (2000000000000000001, '管理员', 'ROLE_ADMIN', '系统管理'),
+    (2000000000000000002, '审核员', 'ROLE_REVIEWER', '文档审核'),
+    (2000000000000000003, '普通用户', 'ROLE_USER', '默认角色')
+ON CONFLICT (id) DO NOTHING;
+
+-- 测试账号（密码均为 123456，仅本地开发环境使用）
+INSERT INTO kh_user (id, username, password, email, real_name, status) VALUES
+    (1000000000000000001, 'admin', '$2b$10$ACMLz4miGMa4XMxyWiCEu.1ps/.BrcFLDeah73H2Kxulo6bqil6aK', 'admin@company.com', '系统管理员', 1),
+    (1000000000000000002, 'reviewer', '$2b$10$ACMLz4miGMa4XMxyWiCEu.1ps/.BrcFLDeah73H2Kxulo6bqil6aK', 'reviewer@company.com', '审核员张三', 1),
+    (1000000000000000003, 'user', '$2b$10$ACMLz4miGMa4XMxyWiCEu.1ps/.BrcFLDeah73H2Kxulo6bqil6aK', 'user@company.com', '普通用户李四', 1)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO kh_user_role (id, user_id, role_id) VALUES
+    (3000000000000000001, 1000000000000000001, 2000000000000000001),  -- admin → 管理员
+    (3000000000000000002, 1000000000000000001, 2000000000000000002),  -- admin → 审核员
+    (3000000000000000003, 1000000000000000002, 2000000000000000002),  -- reviewer → 审核员
+    (3000000000000000004, 1000000000000000003, 2000000000000000003)   -- user → 普通用户
+ON CONFLICT (id) DO NOTHING;

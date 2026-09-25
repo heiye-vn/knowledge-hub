@@ -7,6 +7,9 @@ import { DocumentModule } from './document/document.module.js';
 import { DocumentEntity } from './document/entities/document.entity.js';
 import { DocumentContentEntity } from './document/entities/document-content.entity.js';
 import { DocumentReviewEntity } from './document/entities/document-review.entity.js';
+import { UserEntity } from './user/entities/user.entity.js';
+import { RoleEntity } from './user/entities/role.entity.js';
+import { UserRoleEntity } from './user/entities/user-role.entity.js';
 
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
@@ -15,6 +18,7 @@ import { StorageModule } from './storage/storage.module.js';
 import { RagModule } from './rag/rag.module.js';
 import { MqModule } from './mq/mq.module.js';
 import { KgModule } from './kg/kg.module.js';
+import { AuthModule } from './auth/auth.module.js';
 
 @Module({
   imports: [
@@ -30,7 +34,14 @@ import { KgModule } from './kg/kg.module.js';
         username: config.get<string>('POSTGRES_USER', 'user'),
         password: config.get<string>('POSTGRES_PASSWORD', '123456'),
         database: config.get<string>('POSTGRES_DB', 'knowledge_hub'),
-        entities: [DocumentEntity, DocumentContentEntity, DocumentReviewEntity],
+        entities: [
+          DocumentEntity,
+          DocumentContentEntity,
+          DocumentReviewEntity,
+          UserEntity,
+          RoleEntity,
+          UserRoleEntity,
+        ],
         synchronize: false,
       }),
     }),
@@ -41,6 +52,8 @@ import { KgModule } from './kg/kg.module.js';
     MqModule,
     // feat-v5：KG 知识图谱（抽取 + Neo4j 建图 + BullMQ kg.graph 队列）
     KgModule,
+    // feat-v7：用户鉴权（JWT 双令牌 + 全局守卫）
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [
