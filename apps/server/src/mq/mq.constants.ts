@@ -51,6 +51,15 @@ export const DEFAULT_KG_BUILD_ATTEMPTS = 3;
 /** KG 建图任务：重试退避基数（毫秒） */
 export const DEFAULT_KG_BUILD_BACKOFF_MS = 30_000;
 
+/**
+ * 已完成任务的保留时长（毫秒，默认 1 小时）。
+ *
+ * 【易错】此前 `removeOnComplete: true` 会让完成任务在结束时**立刻删除**，
+ * 任务状态查询查 completed 任务永远是 404，无法区分「已完成」与「不存在」。
+ * 改为按时长保留，到期由 BullMQ 惰性清理。
+ */
+export const COMPLETED_JOB_RETENTION_MS = 60 * 60 * 1000;
+
 /** KG 建图 Worker 并发数。抽取本身有 KG_EXTRACT_CONCURRENCY 控制单篇内的并发，这里限同时处理的篇数 */
 export const DEFAULT_KG_BUILD_CONCURRENCY = 1;
 

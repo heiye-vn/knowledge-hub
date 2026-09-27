@@ -1,8 +1,10 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
+import type { Job } from 'bullmq';
 import { randomUUID } from 'crypto';
 import {
+  COMPLETED_JOB_RETENTION_MS,
   DEFAULT_KG_BUILD_ATTEMPTS,
   DEFAULT_KG_BUILD_BACKOFF_MS,
   DEFAULT_REDIS_HOST,
@@ -54,7 +56,9 @@ export class KgBuildPublisher implements OnModuleInit, OnModuleDestroy {
           attempts,
           // KG 单块抽取 19~57s，失败重试等更久再退避
           backoff: { type: 'exponential', delay: backoffMs },
-          removeOnComplete: true,
+          // 完成任务保留 1 小时供状态查询，之后惰性清理
+          //（true 会立刻删除，导致 GET /tasks/:taskId 查完成任务永远 404）
+          removeOnComplete: { age: COMPLETED_JOB_RETENTION_MS },
           removeOnFail: false,
         },
       });
@@ -91,6 +95,16 @@ export class KgBuildPublisher implements OnModuleInit, OnModuleDestroy {
 
   isAvailable(): boolean {
     return this.queue !== null;
+  }
+
+  /**
+   * 按 jobId 查询任务（任务状态查询 `GET /tasks/:taskId` 用）。
+   * 完成任务超出保留期被清理后返回 null。
+   */
+  async findJob(jobId: string): Promise<Job | null> {
+    if (!this.queue) return null;
+    // BullMQ 6 getJob 返回 undefined，统一归一为 null
+    return (await this.queue.getJob(jobId)) ?? null;
   }
 
   /** 发布后调用：按文档 ID 建图 */

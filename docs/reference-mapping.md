@@ -62,6 +62,8 @@
 | **v7** 审核人从请求体取（已废弃） | 从 `@CurrentUser()` 取，`ReviewDecisionDto` 删除对应字段 | 🔴 超越 | 客户端无法伪造审核人；`DocumentReviewService.approve/reject` 审核人参数改必填，不再兜底「审核员」 |
 | **v7** 操作人字段靠 DTO 显式传 | `create` / `update` / `uploadAndCreateDocument` 注入 actor，`authorId` / `createBy` / `updateBy` 自动落登录用户（DTO 显式传值优先，兼容脚本） | 🔵 新增 | 参考项目也有 actor 注入，但本项目的 fileInfo 第二参使签名不同；语义一致 |
 
+| （无，基线两条异步链路均无状态查询入口） | `mq/task-status.*` → `GET /tasks/:taskId` | 🔵 新增 | KG 建图与 RAG 全量重建共用一套任务状态查询：jobId（taskId）全局唯一，两队列各查一次先命中先用；完成任务保留 1 小时供查询（`removeOnComplete: true` 会导致查完成任务永远 404），失败任务永久保留 |
+
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
 ---

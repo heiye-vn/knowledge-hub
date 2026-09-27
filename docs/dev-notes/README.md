@@ -41,6 +41,7 @@
 | [image-document-parser.md](./image-document-parser.md) | 功能模块 · 图片文档多模态解析（VLM Qwen3.8-Flash） | 2026-09-24 | **VLM vs PaddleOCR**；Base64 避开内网访问壁垒；`VLM_API_KEY` 严格隔离；单测 Mock 保证 **0 Token 消耗** |
 | [dual-storage-mode.md](./dual-storage-mode.md) | 功能模块 · 对象存储双模式（阿里云 OSS 与本地 RustFS） | 2026-09-24 | **零额外依赖（复用 S3 SDK）**；Virtual-Hosted 规范直链与 CDN；门面路由与历史代理兼容 |
 | [authentication.md](./authentication.md) | 功能模块 · 用户鉴权（JWT 双令牌 + 全局守卫） | 2026-09-25 | **双令牌独立密钥**；登出吊销 Redis 黑名单（ioredis v6 无 waitUntilReady）；全局守卫「最小标注」原则；审核人从令牌取，不信前端 |
+| [queue-task-status.md](./queue-task-status.md) | 功能模块 · 队列任务状态查询（`GET /tasks/:taskId`） | 2026-09-28 | **`removeOnComplete: true` 会让「查完成任务」永远 404**；Redis 断连时 getJob 无限挂起必须加超时；jobId 全局唯一 → 两队列各查一次先命中先用 |
 | [reference-project-alignment.md](./reference-project-alignment.md) | 方法论 · 与参考项目的对照策略 | 2026-09-19 | 三层判断法（模式/实现/缺陷）：什么照搬、什么可换、什么必须改 |
 
 
