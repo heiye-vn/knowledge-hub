@@ -24,7 +24,7 @@ import { UserModule } from '../user/user.module.js';
  * 先 JwtAuthGuard（登录校验，@Public 放行）后 RolesGuard（@Roles 才校验）。
  */
 @Module({
-  imports: [PassportModule.register({ defaultStrategy: 'jwt' }), JwtModule.register({}), RedisModule, UserModule],
+  imports: [PassportModule.register({ defaultStrategy: 'jwt' }), JwtModule.register({}), RedisModule, MailModule, UserModule],
   controllers: [AuthController],
   providers: [
     AuthService,
