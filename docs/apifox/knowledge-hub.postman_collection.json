@@ -32,6 +32,18 @@
     {
       "key": "refreshToken",
       "value": ""
+    },
+    {
+      "key": "activationToken",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "roleId",
+      "value": ""
     }
   ],
   "item": [
@@ -1036,7 +1048,7 @@
                 "register"
               ]
             },
-            "description": "注册新用户，默认绑定 ROLE_USER。返回 {userId, message}。password 至少 6 位；用户名未删除范围内唯一。",
+            "description": "注册新用户，默认绑定 ROLE_USER。返回 {userId, message, emailVerificationRequired}。password 至少 6 位；用户名未删除范围内唯一；邮箱已填时做占用校验。REQUIRE_EMAIL_VERIFICATION=true 时 email 必填，注册后需查收激活邮件（见「邮箱激活与重置密码」folder）才能登录。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"testuser\",\n  \"password\": \"123456\"\n}",
@@ -1175,6 +1187,546 @@
             "description": "审核员用户 ID 列表（按 ROLE_REVIEWER 反查有效用户）。**需 ROLE_ADMIN 或 ROLE_REVIEWER**，普通用户返回 403。"
           },
           "name": "审核员用户 ID 列表"
+        }
+      ]
+    },
+    {
+      "name": "邮箱激活与重置密码",
+      "item": [
+        {
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-email?token={{activationToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-email"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{activationToken}}",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "邮箱激活。注册邮件里的链接携带一次性 token（24h 有效），校验通过置 email_verified=1 并删除 token（再用即失效）。仅 REQUIRE_EMAIL_VERIFICATION=true 时注册才需要激活。"
+          },
+          "name": "邮箱激活"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/reset/send-code",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "password",
+                "reset",
+                "send-code"
+              ]
+            },
+            "description": "发送重置密码验证码。邮箱必须已注册；6 位数字码 10 分钟有效（Redis）；60 秒冷却内重复请求被拒（「验证码已发送，请稍后再试」）。邮箱不存在报「该邮箱未注册」。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@company.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "发送重置密码验证码"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "password",
+                "reset"
+              ]
+            },
+            "description": "验证码重置密码。一次性提交邮箱+验证码+新密码（至少 6 位）；校验通过改密并删除验证码（同一码只能用一次），之后用新密码登录。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@company.com\",\n  \"code\": \"123456\",\n  \"newPassword\": \"654321\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "验证码重置密码"
+        }
+      ]
+    },
+    {
+      "name": "用户中心（登录即可）",
+      "item": [
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "更新自己的资料（realName / avatar，均可选）。返回更新后的用户 VO。改密码走 /users/password/change，用户名不可改。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"realName\": \"李四\",\n  \"avatar\": \"https://example.com/a.png\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "更新自己的资料（realName / avatar，均可选）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "stats"
+              ]
+            },
+            "description": "我的统计（当前为文档贡献数 documentCount）。后续可扩展审校量等维度。"
+          },
+          "name": "我的统计（当前为文档贡献数 documentCount）"
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/password/change",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "password",
+                "change"
+              ]
+            },
+            "description": "修改自己的密码。需验证 oldPassword；newPassword 至少 6 位。原密码错误报 400「原密码错误」。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"123456\",\n  \"newPassword\": \"654321\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "修改自己的密码"
+        }
+      ]
+    },
+    {
+      "name": "用户与角色管理（ADMIN）",
+      "item": [
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/page?page=1&pageSize=10&keyword=&status=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "page"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10",
+                  "disabled": false
+                },
+                {
+                  "key": "keyword",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "分页查询用户（仅 ADMIN）。keyword 模糊匹配用户名/姓名/邮箱；status 过滤（0 禁用 1 启用）。pageSize 上限 100。返回 {list, total, page, pageSize}，list 为 VO（不含密码）。"
+          },
+          "name": "分页查询用户（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "新建用户（仅 ADMIN）。username/password 必填（密码至少 6 位）；email/realName/avatar/status 可选；roleCodes 指定初始角色（缺省绑 ROLE_USER）。返回创建后的 VO。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newuser\",\n  \"password\": \"123456\",\n  \"email\": \"newuser@company.com\",\n  \"realName\": \"新用户\",\n  \"roleCodes\": [\n    \"ROLE_USER\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "新建用户（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "用户详情（仅 ADMIN），返回 VO（脱敏，不含密码哈希）。"
+          },
+          "name": "用户详情（仅 ADMIN），返回 VO（脱敏，不含密码哈希）"
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "更新用户（仅 ADMIN）。全部可选；password 不能通过此接口改（走 /users/{{userId}}/password/reset）；email/username 改动会做占用校验。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"realName\": \"改名后的姓名\",\n  \"status\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "更新用户（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "删除用户（仅 ADMIN）。软删除（deleted=true），文档保留创建人痕迹。"
+          },
+          "name": "删除用户（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/password/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}",
+                "password",
+                "reset"
+              ]
+            },
+            "description": "管理员重置指定用户密码（仅 ADMIN）。不需要旧密码；newPassword 至少 6 位。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "管理员重置指定用户密码（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}",
+                "roles"
+              ]
+            },
+            "description": "查询用户当前角色编码（仅 ADMIN）。返回 {userId, roleCodes}。"
+          },
+          "name": "查询用户当前角色编码（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}",
+                "roles"
+              ]
+            },
+            "description": "全量替换用户角色（仅 ADMIN）。roleCodes 中角色必须存在且启用，否则 404/400。返回替换后的 {userId, roleCodes}。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleCodes\": [\n    \"ROLE_USER\",\n    \"ROLE_REVIEWER\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "全量替换用户角色（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/roles/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "roles",
+                "list"
+              ]
+            },
+            "description": "角色列表（仅 ADMIN）。全部角色含禁用。"
+          },
+          "name": "角色列表（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "roles"
+              ]
+            },
+            "description": "新建角色（仅 ADMIN）。roleCode 全局唯一（如 ROLE_EDITOR），重复报 409。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleName\": \"编辑\",\n  \"roleCode\": \"ROLE_EDITOR\",\n  \"description\": \"内容编辑\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "新建角色（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/roles/{{roleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "roles",
+                "{{roleId}}"
+              ]
+            },
+            "description": "更新角色（仅 ADMIN）。全部可选；status=0 禁用后立即不参与鉴权。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"更新后的描述\",\n  \"status\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "更新角色（仅 ADMIN）"
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/roles/{{roleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "roles",
+                "{{roleId}}"
+              ]
+            },
+            "description": "删除角色（仅 ADMIN）。仍有用户引用的角色删除会因外键约束失败（有意设计：先解绑再删）。"
+          },
+          "name": "删除角色（仅 ADMIN）"
         }
       ]
     }

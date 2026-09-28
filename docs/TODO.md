@@ -187,3 +187,30 @@ S3 风格 XML 错误 `AccessDenied`。该问题与上面第 1 项联动：**决�
 - 统一门面与兼容层：
   - `StorageService` 根据 `STORAGE_DRIVER=oss|rustfs` 动态调度，未指定且配置 OSS Key 时智能优选 OSS；
   - `RustfsService` 保留向下兼容导出，现有上层模块（`DocumentService` 与 `FileParserService`）零成本平滑适配。
+
+---
+
+## 8. 用户模块（2026-09-28）遗留项
+
+> 记录时间：2026-09-28
+> 状态：待实现
+
+**背景**：邮箱激活 / 验证码重置密码 / 用户角色管理已落地（见 `dev-notes/user-module.md`），以下为识别到的安全与体验缺口。
+
+### 8.1 登录与验证码限流
+
+- **风险**：重置密码的 60s 冷却只防「重发轰炸」，不防验证码暴力猜解——6 位码 10^6 组合，10 分钟有效窗口内若无尝试次数限制可枚举；登录接口同理无限流。
+- **候选方案**：验证码 verify 连错 5 次即作废（Redis 计数键 `kh_auth:reset-code:fail:{email}`，TTL 与验证码对齐）；登录/发码接口加 IP + 账号维度的滑动窗口限流。
+- **触发条件**：暴露到公网前必须做；纯内网开发环境可暂缓。
+
+### 8.2 重发激活邮件入口
+
+- **现状**：激活邮件丢失只能等 24h token 过期后重新注册，或管理员删号重建。
+- **候选方案**：`POST /auth/activation/resend`（登录前凭用户名+密码调用，或管理员侧触发）；复用 `EmailActivationService.createToken` 的「同用户旧 token 自动作废」语义。
+- **触发条件**：开启 `REQUIRE_EMAIL_VERIFICATION=true` 的真实注册流程上线时。
+
+### 8.3 管理员改邮箱不重置验证状态
+
+- **现状**：`updateUser` 允许改 email，但不会置 `email_verified=0`——换绑邮箱后旧验证状态被沿用。
+- **候选方案**：email 变更时置 0（若邮箱验证开关开启），并触发新邮箱验证流程。
+- **触发条件**：与 8.2 一起做。

@@ -119,6 +119,12 @@
 | **2026-09-25** | **管理端点的角色控制**（v7） | 全局守卫装了但只对审核接口标过角色，kg / reindex 未标 | `POST /kg/build`、`DELETE /kg/documents/:id`、`POST /rag/reindex` 标 `@Roles(ADMIN)` | 全量重建 / 删图是高危运维操作，只要求登录等于全员可触发 |
 | **2026-09-25** | **JWT 校验后的用户时效性**（v7） | 未明确（payload 快照 vs 回库） | `JwtStrategy.validate` 每请求回库重建 AuthUser（含角色） | 角色变更 / 禁用账户即时生效；每请求多两次查询，换取权限不滞后 |
 | **2026-09-25** | **审核员反查的角色常量**（v7） | `getReviewerIds()` 硬编码字符串 `'ROLE_REVIEWER'` | 使用 `RoleCode.REVIEWER` 常量 | 改角色编码时一处定义全局生效，避免字符串漂移 |
+| **2026-09-28** | **Redis 连接管理**（v8） | 新建独立 redis module，各服务各自建 ioredis 连接 | 抽共用 `RedisService` 薄封装（一条连接 + 4 原语），`TokenRevocationService` 改注入复用，BullMQ 不动 | 连接样板（lazyConnect + 限时探测 + 降级）只留一份；BullMQ 自管连接无裸客户端可收敛，强行统一属过度设计 |
+| **2026-09-28** | **验证类功能的降级策略**（v8） | Redis 连不上直接抛错，无降级分层 | fail-open（吊销/队列，可用性优先）与 fail-closed（激活 token/验证码，`assertAvailable()` 直接 503）按功能性质分流 | 验证码是重置密码的唯一身份核验，跳过校验 = 防线消失；闸门断电不能等于敞开 |
+| **2026-09-28** | **邮件实现**（v8） | `@nestjs-modules/mailer`（模板引擎全家桶） | 裸 `nodemailer` + 手拼纯文本 | 只有两封纯文本邮件，模板引擎那层抽象用不上；本地联调加 MailHog（compose），零真实发信 |
+| **2026-09-28** | **Redis key 命名空间**（v8） | `email:activation:token:*` / `password:reset:code:*` | 统一 `kh_auth:*` 前缀（`activate:token` / `activate:user` / `reset-code`） | 与既有 `kh_auth:revoke:*` 同命名空间，一个 auth 域在 Redis 里可整体观察/清理 |
+| **2026-09-28** | **邮箱唯一性**（v8） | 注册不查邮箱占用，无唯一索引 | `uk_kh_user_email` 部分唯一索引（`WHERE deleted=false AND email IS NOT NULL`）+ 注册/管理侧查重 | 重置密码按邮箱找人依赖唯一性，否则「查到多个用户」没有合理语义；部分索引与用户名唯一同风格，软删不占用 |
+| **2026-09-28** | **激活拦截的报错语义**（v8） | 未激活报错与凭据错误混在同层 | 未激活为独立报错（401「账户未激活」），凭据错误保持防枚举合并文案 | 未激活报错发生在密码验证**之后**，不泄漏「账号是否存在」之外的新信息；混在一起反而丢失用户引导 |
 
 
 ---
