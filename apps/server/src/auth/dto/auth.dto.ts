@@ -9,7 +9,10 @@ export class LoginDto {
   password: string;
 }
 
-/** 注册入参（密码至少 6 位；注册即启用，无需激活） */
+/**
+ * 注册入参（密码至少 6 位）。
+ * 默认注册即启用；REQUIRE_EMAIL_VERIFICATION=true 时 email 必填、注册后需邮件激活。
+ */
 export class RegisterDto {
   @IsString()
   username: string;

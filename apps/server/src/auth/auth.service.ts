@@ -1,12 +1,27 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import type { AuthUser } from './auth-user.interface.js';
 import type { LoginDto, RegisterDto } from './dto/auth.dto.js';
+import type {
+  ResetPasswordByEmailDto,
+  SendResetCodeDto,
+} from './dto/password-reset.dto.js';
 import { RoleCode } from '../common/constants/roles.js';
 import { UserService } from '../user/user.service.js';
+import { MailService } from '../mail/mail.service.js';
 import { TokenRevocationService } from './token-revocation.service.js';
+import { EmailActivationService } from './email-activation.service.js';
+import {
+  PasswordResetService,
+  RESET_CODE_COOLDOWN_SECONDS,
+  RESET_CODE_TTL_SECONDS,
+} from './password-reset.service.js';
 
 /** 登录 / 刷新的返回结构 */
 export interface LoginResult {
@@ -29,11 +44,14 @@ export interface TokenPayload {
 }
 
 /**
- * 认证服务：注册 / 登录 / 刷新 / 当前用户。
+ * 认证服务：注册 / 登录 / 刷新 / 当前用户 / 邮箱激活 / 验证码重置密码。
  *
  * 双 Token 机制：access 短期（默认 2h）调业务接口，refresh 长期（默认 7d）
  * 只用来换新 access。两类令牌使用**独立签名密钥**——任一泄露不殃及另一类，
  * 且 payload.type 与验签密钥双重隔离，杜绝拿 refresh 直接调业务接口。
+ *
+ * 验证类流程（激活 / 验证码）的降级策略是 fail-closed：
+ * Redis 或邮件不可用直接失败，绝不放行——它们是安全闸门，详见 dev-notes。
  */
 @Injectable()
 export class AuthService {
@@ -42,6 +60,9 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly revocation: TokenRevocationService,
+    private readonly mail: MailService,
+    private readonly emailActivation: EmailActivationService,
+    private readonly passwordReset: PasswordResetService,
   ) {}
 
   private accessSecret(): string {
@@ -70,6 +91,13 @@ export class AuthService {
     if (unit === 'm') return n * 60;
     if (unit === 'h') return n * 3600;
     return n * 86400;
+  }
+
+  /** 是否要求注册后邮箱激活（默认 false：注册即启用，免激活） */
+  private requireEmailVerification(): boolean {
+    return (
+      this.config.get<string>('REQUIRE_EMAIL_VERIFICATION', 'false') === 'true'
+    );
   }
 
   private signAccessToken(user: AuthUser): string {
@@ -106,14 +134,89 @@ export class AuthService {
     return this.buildLoginResult(user);
   }
 
+  /**
+   * 注册。开启邮箱验证时：写 email_verified=0 → 生成激活 token（Redis 24h）
+   * → 发激活邮件；发信失败回滚 token，避免留下永远激活不了的账户。
+   */
   async register(
     dto: RegisterDto,
-  ): Promise<{ userId: string; message: string }> {
-    const { userId } = await this.userService.register(dto);
+  ): Promise<{
+    userId: string;
+    message: string;
+    emailVerificationRequired: boolean;
+  }> {
+    const requireVerification = this.requireEmailVerification();
+    const result = await this.userService.register({
+      ...dto,
+      requireEmailVerification: requireVerification,
+    });
+
+    if (result.emailVerificationRequired && dto.email) {
+      const token = await this.emailActivation.createToken(result.userId);
+      try {
+        await this.mail.sendActivationEmail(dto.email, dto.username, token);
+      } catch {
+        await this.emailActivation.deleteByToken(token);
+        throw new BadRequestException('激活邮件发送失败，请稍后再试');
+      }
+      return {
+        userId: result.userId,
+        message: '注册成功，请查收邮件激活账户',
+        emailVerificationRequired: true,
+      };
+    }
+
     return {
-      userId,
+      userId: result.userId,
       message: '注册成功，请登录',
+      emailVerificationRequired: false,
     };
+  }
+
+  /** 邮箱激活：校验并消费 token（一次性），置 email_verified=1 */
+  async verifyEmail(token: string): Promise<{ message: string }> {
+    const userId = await this.emailActivation.consumeToken(token);
+    if (!userId) {
+      throw new BadRequestException('激活链接无效或已过期');
+    }
+    const message = await this.userService.activateEmail(userId);
+    return { message };
+  }
+
+  /** 发送重置密码验证码：邮箱必须已注册；60 秒冷却（Redis TTL 反推） */
+  async sendResetCode(dto: SendResetCodeDto): Promise<{ message: string }> {
+    const user = await this.userService.findByEmail(dto.email);
+    if (!user) {
+      throw new BadRequestException('该邮箱未注册');
+    }
+
+    // 刚发出去时 TTL≈600s；剩余 TTL > 540s 说明距上次发送不足 60s，拦截重发
+    const ttl = await this.passwordReset.getTtl(dto.email);
+    if (ttl > RESET_CODE_TTL_SECONDS - RESET_CODE_COOLDOWN_SECONDS) {
+      throw new BadRequestException('验证码已发送，请稍后再试');
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    await this.passwordReset.set(dto.email, code);
+    try {
+      await this.mail.sendResetCodeEmail(dto.email, user.username, code);
+    } catch {
+      await this.passwordReset.delete(dto.email);
+      throw new BadRequestException('邮件发送失败，请稍后再试');
+    }
+    return { message: '验证码已发送' };
+  }
+
+  /** 验证码重置密码：校验通过改密并删除验证码（一次性） */
+  async resetPasswordByEmail(
+    dto: ResetPasswordByEmailDto,
+  ): Promise<{ message: string }> {
+    if (!(await this.passwordReset.verify(dto.email, dto.code))) {
+      throw new BadRequestException('验证码错误或已过期');
+    }
+    await this.userService.resetPasswordByEmail(dto.email, dto.newPassword);
+    await this.passwordReset.delete(dto.email);
+    return { message: '密码重置成功，请登录' };
   }
 
   /** 用 refresh token 换新双令牌；过期 / 伪造 / 类型不符均 401 */

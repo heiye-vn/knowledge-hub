@@ -122,6 +122,16 @@ services:
       retries: 5
       start_period: 10s
 
+  # MailHog（本地开发邮件捕获）— 激活 / 重置密码等验证邮件的收件箱
+  # SMTP 1025 / Web 8025：应用把邮件发到这里，浏览器打开 8025 查看，零真实发信
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: knowledge_hub_mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
   # Neo4j（KG 知识图谱存储）— feat-v5：实体关系建图
   # 不是发布链路的强依赖：NEO4J_ENABLED=false 时应用照常启动，仅图谱不可用
   # 配置与参考项目 knowledge-hub-backend v5 保持一致（neo4j:latest + apoc 插件）

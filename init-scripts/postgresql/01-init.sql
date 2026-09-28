@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS kh_user (
     email VARCHAR(100),                             -- 邮箱（可选）
     real_name VARCHAR(50),                          -- 真实姓名 / 显示名
     avatar VARCHAR(500),                            -- 头像 URL
+    email_verified SMALLINT NOT NULL DEFAULT 1,     -- 邮箱是否验证（0 未验证 1 已验证；默认 1 兼容存量账号）
     status SMALLINT NOT NULL DEFAULT 1,             -- 0 禁用 1 启用
     last_login_at TIMESTAMP,                        -- 最后登录时间
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),    -- 创建时间
@@ -158,6 +159,10 @@ CREATE TABLE IF NOT EXISTS kh_user (
 -- 用户名唯一（仅约束未删除用户，软删后允许同名重建）
 CREATE UNIQUE INDEX IF NOT EXISTS uk_kh_user_username
     ON kh_user(username) WHERE deleted = false;
+
+-- 邮箱唯一（仅约束未删除且已填邮箱的用户；软删/未填不参与，重置密码按邮箱找人不会多值）
+CREATE UNIQUE INDEX IF NOT EXISTS uk_kh_user_email
+    ON kh_user(email) WHERE deleted = false AND email IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS kh_role (
     id BIGINT PRIMARY KEY,                          -- 角色 ID（雪花）
@@ -181,6 +186,7 @@ COMMENT ON COLUMN kh_user.id IS '用户主键ID（雪花）';
 COMMENT ON COLUMN kh_user.username IS '登录用户名（未删除范围内唯一）';
 COMMENT ON COLUMN kh_user.password IS '密码哈希（bcrypt, cost=10）';
 COMMENT ON COLUMN kh_user.status IS '账户状态（0: 禁用, 1: 启用）';
+COMMENT ON COLUMN kh_user.email_verified IS '邮箱是否验证（0: 未验证, 1: 已验证）';
 COMMENT ON COLUMN kh_user.last_login_at IS '最后登录时间（登录成功时更新）';
 COMMENT ON COLUMN kh_user.deleted IS '逻辑删除标记';
 COMMENT ON TABLE kh_role IS '角色表';

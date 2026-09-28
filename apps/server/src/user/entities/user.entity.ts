@@ -39,6 +39,10 @@ export class UserEntity {
   @Column({ type: 'varchar', length: 500, nullable: true })
   avatar?: string | null;
 
+  /** 0 未验证 1 已验证（默认 1：兼容存量账号；开启邮箱验证后新注册为 0） */
+  @Column({ name: 'email_verified', type: 'smallint', default: 1 })
+  emailVerified: number;
+
   /** 0 禁用 1 启用（禁用账户拒绝登录与鉴权） */
   @Column({ type: 'smallint', default: 1 })
   status: number;

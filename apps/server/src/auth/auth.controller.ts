@@ -1,17 +1,21 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import {
   LoginDto,
   RefreshTokenDto,
   RegisterDto,
 } from './dto/auth.dto.js';
+import {
+  ResetPasswordByEmailDto,
+  SendResetCodeDto,
+} from './dto/password-reset.dto.js';
 import { Public } from './decorators/public.decorator.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Roles } from './decorators/roles.decorator.js';
 import { RoleCode } from '../common/constants/roles.js';
 import type { AuthUser } from './auth-user.interface.js';
 
-/** 认证接口：注册 / 登录 / 刷新为公开端点，其余需登录 */
+/** 认证接口：注册 / 登录 / 刷新 / 激活 / 重置密码为公开端点，其余需登录 */
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -39,6 +43,27 @@ export class AuthController {
   @Post('logout')
   logout(@Body() dto: RefreshTokenDto) {
     return this.authService.logout(dto.refreshToken);
+  }
+
+  /** 邮箱激活：邮件链接携带 token，校验通过置 email_verified=1 */
+  @Public()
+  @Get('verify-email')
+  verifyEmail(@Query('token') token: string) {
+    return this.authService.verifyEmail(token);
+  }
+
+  /** 发送重置密码验证码（6 位，10 分钟有效，60 秒冷却） */
+  @Public()
+  @Post('password/reset/send-code')
+  sendResetCode(@Body() dto: SendResetCodeDto) {
+    return this.authService.sendResetCode(dto);
+  }
+
+  /** 验证码重置密码（一次性提交邮箱 + 验证码 + 新密码） */
+  @Public()
+  @Post('password/reset')
+  resetPassword(@Body() dto: ResetPasswordByEmailDto) {
+    return this.authService.resetPasswordByEmail(dto);
   }
 
   @Get('me')

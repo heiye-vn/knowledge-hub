@@ -8,6 +8,10 @@ import { JwtStrategy } from './jwt.strategy.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { RolesGuard } from './roles.guard.js';
 import { TokenRevocationService } from './token-revocation.service.js';
+import { EmailActivationService } from './email-activation.service.js';
+import { PasswordResetService } from './password-reset.service.js';
+import { RedisModule } from '../redis/redis.module.js';
+import { MailModule } from '../mail/mail.module.js';
 import { UserModule } from '../user/user.module.js';
 
 /**
@@ -20,12 +24,14 @@ import { UserModule } from '../user/user.module.js';
  * 先 JwtAuthGuard（登录校验，@Public 放行）后 RolesGuard（@Roles 才校验）。
  */
 @Module({
-  imports: [PassportModule.register({ defaultStrategy: 'jwt' }), JwtModule.register({}), UserModule],
+  imports: [PassportModule.register({ defaultStrategy: 'jwt' }), JwtModule.register({}), RedisModule, UserModule],
   controllers: [AuthController],
   providers: [
     AuthService,
     JwtStrategy,
     TokenRevocationService,
+    EmailActivationService,
+    PasswordResetService,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
