@@ -143,8 +143,15 @@
 - 【易错】ESM 下 `import nodemailer from 'nodemailer'` 直接可用
   （Node ESM 对 CJS 的 default interop 拿到 `module.exports`），
   无需 `.default` 解构——与 AGENTS.md 2.4 提到的部分 CJS 库不同。
+- 【实录】SMTP_USER/PASS 为空时**不能给 nodemailer 传空字符串 auth**：
+  MailHog 日志显示 `250 AUTH PLAIN` 后客户端即被断开（`Connection closed by remote host`），
+  注册接口报「激活邮件发送失败」。空凭据会触发 nodemailer 发起 AUTH 握手并失败；
+  解法是仅在 user/pass 均非空时挂 `auth` 字段。已实机回归验证。
 - 本地联调用 MailHog（compose 新增 `mailhog` 服务，SMTP 1025 / Web 8025），
   零真实发信；未配置 `SMTP_HOST` 时应用照常启动，验证类功能调用时报错。
+- 【易错】MailHog API（:8025/api/v2/messages）里邮件正文可能是 **base64 或
+  quoted-printable**（nodemailer 按内容自动选择），解析时按
+  `Content-Transfer-Encoding` 分别处理——E2E 脚本提取激活 token / 验证码时踩过。
 
 ---
 
@@ -155,6 +162,12 @@
 - `auth.service.spec.ts`（11 例）：注册开关两态、发信失败回滚、激活、冷却、重置全链路
 
 全部纯 fake，不依赖真实 Redis / SMTP，0 Token 消耗（与图片解析单测同风格）。
+
+**端到端实录（MailHog，2026-09-28）**：临时实例（3001 端口，
+`REQUIRE_EMAIL_VERIFICATION=true` + MailHog SMTP）跑通两条完整链路——
+①注册 → 收激活邮件 → `verify-email` 激活 → 登录成功 → token 复用失效（6 步）；
+②`send-code` → 60s 冷却拦截重发 → 错码 400 → 正确码重置 → 旧密码 401 / 新密码登录 →
+验证码复用失效（8 步）。两条链路的「失败分支」（发信失败回滚、token/码一次性）同样实测确认。
 
 **验证命令**：`pnpm test:server`。
 ⚠️ 【实录】Docker 未启动时并行跑全量，`app.controller.spec`（Hello World）会因

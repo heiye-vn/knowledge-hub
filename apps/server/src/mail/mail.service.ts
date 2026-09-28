@@ -25,14 +25,14 @@ export class MailService {
       this.logger.warn('未配置 SMTP_HOST，邮件发送不可用（验证类功能将失败）');
       return;
     }
+    const user = this.config.get<string>('SMTP_USER', '');
+    const pass = this.config.get<string>('SMTP_PASS', '');
     this.transporter = nodemailer.createTransport({
       host,
       port: Number(this.config.get<string>('SMTP_PORT', '587')),
       secure: this.config.get<string>('SMTP_SECURE', 'false') === 'true',
-      auth: {
-        user: this.config.get<string>('SMTP_USER', ''),
-        pass: this.config.get<string>('SMTP_PASS', ''),
-      },
+      // 本地 MailHog 不需要认证：空凭据传给 nodemailer 会触发 AUTH 握手失败（连接被服务端断开）
+      ...(user && pass ? { auth: { user, pass } } : {}),
     });
   }
 
