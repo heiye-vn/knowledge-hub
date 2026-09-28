@@ -1039,14 +1039,15 @@
             "description": "注册新用户，默认绑定 ROLE_USER。返回 {userId, message}。password 至少 6 位；用户名未删除范围内唯一。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "raw": "{\n  \"username\": \"testuser\",\n  \"password\": \"123456\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             }
-          }
+          },
+          "name": "注册新用户"
         },
         {
           "request": {
@@ -1065,14 +1066,15 @@
             "description": "登录并签发双令牌。预置测试账号（密码均为 123456）：admin（管理员+审核员）/ reviewer（审核员）/ user（普通用户）。\n**登录成功后把 data.accessToken 复制到集合变量 accessToken（refreshToken 同理），后续 Bearer 请求自动生效。**\n用户不存在与密码错误统一返回「用户名或密码错误」（账号枚举防护）。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"123456\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             }
-          }
+          },
+          "name": "登录（签发双令牌）"
         },
         {
           "request": {
@@ -1098,7 +1100,8 @@
                 }
               }
             }
-          }
+          },
+          "name": "刷新令牌（refresh 换新双令牌）"
         },
         {
           "request": {
@@ -1124,7 +1127,8 @@
                 }
               }
             }
-          }
+          },
+          "name": "登出（吊销 refreshToken）"
         },
         {
           "request": {
@@ -1146,7 +1150,8 @@
               ]
             },
             "description": "当前登录用户信息（userId / username / realName / email / avatar / roles）。每次请求实时回库，角色变更立即生效。"
-          }
+          },
+          "name": "当前登录用户信息"
         },
         {
           "request": {
@@ -1168,7 +1173,8 @@
               ]
             },
             "description": "审核员用户 ID 列表（按 ROLE_REVIEWER 反查有效用户）。**需 ROLE_ADMIN 或 ROLE_REVIEWER**，普通用户返回 403。"
-          }
+          },
+          "name": "审核员用户 ID 列表"
         }
       ]
     }
