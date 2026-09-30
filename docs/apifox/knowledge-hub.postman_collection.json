@@ -713,7 +713,7 @@
                 }
               ]
             },
-            "description": "推荐默认用法：kNN 向量 + BM25 关键词双路召回，应用层 RRF 融合。\n\n返回结构要点：\n- score：RRF 融合分（Σ1/(60+rank)），量级 0.0x 是正常的\n- scores.vector / scores.keyword：两路原始分数，可用于对比调优\n- 结果只含 doc_status=1 的文档，且会回查 Postgres 过滤已删文档\n\n改上面的集合变量 keyword 即可换查询词试试。"
+            "description": "推荐默认用法：kNN 向量 + BM25 关键词双路召回，应用层 RRF 融合。\n\n返回结构要点：\n- score：RRF 融合分（Σ1/(60+rank)），量级 0.0x 是正常的\n- scores.vector / scores.keyword：两路原始分数，可用于对比调优\n- 结果只含 doc_status=1 的文档，且会回查 Postgres 过滤已删文档\n\n改上面的集合变量 keyword 即可换查询词试试。\n\n鉴权（feat-v11 起）：需 search 权限码（此前裸 JWT）；hybrid 模式经 RRF 融合后送 qwen3.7-text-rerank 精排，精排失败自动降级 RRF 顺序。"
           }
         },
         {
@@ -745,7 +745,7 @@
                 }
               ]
             },
-            "description": "纯语义召回，验证向量能力：查询词可以与原文用词完全不同。\n\n⚠️ 低于 RAG_MIN_SCORE（默认 0.72）的结果会被丢弃——\nkNN 必然返回 topK 条，没有门槛会把无关内容也带出来。\n\n未配置 EMBEDDING_API_KEY 时返回空数组且不报错。"
+            "description": "纯语义召回，验证向量能力：查询词可以与原文用词完全不同。\n\n⚠️ 低于 RAG_MIN_SCORE（默认 0.72）的结果会被丢弃——\nkNN 必然返回 topK 条，没有门槛会把无关内容也带出来。\n\n未配置 EMBEDDING_API_KEY 时返回空数组且不报错。\n\n鉴权（feat-v11 起）：需 search 权限码（此前裸 JWT）；hybrid 模式经 RRF 融合后送 qwen3.7-text-rerank 精排，精排失败自动降级 RRF 顺序。"
           }
         },
         {
@@ -776,7 +776,7 @@
                 }
               ]
             },
-            "description": "BM25 + IK 中文分词，不依赖 Embedding Key，随时可用。\n\n与 vector 模式对比即可看出两路召回的差异。\n无词项匹配时会返回空数组（这是正常的，说明 IK 没匹配上）。"
+            "description": "BM25 + IK 中文分词，不依赖 Embedding Key，随时可用。\n\n与 vector 模式对比即可看出两路召回的差异。\n无词项匹配时会返回空数组（这是正常的，说明 IK 没匹配上）。\n\n鉴权（feat-v11 起）：需 search 权限码（此前裸 JWT）；hybrid 模式经 RRF 融合后送 qwen3.7-text-rerank 精排，精排失败自动降级 RRF 顺序。"
           }
         },
         {
@@ -807,7 +807,7 @@
                 "search"
               ]
             },
-            "description": "POST 版。查询词含特殊字符或较长时用 POST 更稳妥。\n\n校验规则：query 必填；mode 只能是 hybrid/vector/keyword；topK 整数 1-50。\n多余字段会被拒绝（全局启用了 forbidNonWhitelisted）。"
+            "description": "POST 版。查询词含特殊字符或较长时用 POST 更稳妥。\n\n校验规则：query 必填；mode 只能是 hybrid/vector/keyword；topK 整数 1-50。\n多余字段会被拒绝（全局启用了 forbidNonWhitelisted）。\n\n鉴权（feat-v11 起）：需 search 权限码（此前裸 JWT）；hybrid 模式经 RRF 融合后送 qwen3.7-text-rerank 精排，精排失败自动降级 RRF 顺序。"
           }
         },
         {
