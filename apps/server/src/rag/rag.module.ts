@@ -5,6 +5,7 @@ import { ChunkingService } from './chunking.service.js';
 import { ElasticsearchService } from './elasticsearch.service.js';
 import { EmbeddingService } from './embedding.service.js';
 import { RagOrchestrator } from './rag.orchestrator.js';
+import { RerankerService } from './reranker.service.js';
 import { RetrievalService } from './retrieval.service.js';
 import { SearchController } from './search.controller.js';
 import { VectorIndexService } from './vector-index.service.js';
@@ -21,7 +22,7 @@ import { VectorIndexService } from './vector-index.service.js';
  * - EmbeddingService：百炼 qwen3.7-text-embedding-flash，1024 维（延迟初始化，缺 Key 不阻断启动）
  * - VectorIndexService：ES 写入 / 按文档删除
  * - RagOrchestrator：分块 → 嵌入 → 索引 的编排
- * - RetrievalService：kNN + BM25 + RRF 混合检索（基线实现缺失，本项目补齐）
+ * - RetrievalService：kNN + BM25 + RRF 混合检索 + reranker 精排（基线实现缺失，本项目补齐）
  */
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { VectorIndexService } from './vector-index.service.js';
     EmbeddingService,
     VectorIndexService,
     RagOrchestrator,
+    RerankerService,
     RetrievalService,
   ],
   exports: [
@@ -43,6 +45,7 @@ import { VectorIndexService } from './vector-index.service.js';
     EmbeddingService,
     VectorIndexService,
     RagOrchestrator,
+    RerankerService,
     RetrievalService,
   ],
 })

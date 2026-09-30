@@ -4,6 +4,7 @@ import { InjectEntityManager } from '@nestjs/typeorm';
 import { EntityManager, In } from 'typeorm';
 import { ElasticsearchService } from './elasticsearch.service.js';
 import { EmbeddingService } from './embedding.service.js';
+import { RerankerService } from './reranker.service.js';
 import {
   DocumentEntity,
   DocumentStatus,
@@ -49,6 +50,7 @@ export class RetrievalService {
     private readonly esService: ElasticsearchService,
     private readonly embeddingService: EmbeddingService,
     private readonly config: ConfigService,
+    private readonly reranker: RerankerService,
     @InjectEntityManager() private readonly em: EntityManager,
   ) {}
 
@@ -75,6 +77,8 @@ export class RetrievalService {
     const knnCandidates = Number(this.config.get('RAG_KNN_CANDIDATES', 200));
     const rrfWindow = Number(this.config.get('RAG_RRF_WINDOW', 100));
     const rrfConstant = Number(this.config.get('RAG_RRF_CONSTANT', 60));
+    // RRF 融合后送精排的候选数（须 ≥ topK，精排后再截回 topK；feat-v11）
+    const hybridTopK = Number(this.config.get('RAG_HYBRID_TOP_K', 20));
 
     const filterClauses = this.buildFilters(params.filters);
 
@@ -100,7 +104,7 @@ export class RetrievalService {
         vectorHits,
         keywordHits,
         rrfConstant,
-      ).slice(0, topK);
+      ).slice(0, Math.max(hybridTopK, topK));
     } else if (mode === 'vector' && queryVector) {
       candidates = (
         await this.runVectorSearch(
@@ -127,6 +131,13 @@ export class RetrievalService {
       this.logger.warn(
         `检索结果已过滤下线文档：${candidates.length} → ${results.length}`,
       );
+    }
+
+    // feat-v11：hybrid 模式在 PG 兜底后再送 reranker 精排（先过滤已死文档，
+    // 避免浪费打分额度；rerank 失败/未配置返回 null，降级为 RRF 顺序）
+    if (mode === 'hybrid') {
+      const reranked = await this.reranker.rerank(query, results, topK);
+      return (reranked ?? results).slice(0, topK);
     }
 
     return results;

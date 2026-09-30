@@ -69,8 +69,9 @@ export class ExtractionService {
   private readonly unavailableReason: string | null;
 
   constructor(private readonly config: ConfigService) {
-    // 实测 qwen-plus 单块产出 24–38 个实体 / 20+ 条关系（见 test/fixtures 实测），
-    // 上限设 12 会大量触发截断。默认取 30 与真实产出一个量级。
+    // 实测（历史模型 qwen-plus，已弃用）单块产出 24–38 个实体 / 20+ 条关系
+    // （见 test/fixtures 实测），上限设 12 会大量触发截断。
+    // 默认取 30 与真实产出一个量级；换 qwen3.8-flash 后建议重新校准。
     this.maxEntities = Number(config.get('KG_MAX_ENTITIES', 30));
     this.maxRelations = Number(config.get('KG_MAX_RELATIONS', 30));
     this.concurrency = Math.max(
@@ -95,7 +96,7 @@ export class ExtractionService {
       config.get<string>('LLM_BASE_URL') ||
       config.get<string>('EMBEDDING_BASE_URL') ||
       'https://dashscope.aliyuncs.com/compatible-mode/v1';
-    const model = config.get<string>('LLM_MODEL') || 'qwen-plus';
+    const model = config.get<string>('LLM_MODEL') || 'qwen3.8-flash';
     const timeout = Number(config.get('KG_LLM_TIMEOUT_MS', 60000));
     const timeoutMs = Number.isFinite(timeout) && timeout > 0 ? timeout : 60000;
 
@@ -238,7 +239,8 @@ export class ExtractionService {
     // ① 先建**全量**实体池（不截断、按规范化 key 去重）
     // 🔴 修基线实现（及本实现初版）的顺序 bug：
     // 若先按 KG_MAX_ENTITIES 截断再校验关系，引用「第 N 个之后实体」的关系会被整片误杀。
-    // 实测 qwen-plus 单块产出 24–40 个实体，而默认上限曾为 12 —— 结果就是关系数归 0。
+    // 实测（历史模型 qwen-plus，已弃用）单块产出 24–40 个实体，
+    // 而默认上限曾为 12 —— 结果就是关系数归 0。
     //
     // 🔴 修第二个坑：**同形异码**。实测样本里出现过「全体员⼯」（⼯ = U+2F2F 兼容字符），
     // 而关系里可能写成「员工」（工 = U+5DE5）。直接字符串比对会匹配不上、关系被丢弃。

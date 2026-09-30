@@ -25,6 +25,7 @@ import { RagModule } from './rag/rag.module.js';
 import { MqModule } from './mq/mq.module.js';
 import { KgModule } from './kg/kg.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { AiModule } from './ai/ai.module.js';
 
 @Module({
   imports: [
@@ -67,6 +68,8 @@ import { AuthModule } from './auth/auth.module.js';
     AuthModule,
     // feat-v9：RBAC 权限体系（权限树 + 三层 Guard）与独立团队组织架构模块
     TeamModule,
+    // feat-v11：AI 对话（RAG 检索精排 → LLM 生成 → [n] 引用溯源）
+    AiModule,
   ],
   controllers: [AppController],
   providers: [
