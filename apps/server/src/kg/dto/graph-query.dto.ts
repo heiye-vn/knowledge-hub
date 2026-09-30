@@ -39,3 +39,35 @@ export class GraphNeighborsDto {
   @Max(100)
   limit?: number;
 }
+
+/** 图谱关键词检索请求（GET /kg/search，feat-v10） */
+export class GraphSearchDto {
+  /** 关键词：跨文档/块/实体三类节点的六种属性做包含匹配 */
+  @IsString()
+  @IsNotEmpty()
+  keyword!: string;
+
+  /** 返回条数 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
+}
+
+/** 图谱节点 / 边列表请求（GET /kg/nodes、/kg/edges，feat-v10） */
+export class GraphQueryDto {
+  /** 实体类型过滤（PERSON / ORGANIZATION / CONCEPT …；空 = 全部） */
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  /** 返回条数 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  limit?: number;
+}

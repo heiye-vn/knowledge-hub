@@ -232,7 +232,7 @@ S3 风格 XML 错误 `AccessDenied`。该问题与上面第 1 项联动：**决�
 | 项 | 说明 | 触发条件 |
 | :--- | :--- | :--- |
 | **检索可见性过滤（第 64 讲）** | `kh_document.team_id` / `is_public` / `author_id` 三元数据尚未参与召回期过滤，检索仍只看 `doc_status=1`。`kh_team` / `kh_team_member` 已就绪（本轮建表），**前置依赖已解除** | 第 64 讲；与 §3「鉴权过滤」条目是同一件事，届时合并处理 |
-| **文档模块的权限码化** | `document:list/create/edit/delete/review` 目前只有前端语义；文档接口鉴权仍用 `@Roles`（发布/审核为 `ROLE_REVIEWER/ADMIN`） | 做文档模块权限细分时；届时把 `@Roles` 换成对应权限码，避免文档主链路在 RBAC 落地时反复改 |
+| ~~**文档模块的权限码化**~~ | ~~`document:list/create/edit/delete/review` 目前只有前端语义；文档接口鉴权仍用 `@Roles`~~ | ✅ **已完成（2026-09-30，feat-v10）**：文档 12 接口 + `/search/documents` 挂上权限码；审核工作台按约定**只留 `@Roles` 不挂码**（避免叠用堵死临时授权）。种子补绑普通用户 create/edit/delete、审核员 search。见 `dev-notes/rbac.md` 第八节 |
 | **权限变更审计** | 谁在何时给谁加了什么权限不落日志 | 有合规/审计需求时；补一张权限操作流水表即可 |
 | **权限缓存（Redis）** | 权限每请求实时算。已做去重：roles 复用一次查询，`buildAuthUser` **5 条 → 4 条 SQL**（`getUserPermissionCodes(userId, knownRoleCodes?)`）。**缓存未做**，仍以「下一次请求即生效」的强一致性换取查询放大 | 高并发压测或上线时；引入 Redis 键 `user:perm:${userId}`（短 TTL）。**前置条件**：必须先定死失效口径——角色绑权限、用户直接赋权、改权限 status、改用户角色、禁用用户，这 5 处都要 DEL，漏一处就是「改了权限不生效」，比不缓存更糟 |
 | ~~**树形构建算法优化**~~ | ~~内存递归 `filter`（$O(N^2)$）~~ | ✅ **已解决（2026-09-30）**：权限树与团队树均改为 `Map<parentId, items[]>` 分组后递归，整体 $O(N)$，组内顺序沿用查询排序。见 `dev-notes/rbac.md` 五之三 |

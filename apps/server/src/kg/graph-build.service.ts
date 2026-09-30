@@ -6,7 +6,14 @@ import { ExtractionService } from './extraction.service.js';
 import type {
   ExtractionOutcome,
 } from './extraction.service.js';
-import type { GraphEntity, GraphNeighbor, KgBuildResult } from './types/kg.types.js';
+import type {
+  GraphEdge,
+  GraphEntity,
+  GraphNeighbor,
+  GraphNode,
+  GraphSearchHit,
+  KgBuildResult,
+} from './types/kg.types.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
 
 /** 单篇建图最多参与的块数：按实测单块 19~57s，30 块 ≈ 10~30 分钟（并发 3 后 ≈ 4~10 分钟） */
@@ -385,6 +392,115 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         entities: toNum(record?.get('entities')),
         relations: toNum(record?.get('relations')),
       };
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * 图谱关键词检索（feat-v10）：跨三类节点全属性匹配。
+   *
+   * 与 `listEntities` 的区别：那只搜 KnowledgeEntity.name 一种属性；
+   * 这里把关键词打到文档（title/summary）、块（heading/content）、
+   * 实体（name/description）六种属性上，前端「图谱检索」页的
+   * 主查询。`coalesce` 兜底缺属性，`toLower` 大小写不敏感包含匹配。
+   */
+  async searchGraph(keyword: string, limit = 50): Promise<GraphSearchHit[]> {
+    if (!this.isAvailable()) return [];
+    const kw = keyword.trim();
+    if (!kw) return [];
+    const cap = Math.min(Math.max(limit, 1), 200);
+    const session = this.driver!.session();
+    try {
+      const result = await session.run(
+        `MATCH (n)
+         WHERE toLower(coalesce(n.name, '')) CONTAINS toLower($kw)
+            OR toLower(coalesce(n.title, '')) CONTAINS toLower($kw)
+            OR toLower(coalesce(n.heading, '')) CONTAINS toLower($kw)
+            OR toLower(coalesce(n.description, '')) CONTAINS toLower($kw)
+            OR toLower(coalesce(n.summary, '')) CONTAINS toLower($kw)
+            OR toLower(coalesce(n.content, '')) CONTAINS toLower($kw)
+         RETURN labels(n)[0] AS label,
+                coalesce(n.name, n.title, n.heading, n.id, n.chunkId) AS name,
+                coalesce(n.id, n.chunkId, n.name) AS id,
+                n.type AS type, n.title AS title, n.description AS description,
+                n.heading AS heading, n.documentId AS documentId, n.summary AS summary,
+                CASE WHEN n.content IS NULL THEN null
+                     ELSE substring(n.content, 0, 160) END AS snippet
+         ORDER BY label, name
+         LIMIT $limit`,
+        { kw, limit: neo4j.int(cap) },
+      );
+      return result.records.map((r) => ({
+        id: r.get('id'),
+        name: r.get('name'),
+        label: r.get('label'),
+        type: r.get('type') ?? null,
+        title: r.get('title') ?? null,
+        description: r.get('description') ?? null,
+        heading: r.get('heading') ?? null,
+        documentId: r.get('documentId') ?? null,
+        summary: r.get('summary') ?? null,
+        snippet: r.get('snippet') ?? null,
+      }));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * 图谱可视化（feat-v10）：实体节点全量列表，按提及次数倒序。
+   * `listEntities` 的可视化版——不返回 mentions 计数、上限放宽到 500。
+   */
+  async listNodes(type?: string, limit = 200): Promise<GraphNode[]> {
+    if (!this.isAvailable()) return [];
+    const cap = Math.min(Math.max(limit, 1), 500);
+    const session = this.driver!.session();
+    try {
+      const result = await session.run(
+        `MATCH (e:KnowledgeEntity)
+         WHERE $type IS NULL OR $type = '' OR e.type = $type
+         OPTIONAL MATCH (e)<-[m:MENTIONS]-()
+         RETURN e.name AS name, e.type AS type, e.description AS description,
+                count(m) AS mentions
+         ORDER BY mentions DESC, name
+         LIMIT $limit`,
+        { type: type ?? null, limit: neo4j.int(cap) },
+      );
+      return result.records.map((r) => ({
+        id: r.get('name'),
+        name: r.get('name'),
+        type: r.get('type') ?? 'CONCEPT',
+        description: r.get('description') ?? null,
+      }));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * 图谱可视化（feat-v10）：实体间 RELATED_TO 边全量列表，按权重倒序。
+   * 节点 + 边拼起来即画图首屏的初始视图。
+   */
+  async listEdges(limit = 500): Promise<GraphEdge[]> {
+    if (!this.isAvailable()) return [];
+    const cap = Math.min(Math.max(limit, 1), 1000);
+    const session = this.driver!.session();
+    try {
+      const result = await session.run(
+        `MATCH (a:KnowledgeEntity)-[r:RELATED_TO]->(b:KnowledgeEntity)
+         RETURN a.name AS source, b.name AS target,
+                r.relation AS relation, r.weight AS weight
+         ORDER BY r.weight DESC
+         LIMIT $limit`,
+        { limit: neo4j.int(cap) },
+      );
+      return result.records.map((r) => ({
+        source: r.get('source'),
+        target: r.get('target'),
+        relation: r.get('relation') ?? 'RELATED_TO',
+        weight: toNum(r.get('weight')) || 0.5,
+      }));
     } finally {
       await session.close();
     }

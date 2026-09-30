@@ -184,6 +184,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_kh_permission_code
 - **树形结构的构建复杂度优化**：当前 `PermissionService.getTree()` 与 `TeamService.getTree()` 采用内存递归 `filter`（$O(N^2)$），在当前几十至几百个节点规模下耗时小于 1ms。若后续组织架构和权限节点规模扩展至数千级，可重构成基于 `Map<parentId, children[]>` 的单次遍历构建（$O(N)$）。
 - **超管通配权限码与动态扩展**：`getUserPermissionCodes` 在用户是管理员时，除了注入预置常量权限集合，额外追加了 `'*'` 通配符，便于前端统一识别超管对后台动态新增菜单/按钮的全量放行。
 - **权限树只做分类，不继承**：`parent_id` 无业务含义，拥有父权限 ≠ 拥有子权限。目前前端需要自己按 code 枚举，后续若要「授予父即含子」需改数据模型。
-- **`document:*` 权限码当前只有前端语义**：文档模块的接口鉴权仍按 `@Roles`（发布/审核用 `ROLE_REVIEWER/ADMIN`），没有用 `@RequirePermission`。等第 64 讲做可见性过滤时再统一，避免现在就动文档主链路。
+- **`document:*` 权限码已在 feat-v10 接线到业务接口**：此前只有前端语义（原计划等第 64 讲再统一，
+  实际提前到 feat-v10 完成）。挂载映射：create / upload→`document:create`，list / findOne /
+  reviews/{current,history}→`document:list`，patch / publish / submit / archive / save-draft→
+  `document:edit`，delete→`document:delete`，`/search/documents`→`search`。
+  **审核工作台 4 个接口刻意不挂码**（角色语义明确，保留 `@Roles(REVIEWER, ADMIN)`；
+  叠加会堵死临时授权路径，见第一节）。种子数据同步补绑：普通用户 + create/edit/delete
+  （作者主链路），审核员 + search。
 - **团队模块与检索可见性尚未接线**：`kh_team` / `kh_team_member` 已就绪，但 `kh_document.team_id` 的召回期过滤属于第 64 讲，本轮未改检索链路。（`docs/TODO.md` §3「鉴权过滤」条目已可开工。）
 - **无权限变更审计**：谁在什么时候给谁加了什么权限，目前不落日志；等有合规需求时补一张操作流水表。

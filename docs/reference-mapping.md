@@ -129,6 +129,9 @@
 | **2026-09-30** | **公开接口的角色声明**（v9） | `TeamController` 类级 `@Roles(ADMIN)` + `tree` 标 `@Public()` | 类上不标任何角色声明，`tree` 只标 `@Public()` | 修参考项目 bug：`@Public` 跳过 JWT 后 `request.user` 为空，RolesGuard 仍从类级取到角色声明 → 公开接口实际 403（与其 `curl-rbac.md` 宣称的「无需登录」不符） |
 | **2026-09-30** | **权限绑定的事务性**（v9） | `delete` 后循环 `save`，**无事务**；`found.length !== ids.length` 校验在入参含重复 ID 时误报 404 | 整体替换包 `em.transaction`，且**先校验后写入**（不合法则一行不写） | 修参考项目缺陷：中途失败留下「绑定已清空、新绑定没补完」的中间态，用户权限被静默清零 |
 | **2026-09-30** | **管理员权限码来源**（v9） | 硬编码 `ADMIN_OPERATION_PERMISSIONS` 常量，库里不绑管理员权限 | 沿用常量思路（库里不绑），但明确其**唯一职责**是补全 `/auth/me` 的 permissions 供前端菜单显隐 | Guard 已按 ROLE_ADMIN 短路放行，接口访问不依赖该常量；常量与种子权限码需同步维护（见 dev-notes/rbac.md） |
+| **2026-09-30** | **业务接口权限码挂载**（v10） | v10 给文档接口挂 `@RequirePermission`，但审核 4 接口**叠加** `@Roles(REVIEWER, ADMIN)` + 权限码 | 同样给文档 / 搜索接口挂码（create→`document:create` 等），但审核工作台**只保留 `@Roles` 不挂码** | 延续 v9 已登记的「不叠 `@Roles`」原则：叠加会让 RolesGuard 先拦掉非 REVIEWER 用户，`document:review` 的权限码分支永远走不到（参考项目在 v10 复刻了同一坑） |
+| **2026-09-30** | **图谱检索路由前缀**（v10） | `GET /graph/search` / `/graph/nodes` / `/graph/edges` | `GET /kg/search` / `/kg/nodes` / `/kg/edges`（feat-v10） | 主项目 KG 模块此前已用 `/kg` 前缀（build / entities / neighbors / stats），同域接口聚在一个前缀下；自研前端跟随主项目契约，不复用参考前端 |
+| **2026-09-30** | **图谱查询能力形态**（v10） | `searchGraph` 跨三类节点六属性匹配（v10 新增）；`nodes` / `edges` 各自裸查询 | 同款 `searchGraph` Cypher（对齐）；但 `nodes` 复用主项目 `listEntities` 的排序语义（按提及次数倒序） | 节点列表按提及次数排序对画图首屏更有用（高频实体优先展示）；边列表按权重倒序与参考一致 |
 
 
 ---
@@ -166,5 +169,7 @@
 - **批量重建覆盖两条索引**（2026-09-20）：`/rag/reindex` 同时刷新 `kh_chunk` 与 `kh_document`，避免两侧数据漂移
 - **权限码真正参与接口鉴权**（2026-09-30）：不叠 `@Roles`，`system:*` 权限码是管理接口的唯一门禁，
   用户直接赋权对接口鉴权真实生效（参考项目的权限码分支被角色层拦截，实为死代码）
+- **业务面权限码全量接线**（2026-09-30，feat-v10）：文档 12 接口 + 搜索接口挂 `document:*` / `search`
+  权限码（参考项目 v10 同期才做，且审核接口叠加 `@Roles` 复刻了 v9 的坑）
 - **公开接口的语义自洽**（2026-09-30）：`@Public` 不再被类级角色声明污染，团队树免登录可访问
 - **权限绑定事务化 + 校验前置**（2026-09-30）：替换绑定要么全成要么全不变，不含重复 ID 误判

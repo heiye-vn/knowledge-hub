@@ -25,16 +25,18 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
 import { RoleCode } from '../common/constants/roles.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
 
 /**
  * 文档接口
  *
- * 鉴权约定：全接口需登录（全局 JwtAuthGuard）；写操作的操作人字段
- * （authorId / createBy / updateBy / 审核人）一律从登录态取，
- * DTO 里的同名字段仅作显式覆盖（兼容脚本调用）；审核工作台需
- * ROLE_REVIEWER 或 ROLE_ADMIN。
+ * 鉴权约定（feat-v10 起）：全接口需登录（全局 JwtAuthGuard）；业务操作
+ * 按权限码控制（`@RequirePermission`，管理员由 PermissionsGuard 短路）；
+ * 审核工作台按角色语义保留 `@Roles`，**不叠加权限码**——叠加会让
+ * RolesGuard 先拦掉非 REVIEWER 用户，权限码比对永远走不到，
+ * 「给非审核员临时授 document:review」的路径被堵死（见 dev-notes/rbac.md）。
  */
 @Controller('documents')
 export class DocumentController {
@@ -45,12 +47,14 @@ export class DocumentController {
 
   /** 创建文档 */
   @Post()
+  @RequirePermission('document:create')
   create(@Body() dto: CreateDocumentDto, @CurrentUser() user: AuthUser) {
     return this.documentService.create(dto, undefined, user);
   }
 
   /** 上传文件并解析为 Markdown，创建草稿（form-data 字段名: file） */
   @Post('upload/parse')
+  @RequirePermission('document:create')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 50 * 1024 * 1024 },
@@ -116,18 +120,21 @@ export class DocumentController {
 
   /** 分页查询文档列表（仅元数据） */
   @Get()
+  @RequirePermission('document:list')
   findAll(@Query() query: QueryDocumentDto) {
     return this.documentService.findAll(query);
   }
 
   /** 查询文档详情（含正文） */
   @Get(':id')
+  @RequirePermission('document:list')
   findOne(@Param('id') id: string) {
     return this.documentService.findOne(id);
   }
 
   /** 更新文档（待审核中不可改正文/标题；不允许改状态，状态走专用接口） */
   @Patch(':id')
+  @RequirePermission('document:edit')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateDocumentDto,
@@ -147,42 +154,49 @@ export class DocumentController {
    * 管线幂等，重复发布会先清旧块再覆盖写。
    */
   @Put(':id/publish')
+  @RequirePermission('document:edit')
   publish(@Param('id') id: string) {
     return this.documentService.publish(id);
   }
 
   /** 提交审核：草稿 / 已发布 → 待审核（原为已发布会先清索引） */
   @Post(':id/reviews/submit')
+  @RequirePermission('document:edit')
   submitReview(@Param('id') id: string) {
     return this.documentService.submitForReview(id);
   }
 
   /** 当前待审任务（无则 null） */
   @Get(':id/reviews/current')
+  @RequirePermission('document:list')
   getCurrentReview(@Param('id') id: string) {
     return this.reviewService.getCurrentReview(id);
   }
 
   /** 该文档全部审核记录（含已通过 / 已驳回），按提交时间倒序 */
   @Get(':id/reviews/history')
+  @RequirePermission('document:list')
   getReviewHistory(@Param('id') id: string) {
     return this.reviewService.getReviewHistory(id);
   }
 
   /** 归档：已发布 → 已归档（终态），清索引但保留正文 */
   @Put(':id/archive')
+  @RequirePermission('document:edit')
   archive(@Param('id') id: string) {
     return this.documentService.archive(id);
   }
 
   /** 下架编辑：已发布 → 草稿，清索引后可改内容再重新发布 / 提审 */
   @Put(':id/save-draft')
+  @RequirePermission('document:edit')
   saveAsDraft(@Param('id') id: string) {
     return this.documentService.saveAsDraft(id);
   }
 
   /** 软删除文档（已发布的同时清索引，其余状态本就不在索引里） */
   @Delete(':id')
+  @RequirePermission('document:delete')
   remove(@Param('id') id: string) {
     return this.documentService.remove(id);
   }

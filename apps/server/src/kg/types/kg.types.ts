@@ -66,3 +66,46 @@ export interface GraphNeighbor {
   /** 关系方向：out = 本实体指向邻居，in = 邻居指向本实体 */
   direction: 'out' | 'in';
 }
+
+/**
+ * 图谱关键词检索命中（feat-v10）
+ *
+ * 跨三类节点（KnowledgeDocument / DocumentChunk / KnowledgeEntity），
+ * 关键词在节点的 name / title / summary / heading / description / content
+ * 六种属性上做大小写不敏感的包含匹配。
+ */
+export interface GraphSearchHit {
+  /** 节点业务 ID：文档 id / 实体 name（同为唯一键） */
+  id: string;
+  /** 展示名：实体名 / 文档标题 / 块 heading */
+  name: string;
+  /** 节点标签：KnowledgeDocument | DocumentChunk | KnowledgeEntity */
+  label: string;
+  /** 实体类型（仅实体节点有值） */
+  type: string | null;
+  /** 文档标题（文档节点自身 / 块所属文档） */
+  title: string | null;
+  description: string | null;
+  heading: string | null;
+  documentId: string | null;
+  summary: string | null;
+  /** 命中上下文片段：content 前 160 字（不回传全文） */
+  snippet: string | null;
+}
+
+/** 图谱可视化：实体节点（GET /kg/nodes） */
+export interface GraphNode {
+  id: string;
+  name: string;
+  type: string;
+  description: string | null;
+}
+
+/** 图谱可视化：实体间 RELATED_TO 边（GET /kg/edges） */
+export interface GraphEdge {
+  source: string;
+  target: string;
+  /** 关系语义（边类型恒为 RELATED_TO，语义在属性上） */
+  relation: string;
+  weight: number;
+}

@@ -11,7 +11,7 @@ import {
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { GraphBuildService } from './graph-build.service.js';
 import { KgBuildPublisher } from './kg-build.publisher.js';
-import { GraphEntitiesDto, GraphNeighborsDto } from './dto/graph-query.dto.js';
+import { GraphEntitiesDto, GraphNeighborsDto, GraphQueryDto, GraphSearchDto } from './dto/graph-query.dto.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { RoleCode } from '../common/constants/roles.js';
 
@@ -101,5 +101,27 @@ export class KgController {
   @Get('neighbors')
   async neighbors(@Query() dto: GraphNeighborsDto) {
     return this.graphBuildService.getNeighbors(dto.name, dto.limit ?? 20);
+  }
+
+  /**
+   * 图谱关键词检索（feat-v10）：跨文档 / 块 / 实体三类节点，
+   * 六种属性（name/title/heading/description/summary/content）包含匹配。
+   * `entities` 只搜实体名，这里是前端「图谱检索」页的主查询。
+   */
+  @Get('search')
+  async search(@Query() dto: GraphSearchDto) {
+    return this.graphBuildService.searchGraph(dto.keyword, dto.limit ?? 50);
+  }
+
+  /** 图谱可视化：实体节点全量列表（type 可选过滤，按提及次数倒序） */
+  @Get('nodes')
+  async nodes(@Query() dto: GraphQueryDto) {
+    return this.graphBuildService.listNodes(dto.type, dto.limit ?? 200);
+  }
+
+  /** 图谱可视化：实体间 RELATED_TO 边全量列表（按权重倒序） */
+  @Get('edges')
+  async edges(@Query() dto: GraphQueryDto) {
+    return this.graphBuildService.listEdges(dto.limit ?? 500);
   }
 }
