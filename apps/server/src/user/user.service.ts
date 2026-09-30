@@ -15,6 +15,7 @@ import { DocumentEntity } from '../document/entities/document.entity.js';
 import { UserEntity } from './entities/user.entity.js';
 import { RoleEntity } from './entities/role.entity.js';
 import { UserRoleEntity } from './entities/user-role.entity.js';
+import { PermissionService } from './permission.service.js';
 import { QueryUserDto } from './dto/query-user.dto.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
@@ -39,6 +40,7 @@ export class UserService {
     private readonly userRoleRepo: Repository<UserRoleEntity>,
     @InjectRepository(DocumentEntity)
     private readonly documentRepo: Repository<DocumentEntity>,
+    private readonly permissionService: PermissionService,
   ) {}
 
   /** 按用户名查未删除用户（软删数据不算，避免注册查重误判） */
@@ -77,8 +79,16 @@ export class UserService {
     return rows.map((r) => r.roleCode);
   }
 
-  /** Entity → 鉴权用视图对象（不含密码） */
-  toAuthUser(user: UserEntity, roles: string[]): AuthUser {
+  /**
+   * Entity → 鉴权用视图对象（不含密码）。
+   * permissions 由调用方传入（buildAuthUser / validateCredentials 先算好），
+   * 本方法只做装配，不隐式查库——便于单测时直接构造 AuthUser。
+   */
+  toAuthUser(
+    user: UserEntity,
+    roles: string[],
+    permissions: string[],
+  ): AuthUser {
     return {
       userId: user.id,
       username: user.username,
@@ -86,6 +96,7 @@ export class UserService {
       email: user.email,
       avatar: user.avatar,
       roles,
+      permissions,
     };
   }
 
@@ -119,7 +130,10 @@ export class UserService {
       throw new UnauthorizedException('账户已禁用');
     }
     const roles = await this.getRoleCodes(userId);
-    return this.toAuthUser(user, roles);
+    // 复用上面已查到的 roles，避免权限服务再执行一次同样的角色联查
+    const permissions =
+      await this.permissionService.getUserPermissionCodes(userId, roles);
+    return this.toAuthUser(user, roles, permissions);
   }
 
   /**
@@ -146,7 +160,10 @@ export class UserService {
       throw new UnauthorizedException('用户名或密码错误');
     }
     const roles = await this.getRoleCodes(user.id);
-    return this.toAuthUser(user, roles);
+    // 复用上面已查到的 roles，避免权限服务再执行一次同样的角色联查
+    const permissions =
+      await this.permissionService.getUserPermissionCodes(user.id, roles);
+    return this.toAuthUser(user, roles, permissions);
   }
 
   /**
