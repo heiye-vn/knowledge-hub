@@ -40,5 +40,10 @@ pnpm docker:down
 
 ### 4. 运行后端测试
 ```bash
+# 运行单元测试
 pnpm test:server
+
+# 运行 E2E 端到端测试
+pnpm --filter @knowledge-hub/server test:e2e
 ```
+
