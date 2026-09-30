@@ -10,6 +10,12 @@ import { DocumentReviewEntity } from './document/entities/document-review.entity
 import { UserEntity } from './user/entities/user.entity.js';
 import { RoleEntity } from './user/entities/role.entity.js';
 import { UserRoleEntity } from './user/entities/user-role.entity.js';
+import { PermissionEntity } from './user/entities/permission.entity.js';
+import { RolePermissionEntity } from './user/entities/role-permission.entity.js';
+import { UserPermissionEntity } from './user/entities/user-permission.entity.js';
+import { TeamEntity } from './team/entities/team.entity.js';
+import { TeamMemberEntity } from './team/entities/team-member.entity.js';
+import { TeamModule } from './team/team.module.js';
 
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
@@ -41,6 +47,11 @@ import { AuthModule } from './auth/auth.module.js';
           UserEntity,
           RoleEntity,
           UserRoleEntity,
+          PermissionEntity,
+          RolePermissionEntity,
+          UserPermissionEntity,
+          TeamEntity,
+          TeamMemberEntity,
         ],
         synchronize: false,
       }),
@@ -54,6 +65,8 @@ import { AuthModule } from './auth/auth.module.js';
     KgModule,
     // feat-v7：用户鉴权（JWT 双令牌 + 全局守卫）
     AuthModule,
+    // feat-v9：RBAC 权限体系（权限树 + 三层 Guard）与独立团队组织架构模块
+    TeamModule,
   ],
   controllers: [AppController],
   providers: [
