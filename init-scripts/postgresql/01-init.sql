@@ -213,3 +213,144 @@ INSERT INTO kh_user_role (id, user_id, role_id) VALUES
     (3000000000000000003, 1000000000000000002, 2000000000000000002),  -- reviewer → 审核员
     (3000000000000000004, 1000000000000000003, 2000000000000000003)   -- user → 普通用户
 ON CONFLICT (id) DO NOTHING;
+
+-- ==================== RBAC 权限体系（feat-v9） ====================
+
+-- 权限表（树形：parent_id 仅分类，不承载权限继承）
+CREATE TABLE IF NOT EXISTS kh_permission (
+    id BIGINT PRIMARY KEY,                          -- 权限 ID（雪花）
+    parent_id BIGINT NOT NULL DEFAULT 0,            -- 父权限 ID，0 为根
+    permission_name VARCHAR(50) NOT NULL,           -- 权限名称
+    permission_code VARCHAR(100) NOT NULL,          -- 权限编码（运行时鉴权唯一依据）
+    permission_type SMALLINT NOT NULL,              -- 1 菜单 2 按钮 3 接口
+    menu_url VARCHAR(200),                          -- 菜单路径（仅展示）
+    api_url VARCHAR(500),                           -- 接口 URL 模式（仅展示）
+    method VARCHAR(10),                             -- HTTP 方法（仅展示）
+    icon VARCHAR(50),                               -- 图标
+    sort INT NOT NULL DEFAULT 0,                    -- 排序
+    status SMALLINT NOT NULL DEFAULT 1,             -- 0 禁用 1 启用
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_kh_permission_parent_id ON kh_permission(parent_id);
+
+-- 权限编码唯一（仅约束未删除记录，避免软删后同编码重建时触发唯一约束冲突）
+CREATE UNIQUE INDEX IF NOT EXISTS uk_kh_permission_code
+    ON kh_permission(permission_code) WHERE deleted = false;
+
+-- 角色-权限关联
+CREATE TABLE IF NOT EXISTS kh_role_permission (
+    id BIGINT PRIMARY KEY,                          -- 关联 ID（雪花）
+    role_id BIGINT NOT NULL REFERENCES kh_role(id),
+    permission_id BIGINT NOT NULL REFERENCES kh_permission(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE (role_id, permission_id)
+);
+CREATE INDEX IF NOT EXISTS idx_kh_role_permission_role_id ON kh_role_permission(role_id);
+
+-- 用户-权限直接关联（RBAC 扩展：临时赋权，主体仍是角色）
+CREATE TABLE IF NOT EXISTS kh_user_permission (
+    id BIGINT PRIMARY KEY,                          -- 关联 ID（雪花）
+    user_id BIGINT NOT NULL REFERENCES kh_user(id),
+    permission_id BIGINT NOT NULL REFERENCES kh_permission(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, permission_id)
+);
+CREATE INDEX IF NOT EXISTS idx_kh_user_permission_user_id ON kh_user_permission(user_id);
+
+COMMENT ON TABLE kh_permission IS '权限表（树形，permission_code 为鉴权唯一依据）';
+COMMENT ON COLUMN kh_permission.permission_type IS '权限类型（1: 菜单, 2: 按钮, 3: 接口）';
+COMMENT ON COLUMN kh_permission.deleted IS '逻辑删除标记';
+COMMENT ON TABLE kh_role_permission IS '角色-权限关联表（多对多）';
+COMMENT ON TABLE kh_user_permission IS '用户-权限直接关联表（RBAC 扩展，临时赋权用）';
+
+-- 预置权限树：一级菜单
+INSERT INTO kh_permission (id, parent_id, permission_name, permission_code, permission_type, menu_url, icon, sort) VALUES
+    (4000000000000000001, 0, '首页', 'dashboard', 1, '/dashboard', 'DashboardOutlined', 1),
+    (4000000000000000002, 0, '文档中心', 'document', 1, '/documents', 'FileTextOutlined', 2),
+    (4000000000000000003, 0, '搜索', 'search', 1, '/search', 'SearchOutlined', 3),
+    (4000000000000000004, 0, '个人中心', 'profile', 1, '/profile', 'UserOutlined', 4),
+    (4000000000000000005, 0, '系统管理', 'system', 1, '/admin', 'SettingOutlined', 5)
+ON CONFLICT (id) DO NOTHING;
+
+-- 文档中心下的按钮级权限
+INSERT INTO kh_permission (id, parent_id, permission_name, permission_code, permission_type, sort) VALUES
+    (4000000000000000011, 4000000000000000002, '文档列表', 'document:list', 2, 1),
+    (4000000000000000012, 4000000000000000002, '创建文档', 'document:create', 2, 2),
+    (4000000000000000013, 4000000000000000002, '编辑文档', 'document:edit', 2, 3),
+    (4000000000000000014, 4000000000000000002, '删除文档', 'document:delete', 2, 4),
+    (4000000000000000015, 4000000000000000002, '文档审核', 'document:review', 2, 5)
+ON CONFLICT (id) DO NOTHING;
+
+-- 系统管理下的菜单级权限
+INSERT INTO kh_permission (id, parent_id, permission_name, permission_code, permission_type, menu_url, sort) VALUES
+    (4000000000000000021, 4000000000000000005, '用户管理', 'system:user', 1, '/admin/users', 1),
+    (4000000000000000022, 4000000000000000005, '角色管理', 'system:role', 1, '/admin/roles', 2),
+    (4000000000000000023, 4000000000000000005, '权限管理', 'system:permission', 1, '/admin/permissions', 3),
+    (4000000000000000024, 4000000000000000005, '团队管理', 'system:team', 1, '/admin/teams', 4)
+ON CONFLICT (id) DO NOTHING;
+
+-- 权限管理下的按钮级权限
+INSERT INTO kh_permission (id, parent_id, permission_name, permission_code, permission_type, sort) VALUES
+    (4000000000000000041, 4000000000000000023, '新增权限', 'system:permission:create', 2, 1),
+    (4000000000000000042, 4000000000000000023, '编辑权限', 'system:permission:edit', 2, 2),
+    (4000000000000000043, 4000000000000000023, '删除权限', 'system:permission:delete', 2, 3)
+ON CONFLICT (id) DO NOTHING;
+
+-- 角色预绑权限：管理员不绑（PermissionsGuard 按 ROLE_ADMIN 短路 + 常量补充），
+-- 审核员绑文档查看与审核，普通用户绑基础菜单
+INSERT INTO kh_role_permission (id, role_id, permission_id) VALUES
+    (4100000000000000001, 2000000000000000002, 4000000000000000011),  -- 审核员 → 文档列表
+    (4100000000000000002, 2000000000000000002, 4000000000000000015),  -- 审核员 → 文档审核
+    (4100000000000000003, 2000000000000000003, 4000000000000000001),  -- 普通用户 → 首页
+    (4100000000000000004, 2000000000000000003, 4000000000000000011),  -- 普通用户 → 文档列表
+    (4100000000000000005, 2000000000000000003, 4000000000000000003),  -- 普通用户 → 搜索
+    (4100000000000000006, 2000000000000000003, 4000000000000000004)   -- 普通用户 → 个人中心
+ON CONFLICT (id) DO NOTHING;
+
+-- ==================== 团队组织架构（feat-v9） ====================
+
+-- 团队表（树形；与 RBAC 无关，服务文档可见性过滤的组织维度）
+CREATE TABLE IF NOT EXISTS kh_team (
+    id BIGINT PRIMARY KEY,                          -- 团队 ID（雪花）
+    team_name VARCHAR(100) NOT NULL,                -- 团队名称
+    team_code VARCHAR(50),                          -- 团队编码
+    description VARCHAR(500),                       -- 描述
+    leader_id BIGINT,                               -- 负责人 → kh_user.id
+    parent_id BIGINT NOT NULL DEFAULT 0,            -- 父团队 ID，0 为根
+    sort INT NOT NULL DEFAULT 0,                    -- 排序
+    status SMALLINT NOT NULL DEFAULT 1,             -- 0 禁用 1 启用
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_kh_team_parent_id ON kh_team(parent_id);
+
+-- 团队-成员关联
+CREATE TABLE IF NOT EXISTS kh_team_member (
+    id BIGINT PRIMARY KEY,                          -- 关联 ID（雪花）
+    team_id BIGINT NOT NULL REFERENCES kh_team(id),
+    user_id BIGINT NOT NULL REFERENCES kh_user(id),
+    member_role VARCHAR(20) NOT NULL DEFAULT 'member',  -- 团队内职务（leader/member，与 RBAC 无关）
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE (team_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_kh_team_member_user_id ON kh_team_member(user_id);
+
+COMMENT ON TABLE kh_team IS '团队表（树形组织架构）';
+COMMENT ON COLUMN kh_team.leader_id IS '负责人（→ kh_user.id，可空）';
+COMMENT ON TABLE kh_team_member IS '团队-成员关联表（多对多）';
+COMMENT ON COLUMN kh_team_member.member_role IS '团队内职务（leader/member），与系统 RBAC 角色无关';
+
+-- 预置团队（两级）与成员
+INSERT INTO kh_team (id, team_name, team_code, description, leader_id, parent_id, sort) VALUES
+    (8000000000000000001, '技术中心', 'TECH_CENTER', '研发与技术团队', 1000000000000000001, 0, 1),
+    (8000000000000000002, '后端开发组', 'BACKEND_TEAM', '后端开发', 1000000000000000001, 8000000000000000001, 1)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO kh_team_member (id, team_id, user_id, member_role) VALUES
+    (9000000000000000001, 8000000000000000001, 1000000000000000001, 'leader'),  -- admin 是技术中心负责人
+    (9000000000000000002, 8000000000000000002, 1000000000000000001, 'leader'),  -- admin 是后端组负责人
+    (9000000000000000003, 8000000000000000002, 1000000000000000003, 'member')   -- user 在后端组
+ON CONFLICT (id) DO NOTHING;
