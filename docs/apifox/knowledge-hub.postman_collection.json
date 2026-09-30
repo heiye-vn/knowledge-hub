@@ -44,6 +44,18 @@
     {
       "key": "roleId",
       "value": ""
+    },
+    {
+      "key": "permissionId",
+      "value": ""
+    },
+    {
+      "key": "teamId",
+      "value": ""
+    },
+    {
+      "key": "userId2",
+      "value": ""
     }
   ],
   "item": [
@@ -1372,7 +1384,7 @@
       ]
     },
     {
-      "name": "用户与角色管理（ADMIN）",
+      "name": "用户与角色管理（system:user / system:role）",
       "item": [
         {
           "request": {
@@ -1415,9 +1427,9 @@
                 }
               ]
             },
-            "description": "分页查询用户（仅 ADMIN）。keyword 模糊匹配用户名/姓名/邮箱；status 过滤（0 禁用 1 启用）。pageSize 上限 100。返回 {list, total, page, pageSize}，list 为 VO（不含密码）。"
+            "description": "分页查询用户（需 system:user 权限码）。keyword 模糊匹配用户名/姓名/邮箱；status 过滤（0 禁用 1 启用）。pageSize 上限 100。返回 {list, total, page, pageSize}，list 为 VO（不含密码）。"
           },
-          "name": "分页查询用户（仅 ADMIN）"
+          "name": "分页查询用户（需 system:user）"
         },
         {
           "request": {
@@ -1437,7 +1449,7 @@
                 "users"
               ]
             },
-            "description": "新建用户（仅 ADMIN）。username/password 必填（密码至少 6 位）；email/realName/avatar/status 可选；roleCodes 指定初始角色（缺省绑 ROLE_USER）。返回创建后的 VO。",
+            "description": "新建用户（需 system:user 权限码）。username/password 必填（密码至少 6 位）；email/realName/avatar/status 可选；roleCodes 指定初始角色（缺省绑 ROLE_USER）。返回创建后的 VO。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"newuser\",\n  \"password\": \"123456\",\n  \"email\": \"newuser@company.com\",\n  \"realName\": \"新用户\",\n  \"roleCodes\": [\n    \"ROLE_USER\"\n  ]\n}",
@@ -1448,7 +1460,7 @@
               }
             }
           },
-          "name": "新建用户（仅 ADMIN）"
+          "name": "新建用户（需 system:user）"
         },
         {
           "request": {
@@ -1469,9 +1481,9 @@
                 "{{userId}}"
               ]
             },
-            "description": "用户详情（仅 ADMIN），返回 VO（脱敏，不含密码哈希）。"
+            "description": "用户详情（需 system:user 权限码），返回 VO（脱敏，不含密码哈希）。"
           },
-          "name": "用户详情（仅 ADMIN），返回 VO（脱敏，不含密码哈希）"
+          "name": "用户详情（需 system:user），返回 VO（脱敏，不含密码哈希）"
         },
         {
           "request": {
@@ -1492,7 +1504,7 @@
                 "{{userId}}"
               ]
             },
-            "description": "更新用户（仅 ADMIN）。全部可选；password 不能通过此接口改（走 /users/{{userId}}/password/reset）；email/username 改动会做占用校验。",
+            "description": "更新用户（需 system:user 权限码）。全部可选；password 不能通过此接口改（走 /users/{{userId}}/password/reset）；email/username 改动会做占用校验。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"realName\": \"改名后的姓名\",\n  \"status\": 1\n}",
@@ -1503,7 +1515,7 @@
               }
             }
           },
-          "name": "更新用户（仅 ADMIN）"
+          "name": "更新用户（需 system:user）"
         },
         {
           "request": {
@@ -1524,9 +1536,9 @@
                 "{{userId}}"
               ]
             },
-            "description": "删除用户（仅 ADMIN）。软删除（deleted=true），文档保留创建人痕迹。"
+            "description": "删除用户（需 system:user 权限码）。软删除（deleted=true），文档保留创建人痕迹。"
           },
-          "name": "删除用户（仅 ADMIN）"
+          "name": "删除用户（需 system:user）"
         },
         {
           "request": {
@@ -1549,7 +1561,7 @@
                 "reset"
               ]
             },
-            "description": "管理员重置指定用户密码（仅 ADMIN）。不需要旧密码；newPassword 至少 6 位。",
+            "description": "管理员重置指定用户密码（需 system:user 权限码）。不需要旧密码；newPassword 至少 6 位。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"newPassword\": \"123456\"\n}",
@@ -1560,7 +1572,7 @@
               }
             }
           },
-          "name": "管理员重置指定用户密码（仅 ADMIN）"
+          "name": "管理员重置指定用户密码（需 system:user）"
         },
         {
           "request": {
@@ -1582,9 +1594,9 @@
                 "roles"
               ]
             },
-            "description": "查询用户当前角色编码（仅 ADMIN）。返回 {userId, roleCodes}。"
+            "description": "查询用户当前角色编码（需 system:role 权限码）。返回 {userId, roleCodes}。"
           },
-          "name": "查询用户当前角色编码（仅 ADMIN）"
+          "name": "查询用户当前角色编码（需 system:role）"
         },
         {
           "request": {
@@ -1606,7 +1618,7 @@
                 "roles"
               ]
             },
-            "description": "全量替换用户角色（仅 ADMIN）。roleCodes 中角色必须存在且启用，否则 404/400。返回替换后的 {userId, roleCodes}。",
+            "description": "全量替换用户角色（需 system:role 权限码）。roleCodes 中角色必须存在且启用，否则 404/400。返回替换后的 {userId, roleCodes}。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"roleCodes\": [\n    \"ROLE_USER\",\n    \"ROLE_REVIEWER\"\n  ]\n}",
@@ -1617,7 +1629,7 @@
               }
             }
           },
-          "name": "全量替换用户角色（仅 ADMIN）"
+          "name": "全量替换用户角色（需 system:role）"
         },
         {
           "request": {
@@ -1638,9 +1650,9 @@
                 "list"
               ]
             },
-            "description": "角色列表（仅 ADMIN）。全部角色含禁用。"
+            "description": "角色列表（需 system:role 权限码）。全部角色含禁用。"
           },
-          "name": "角色列表（仅 ADMIN）"
+          "name": "角色列表（需 system:role）"
         },
         {
           "request": {
@@ -1660,7 +1672,7 @@
                 "roles"
               ]
             },
-            "description": "新建角色（仅 ADMIN）。roleCode 全局唯一（如 ROLE_EDITOR），重复报 409。",
+            "description": "新建角色（需 system:role 权限码）。roleCode 全局唯一（如 ROLE_EDITOR），重复报 409。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"roleName\": \"编辑\",\n  \"roleCode\": \"ROLE_EDITOR\",\n  \"description\": \"内容编辑\"\n}",
@@ -1671,7 +1683,7 @@
               }
             }
           },
-          "name": "新建角色（仅 ADMIN）"
+          "name": "新建角色（需 system:role）"
         },
         {
           "request": {
@@ -1692,7 +1704,7 @@
                 "{{roleId}}"
               ]
             },
-            "description": "更新角色（仅 ADMIN）。全部可选；status=0 禁用后立即不参与鉴权。",
+            "description": "更新角色（需 system:role 权限码）。全部可选；status=0 禁用后立即不参与鉴权。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"description\": \"更新后的描述\",\n  \"status\": 1\n}",
@@ -1703,7 +1715,7 @@
               }
             }
           },
-          "name": "更新角色（仅 ADMIN）"
+          "name": "更新角色（需 system:role）"
         },
         {
           "request": {
@@ -1724,9 +1736,662 @@
                 "{{roleId}}"
               ]
             },
-            "description": "删除角色（仅 ADMIN）。仍有用户引用的角色删除会因外键约束失败（有意设计：先解绑再删）。"
+            "description": "删除角色（需 system:role 权限码）。仍有用户引用的角色删除会因外键约束失败（有意设计：先解绑再删）。"
           },
-          "name": "删除角色（仅 ADMIN）"
+          "name": "删除角色（需 system:role）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/permissions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}",
+                "permissions"
+              ]
+            },
+            "description": "返回 permissionCodes（直接赋权 ∪ 角色间接权限；管理员含常量补充）与 directPermissionIds（仅直接赋权部分）。\n易踩坑：directPermissionIds 是权限 ID，permissionCodes 是权限编码，二者不在同一维度，替换绑定请用 ID。"
+          },
+          "name": "查询用户最终权限码与直接权限 ID（需 system:user）"
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/permissions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}",
+                "permissions"
+              ]
+            },
+            "description": "整体替换语义：传空数组即清空该用户的所有直接权限。\n易踩坑：只影响直接赋权，不会动角色带来的权限；绑定与清空在同一事务内完成，失败整体回滚。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionIds\": [\n    \"4000000000000000012\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "全量替换用户直接权限（需 system:user）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/roles/{{roleId}}/permissions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "roles",
+                "{{roleId}}",
+                "permissions"
+              ]
+            },
+            "description": "返回该角色绑定的 permissionIds 列表。角色不存在时 404。"
+          },
+          "name": "查询角色已绑权限 ID（需 system:role）"
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/roles/{{roleId}}/permissions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "roles",
+                "{{roleId}}",
+                "permissions"
+              ]
+            },
+            "description": "整体替换语义：传空数组即清空。所有绑定 ID 必须存在且启用，否则 404「部分权限不存在或已禁用」，且不执行任何写入。\n易踩坑：替换后该角色下所有用户的权限在下一次请求即生效（权限每请求重算，不等 token 过期）。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionIds\": [\n    \"4000000000000000011\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "全量替换角色权限绑定（需 system:role）"
+        }
+      ]
+    },
+    {
+      "name": "权限管理（RBAC，system:permission）",
+      "item": [
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/tree",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "tree"
+              ]
+            },
+            "description": "返回树形权限列表（parent_id 组织）。\n易踩坑：父子关系只用于展示分类，不继承——拥有父权限不等于拥有子权限。"
+          },
+          "name": "权限树（需 system:permission）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "list"
+              ]
+            },
+            "description": "扁平列表，仅返回启用且未删除的权限，按 sort 升序。"
+          },
+          "name": "权限列表（需 system:permission）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/page",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "page"
+              ]
+            },
+            "description": "支持 keyword 模糊匹配权限名称或编码。"
+          },
+          "name": "权限分页（需 system:permission）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/{{permissionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "{{permissionId}}"
+              ]
+            },
+            "description": "permission_type：1 菜单 / 2 按钮 / 3 接口；menu_url 与 api_url 仅展示，不参与鉴权。"
+          },
+          "name": "权限详情（需 system:permission）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/{{permissionId}}/children",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "{{permissionId}}",
+                "children"
+              ]
+            },
+            "description": "返回该权限下的直接子级（仅一层）。"
+          },
+          "name": "子权限列表（需 system:permission）"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                ""
+              ]
+            },
+            "description": "permissionCode 全局唯一，重复则 409「权限编码已存在」。\n易踩坑：权限编码是前后端鉴权的唯一依据，改编码会同时改变所有已绑定该权限的角色/用户的生效路径。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionName\": \"导出文档\",\n  \"permissionCode\": \"document:export\",\n  \"permissionType\": 2,\n  \"parentId\": \"4000000000000000002\",\n  \"sort\": 6\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "新建权限（需 system:permission:create）"
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/{{permissionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "{{permissionId}}"
+              ]
+            },
+            "description": "父权限不能是自己，否则 400。置 status=0 即全局收权，无需逐个解绑。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionName\": \"导出文档 v2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "更新权限（需 system:permission:edit）"
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/{{permissionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "{{permissionId}}"
+              ]
+            },
+            "description": "前置校验：存在子权限、或仍被角色/用户引用时拒绝删除（400），避免产生悬空引用。软删，历史绑定数据保留。"
+          },
+          "name": "删除权限（需 system:permission:delete）"
+        }
+      ]
+    },
+    {
+      "name": "团队管理（system:team）",
+      "item": [
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/teams/tree",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "tree"
+              ]
+            },
+            "description": "组织架构树，标注 @Public 免登录。\n易踩坑：若将来给该 controller 加类级 @Roles，RolesGuard 会因 request.user 为空而让「公开」失效返回 403。"
+          },
+          "name": "团队树（公开，无需登录）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/teams/page",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "page"
+              ]
+            },
+            "description": "keyword 匹配团队名称/编码，status 可选过滤。"
+          },
+          "name": "团队分页（需 system:team）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/teams/{{teamId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "{{teamId}}"
+              ]
+            },
+            "description": "在团队字段基础上附加 memberCount。"
+          },
+          "name": "团队详情（需 system:team）"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/teams/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                ""
+              ]
+            },
+            "description": "parentId 不传为根团队；sort 控制同级展示顺序。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamName\": \"前端组\",\n  \"teamCode\": \"FE\",\n  \"parentId\": \"8000000000000000001\",\n  \"sort\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "新建团队（需 system:team）"
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/teams/{{teamId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "{{teamId}}"
+              ]
+            },
+            "description": "父团队不能是自己（400）；存在子团队时不允许删除，但可改父级移动。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"前端与跨端开发\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "更新团队（需 system:team）"
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/teams/{{teamId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "{{teamId}}"
+              ]
+            },
+            "description": "存在子团队时拒绝（400 存在子团队，无法删除）；软删团队并同步清理成员绑定，两表写在同一事务内。"
+          },
+          "name": "删除团队（需 system:team）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/teams/{{teamId}}/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "{{teamId}}",
+                "members"
+              ]
+            },
+            "description": "联查 kh_user，返回 userId / memberRole / username / realName。"
+          },
+          "name": "团队成员列表（需 system:team）"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/teams/{{teamId}}/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "{{teamId}}",
+                "members"
+              ]
+            },
+            "description": "幂等：已在团队的成员自动跳过，返回 added / skipped 计数；传入不存在的用户 ID 则整批 404。\n易踩坑：member_role 统一为 member，负责人通过团队表 leader_id 设置，不走这个接口。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": [\n    \"1000000000000000003\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "批量添加成员（需 system:team）"
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/teams/{{teamId}}/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "{{teamId}}",
+                "members"
+              ]
+            },
+            "description": "按 teamId + userIds 删除绑定，重复调用安全。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": [\n    \"1000000000000000003\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "批量移除成员（需 system:team）"
         }
       ]
     }
