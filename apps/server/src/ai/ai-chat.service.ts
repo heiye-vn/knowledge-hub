@@ -62,7 +62,7 @@ export class AiChatService {
       'LLM_BASE_URL',
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
     );
-    const model = config.get<string>('LLM_MODEL', 'qwen-plus');
+    const model = config.get<string>('LLM_MODEL', 'qwen3.8-flash');
 
     this.llm = new ChatOpenAI({
       apiKey,

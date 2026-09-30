@@ -19,7 +19,7 @@ export const RAG_REINDEX_QUEUE = 'rag.reindex';
  * KG 建图队列名（feat-v5，对齐基线实现 v5 的 `kg.graph.exchange` / `kh.kg.graph.queue`）
  *
  * 🔴 为什么 KG 必须走队列，而 v4 的 Search 走同步：
- * 实测（test/fixtures 两个真实 PDF，qwen-plus）单块抽取 19~57s，
+ * 实测（test/fixtures 两个真实 PDF，历史模型 qwen-plus，已弃用）单块抽取 19~57s，
  * 一篇 2 块的文档就要 38~57 秒 —— 塞进同步 publish 必然撞网关超时。
  * Search upsert 是毫秒级 ES 请求，才用的同步。
  */
