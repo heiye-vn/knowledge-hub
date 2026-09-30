@@ -121,6 +121,17 @@ describe.skipIf(!neo4jUp)('GraphBuildService 集成（需要 Neo4j + LLM Key）'
         const neighbors = await service.getNeighbors(first.name, 10);
         expect(Array.isArray(neighbors)).toBe(true);
       }
+
+      // feat-v10：图谱关键词检索跨节点命中（实体名必含语料关键词）
+      const hits = await service.searchGraph('财务部', 20);
+      expect(hits.some((h) => h.label === 'KnowledgeEntity')).toBe(true);
+      expect(hits.every((h) => typeof h.snippet === 'string' || h.snippet === null)).toBe(true);
+
+      // feat-v10：节点 / 边列表（画图首屏数据，结构断言即可）
+      const nodes = await service.listNodes(undefined, 50);
+      expect(Array.isArray(nodes)).toBe(true);
+      const edges = await service.listEdges(100);
+      expect(Array.isArray(edges)).toBe(true);
     },
   );
 

@@ -844,7 +844,7 @@
                 }
               ]
             },
-            "description": "**文档级检索**：返回整篇文档列表（区别于 /search 的块级片段）。\n\n响应 hits[].highlight 为 ES 高亮片段（默认 <em> 标签），snippet 优先取 content 高亮，无高亮时退化为正文前 200 字。\n\n默认 status=1（只召回已发布文档）；显式传 status 可覆盖（0 草稿 / 1 已发布 / 2 已归档）。\nES 不可用时返回空结果而非报错。"
+            "description": "**文档级检索**：返回整篇文档列表（区别于 /search 的块级片段）。\n\n响应 hits[].highlight 为 ES 高亮片段（默认 <em> 标签），snippet 优先取 content 高亮，无高亮时退化为正文前 200 字。\n\n默认 status=1（只召回已发布文档）；显式传 status 可覆盖（0 草稿 / 1 已发布 / 2 已归档）。\nES 不可用时返回空结果而非报错。\n\n鉴权（feat-v10 起）：需 search 权限码（审核员/普通用户角色已预绑，管理员短路放行）。"
           }
         },
         {
@@ -876,7 +876,7 @@
                 "documents"
               ]
             },
-            "description": "POST 版。查询词较长或含特殊字符时用 POST 更稳妥。\n\n可选字段：categoryId / authorId / teamId / status（0-2）。\n校验：pageSize 整数 1-50；未知字段会被拒绝（全局 forbidNonWhitelisted）。"
+            "description": "POST 版。查询词较长或含特殊字符时用 POST 更稳妥。\n\n可选字段：categoryId / authorId / teamId / status（0-2）。\n校验：pageSize 整数 1-50；未知字段会被拒绝（全局 forbidNonWhitelisted）。\n\n鉴权（feat-v10 起）：需 search 权限码（审核员/普通用户角色已预绑，管理员短路放行）。"
           }
         }
       ]
@@ -1020,6 +1020,82 @@
               ]
             },
             "description": "某实体的全部 RELATED_TO 关联（不分方向，按权重倒序）。\n\n返回 [{ entity, relation, weight, direction: out|in }]。\n⚠️ 关系语义在 relation 属性上（边类型恒为 RELATED_TO），按属性读语义。"
+          }
+        },
+        {
+          "name": "图谱关键词检索（feat-v10）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kg/search?keyword=知识库&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "keyword",
+                  "value": "知识库"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "跨三类节点（KnowledgeDocument / DocumentChunk / KnowledgeEntity）全属性检索：\n文档 title/summary、块 heading/content、实体 name/description，大小写不敏感包含匹配。\n\n返回 [{ id, name, label, type, title, description, heading, documentId, summary, snippet }]，\nlabel 标识节点类型；snippet 为 content 前 160 字（不回传全文）。\n与「实体检索」的区别：那个只搜实体名，这里是图谱检索页的主查询。"
+          }
+        },
+        {
+          "name": "图谱节点列表（画图首屏，feat-v10）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kg/nodes?limit=200",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "nodes"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "200"
+                }
+              ]
+            },
+            "description": "实体节点全量列表（可选 type 过滤：PERSON / ORGANIZATION / CONCEPT …），\n按被提及次数倒序——高频实体优先展示。\n\n返回 [{ id, name, type, description }]，与「图谱边列表」拼起来即画图初始视图。"
+          }
+        },
+        {
+          "name": "图谱边列表（画图首屏，feat-v10）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kg/edges?limit=500",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "edges"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "500"
+                }
+              ]
+            },
+            "description": "实体间 RELATED_TO 边全量列表，按权重倒序。\n\n返回 [{ source, target, relation, weight }]，\nrelation 是关系语义（如「属于」「负责」），边类型恒为 RELATED_TO。"
           }
         },
         {
