@@ -132,6 +132,9 @@
 | **2026-09-30** | **业务接口权限码挂载**（v10） | v10 给文档接口挂 `@RequirePermission`，但审核 4 接口**叠加** `@Roles(REVIEWER, ADMIN)` + 权限码 | 同样给文档 / 搜索接口挂码（create→`document:create` 等），但审核工作台**只保留 `@Roles` 不挂码** | 延续 v9 已登记的「不叠 `@Roles`」原则：叠加会让 RolesGuard 先拦掉非 REVIEWER 用户，`document:review` 的权限码分支永远走不到（参考项目在 v10 复刻了同一坑） |
 | **2026-09-30** | **图谱检索路由前缀**（v10） | `GET /graph/search` / `/graph/nodes` / `/graph/edges` | `GET /kg/search` / `/kg/nodes` / `/kg/edges`（feat-v10） | 主项目 KG 模块此前已用 `/kg` 前缀（build / entities / neighbors / stats），同域接口聚在一个前缀下；自研前端跟随主项目契约，不复用参考前端 |
 | **2026-09-30** | **图谱查询能力形态**（v10） | `searchGraph` 跨三类节点六属性匹配（v10 新增）；`nodes` / `edges` 各自裸查询 | 同款 `searchGraph` Cypher（对齐）；但 `nodes` 复用主项目 `listEntities` 的排序语义（按提及次数倒序） | 节点列表按提及次数排序对画图首屏更有用（高频实体优先展示）；边列表按权重倒序与参考一致 |
+| **2026-09-30** | **Rerank 精排接入位置**（v11） | `HybridRetrievalService` 自实现混合检索，RRF 后直接精排 | `RerankerService` 作为独立组件挂进 `rag/` 模块，复用既有 `RetrievalService`，**PG 一致性兜底之后再精排** | 继承主项目 MIN_SCORE 过滤与兜底层（基线没有）；先剔除已死文档再打分，不浪费 rerank 额度 |
+| **2026-09-30** | **Rerank Key 回退链**（v11） | `RERANK_API_KEY → DASHSCOPE_API_KEY → OPENAI_API_KEY` | `RERANK_API_KEY → LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY` | 主项目无 DASHSCOPE_API_KEY 变量，沿用 extraction 建立的「百炼全家桶共用 Key」回退习惯（VLM 严格隔离不受影响） |
+| **2026-09-30** | **AI 检索路由**（v11） | `POST /rag/search`（只检索）+ `POST /ai/chat` | 检索保持既有 `POST /search`（挂 search 权限码），只新增 `/ai/chat` | 主项目 `/search` 契约已在 postman 集合与 dev-notes 固化，不改路由；能力（挂码 + 精排）已对齐 |
 
 
 ---

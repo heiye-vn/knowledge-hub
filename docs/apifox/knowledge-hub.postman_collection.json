@@ -809,6 +809,33 @@
             },
             "description": "POST 版。查询词含特殊字符或较长时用 POST 更稳妥。\n\n校验规则：query 必填；mode 只能是 hybrid/vector/keyword；topK 整数 1-50。\n多余字段会被拒绝（全局启用了 forbidNonWhitelisted）。"
           }
+        },
+        {
+          "name": "AI 对话（RAG 生成 + 引用溯源，feat-v11）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"公司的报销流程是什么？\",\n  \"topK\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "chat"
+              ]
+            },
+            "description": "混合检索（kNN + BM25 + RRF + rerank 精排）→ LLM 生成回答 → 引用溯源。\n\n请求：{ content: 必填问题, topK: 1~10 召回块数（默认 5）}。\n返回 { answer, sources }：answer 中句末带 [n] 标注；sources 只含实际被引用的资料，\n每条 { index, documentId, documentTitle, heading, excerpt(200字), score }。\n\n依赖：LLM_API_KEY（或回退 EMBEDDING_API_KEY）+ RERANK_API_KEY（默认 qwen3.7-text-rerank）。\n降级：检索无命中直接返回「知识库里没有相关内容。」不调 LLM；rerank 失败自动降级 RRF 顺序。\n鉴权：search 权限码。SSE 流式版本属后续讲次。"
+          }
         }
       ]
     },

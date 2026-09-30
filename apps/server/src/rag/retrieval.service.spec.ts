@@ -3,9 +3,18 @@ import { EntityManager } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ElasticsearchService } from './elasticsearch.service.js';
 import { EmbeddingService } from './embedding.service.js';
+import { RerankerService } from './reranker.service.js';
 import { RetrievalService } from './retrieval.service.js';
 import { VectorIndexService } from './vector-index.service.js';
 import type { DocumentChunk } from './types/rag.types.js';
+
+/** 不启用精排的 reranker mock：rerank 返回 null → 上层降级为 RRF 顺序 */
+function fakeReranker(): RerankerService {
+  return {
+    isEnabled: () => false,
+    rerank: async () => null,
+  } as unknown as RerankerService;
+}
 
 async function isEsUp(): Promise<boolean> {
   try {
@@ -96,6 +105,7 @@ describe.skipIf(!esUp)('RetrievalService（集成，依赖 localhost:9200）', (
         get: (_k: string, d?: string) => d,
       } as unknown as ConfigService),
       { get: (_k: string, d?: string) => d } as unknown as ConfigService,
+      fakeReranker(),
       fakeEntityManager([DOC_ALIVE]),
     );
   });
@@ -159,6 +169,7 @@ describe.skipIf(!esUp)('RetrievalService（集成，依赖 localhost:9200）', (
       esService,
       fakeEmbedding,
       { get: (_k: string, d?: string) => d } as unknown as ConfigService,
+      fakeReranker(),
       fakeEntityManager([DOC_ALIVE]),
     );
 
@@ -193,6 +204,7 @@ describe.skipIf(!esUp)('RetrievalService（集成，依赖 localhost:9200）', (
         get: (k: string, d?: string) =>
           k === 'RAG_MIN_SCORE' ? '0.72' : d,
       } as unknown as ConfigService,
+      fakeReranker(),
       fakeEntityManager([DOC_ALIVE]),
     );
 
@@ -211,6 +223,7 @@ describe.skipIf(!esUp)('RetrievalService（集成，依赖 localhost:9200）', (
       {
         get: (k: string, d?: string) => (k === 'RAG_MIN_SCORE' ? '0' : d),
       } as unknown as ConfigService,
+      fakeReranker(),
       fakeEntityManager([DOC_ALIVE]),
     );
     const looseHits = await loose.search({
@@ -245,6 +258,7 @@ describe('RetrievalService（ES 禁用场景）', () => {
         get: (_k: string, d?: string) => d,
       } as unknown as ConfigService),
       { get: (_k: string, d?: string) => d } as unknown as ConfigService,
+      fakeReranker(),
       fakeEntityManager([]),
     );
 
