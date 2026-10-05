@@ -1126,6 +1126,55 @@
           }
         },
         {
+          "name": "全景图谱数据（feat-v12）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kg/overview?keyword=&entityType=&from=&to=&docLimit=24",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kg",
+                "overview"
+              ],
+              "query": [
+                {
+                  "key": "keyword",
+                  "value": "",
+                  "description": "关键词过滤（匹配文档标题/摘要/标签/实体名）",
+                  "disabled": true
+                },
+                {
+                  "key": "entityType",
+                  "value": "",
+                  "description": "实体类型过滤",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "description": "文档更新时间下界（ISO 字符串）",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "description": "文档更新时间上界（ISO 字符串）",
+                  "disabled": true
+                },
+                {
+                  "key": "docLimit",
+                  "value": "24",
+                  "description": "主视图文档条数上限（1~80）"
+                }
+              ]
+            },
+            "description": "全景图谱多维数据：文档节点、实体节点、标签节点及关联边拓扑，附带全库统计、热门实体、最新文档列表。\n供前端力导向图可视化直接渲染。"
+          }
+        },
+        {
           "name": "手动清理文档图谱",
           "request": {
             "method": "DELETE",

@@ -109,3 +109,47 @@ export interface GraphEdge {
   relation: string;
   weight: number;
 }
+
+/** 全景图谱可视化节点 */
+export interface GraphViewNode {
+  id: string;
+  name: string;
+  kind: 'document' | 'entity' | 'tag';
+  type?: string | null;
+  documentId?: string | null;
+  updatedAt?: string | null;
+  description?: string | null;
+}
+
+/** 全景图谱可视化边 */
+export interface GraphViewEdge {
+  source: string;
+  target: string;
+  relation: string;
+  kind: 'mentions' | 'related' | 'tagged';
+}
+
+/** 全景图谱数据包（GET /kg/overview） */
+export interface GraphOverview {
+  nodes: GraphViewNode[];
+  edges: GraphViewEdge[];
+  stats: {
+    nodeCount: number;
+    edgeCount: number;
+    documentCount: number;
+    entityCount: number;
+    tagCount: number;
+    mentionCount: number;
+    relatedCount: number;
+    entityTypes: Array<{ type: string; count: number }>;
+  };
+  topEntities: Array<{ name: string; type: string | null; degree: number }>;
+  recentNodes: Array<{
+    id: string;
+    name: string;
+    kind: string;
+    updatedAt: string | null;
+  }>;
+  entityTypes: string[];
+}
+

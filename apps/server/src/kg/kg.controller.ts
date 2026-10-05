@@ -11,9 +11,16 @@ import {
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { GraphBuildService } from './graph-build.service.js';
 import { KgBuildPublisher } from './kg-build.publisher.js';
-import { GraphEntitiesDto, GraphNeighborsDto, GraphQueryDto, GraphSearchDto } from './dto/graph-query.dto.js';
+import {
+  GraphEntitiesDto,
+  GraphNeighborsDto,
+  GraphOverviewDto,
+  GraphQueryDto,
+  GraphSearchDto,
+} from './dto/graph-query.dto.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { RoleCode } from '../common/constants/roles.js';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
 
 /** 手动建图 / 删图请求体 */
 export class KgBuildDto {
@@ -35,6 +42,7 @@ export class KgBuildDto {
  *   本项目在 feat-v5 直接补齐，避免第三次「只写不读」。
  * - 基线实现的 `BUILD_ALL` 消息类型**没有任何投递入口**（死代码）；
  *   本项目 `POST /kg/build` 不传 documentIds 即全量重建。
+ * - feat-v12：新增 `GET /kg/overview` 全景图谱接口供前端力导向图呈现。
  *
  * 触发时机：publish 自动投递单篇建图；此处提供手动批量入口。
  */
@@ -85,20 +93,36 @@ export class KgController {
     return { id, deleted: true };
   }
 
+  /** 全景图谱数据（feat-v12）：文档/实体/标签多维拓扑与统计，供前端力导向图呈现 */
+  @Get('overview')
+  @RequirePermission('search')
+  async overview(@Query() dto: GraphOverviewDto) {
+    return this.graphBuildService.getOverview({
+      keyword: dto.keyword,
+      entityType: dto.entityType,
+      from: dto.from,
+      to: dto.to,
+      docLimit: dto.docLimit,
+    });
+  }
+
   /** 图规模统计：文档 / 块 / 实体 / 关系 数量 */
   @Get('stats')
+  @RequirePermission('search')
   async stats() {
     return this.graphBuildService.getStats();
   }
 
   /** 实体检索：按关键词过滤，按被提及次数倒序 */
   @Get('entities')
+  @RequirePermission('search')
   async entities(@Query() dto: GraphEntitiesDto) {
     return this.graphBuildService.listEntities(dto.keyword ?? '', dto.limit ?? 20);
   }
 
   /** 邻居查询：某实体的全部关联实体与关系语义 */
   @Get('neighbors')
+  @RequirePermission('search')
   async neighbors(@Query() dto: GraphNeighborsDto) {
     return this.graphBuildService.getNeighbors(dto.name, dto.limit ?? 20);
   }
@@ -109,18 +133,21 @@ export class KgController {
    * `entities` 只搜实体名，这里是前端「图谱检索」页的主查询。
    */
   @Get('search')
+  @RequirePermission('search')
   async search(@Query() dto: GraphSearchDto) {
     return this.graphBuildService.searchGraph(dto.keyword, dto.limit ?? 50);
   }
 
   /** 图谱可视化：实体节点全量列表（type 可选过滤，按提及次数倒序） */
   @Get('nodes')
+  @RequirePermission('search')
   async nodes(@Query() dto: GraphQueryDto) {
     return this.graphBuildService.listNodes(dto.type, dto.limit ?? 200);
   }
 
   /** 图谱可视化：实体间 RELATED_TO 边全量列表（按权重倒序） */
   @Get('edges')
+  @RequirePermission('search')
   async edges(@Query() dto: GraphQueryDto) {
     return this.graphBuildService.listEdges(dto.limit ?? 500);
   }

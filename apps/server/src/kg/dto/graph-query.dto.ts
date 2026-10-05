@@ -71,3 +71,35 @@ export class GraphQueryDto {
   @Max(1000)
   limit?: number;
 }
+
+/** 全景图谱查询请求（GET /kg/overview，feat-v12） */
+export class GraphOverviewDto {
+  /** 关键词（匹配文档标题、摘要、标签或实体名/描述） */
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  /** 实体类型过滤 */
+  @IsOptional()
+  @IsString()
+  entityType?: string;
+
+  /** 文档 updatedAt 下界（ISO 8601 字符串） */
+  @IsOptional()
+  @IsString()
+  from?: string;
+
+  /** 文档 updatedAt 上界（ISO 8601 字符串） */
+  @IsOptional()
+  @IsString()
+  to?: string;
+
+  /** 主视图文档召回上限（默认 24，最小 1，最大 80） */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(80)
+  docLimit?: number;
+}
+
