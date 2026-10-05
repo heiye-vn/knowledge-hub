@@ -38,6 +38,17 @@ import {
 } from './parser/utils/markdown.util.js';
 
 /**
+ * 文档主键为 bigint：非数字 id 直接抛 400。
+ * 否则字符串 id（如测试残留在 Neo4j 的 'kg-spec-doc' 经前端回传）会直达 PG，
+ * 抛出裸的 `invalid input syntax for type bigint`。
+ */
+function assertNumericId(id: string): void {
+  if (!/^\d+$/.test(id)) {
+    throw new BadRequestException(`Invalid document id: ${id}`);
+  }
+}
+
+/**
  * 内部文件元数据（上传链路写入 kh_document，不暴露给 CreateDocumentDto，
  * 避免客户端伪造 object_key 等存储层字段）
  */
@@ -257,6 +268,7 @@ export class DocumentService {
    * @param withContent 是否附带正文（kh_document_content），默认 true
    */
   async findOne(id: string, withContent = true) {
+    assertNumericId(id);
     const doc = await this.em.findOne(DocumentEntity, {
       where: { id, deleted: false },
     });
@@ -296,6 +308,7 @@ export class DocumentService {
    * @param actor 当前登录用户：updateBy 未显式传入时自动落到操作人
    */
   async update(id: string, dto: UpdateDocumentDto, actor?: AuthUser) {
+    assertNumericId(id);
     const doc = await this.em.findOne(DocumentEntity, {
       where: { id, deleted: false },
     });
@@ -702,6 +715,7 @@ export class DocumentService {
 
   /** 取未删除文档；不存在时抛 404 */
   private async findActive(id: string): Promise<DocumentEntity> {
+    assertNumericId(id);
     const doc = await this.em.findOne(DocumentEntity, {
       where: { id, deleted: false },
     });
@@ -779,6 +793,7 @@ export class DocumentService {
    * 无条件投递清理消息只会给 ES 和 Neo4j 增加无谓的写放大。
    */
   async remove(id: string) {
+    assertNumericId(id);
     const doc = await this.em.findOne(DocumentEntity, {
       where: { id, deleted: false },
     });

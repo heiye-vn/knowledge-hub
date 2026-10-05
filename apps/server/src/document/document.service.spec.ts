@@ -36,7 +36,7 @@ interface FakeEm {
 
 function makeDoc(status: DocumentStatus): DocumentEntity {
   return {
-    id: 'doc-1',
+    id: '1001',
     title: '测试文档',
     status,
     publishTime: null,
@@ -105,8 +105,8 @@ function makeService(
       createdReviews.push({ documentId, beforeStatus });
       return { id: 'review-1', documentId, beforeStatus };
     },
-    approve: async () => ({ id: 'review-1', documentId: doc?.id ?? 'doc-1' }),
-    reject: async () => ({ id: 'review-1', documentId: doc?.id ?? 'doc-1' }),
+    approve: async () => ({ id: 'review-1', documentId: doc?.id ?? '1001' }),
+    reject: async () => ({ id: 'review-1', documentId: doc?.id ?? '1001' }),
   };
 
   const service = new DocumentService(
@@ -125,7 +125,7 @@ function makeService(
 describe('DocumentService.publish 状态守卫', () => {
   it('草稿可以发布', async () => {
     const { service } = makeService(makeDoc(0));
-    await expect(service.publish('doc-1')).resolves.toMatchObject({
+    await expect(service.publish('1001')).resolves.toMatchObject({
       indexed: true,
       chunks: 3,
     });
@@ -133,26 +133,26 @@ describe('DocumentService.publish 状态守卫', () => {
 
   it('已发布文档可再次发布（重建索引）', async () => {
     const { service } = makeService(makeDoc(1));
-    await expect(service.publish('doc-1')).resolves.toMatchObject({
+    await expect(service.publish('1001')).resolves.toMatchObject({
       indexed: true,
     });
   });
 
   it('已归档文档不允许发布（归档是终态）', async () => {
     const { service, saved } = makeService(makeDoc(2));
-    await expect(service.publish('doc-1')).rejects.toThrow(BadRequestException);
+    await expect(service.publish('1001')).rejects.toThrow(BadRequestException);
     // 被拒绝时不应产生任何写库动作
     expect(saved).toHaveLength(0);
   });
 
   it('待审核文档不允许再次发布', async () => {
     const { service } = makeService(makeDoc(3));
-    await expect(service.publish('doc-1')).rejects.toThrow(BadRequestException);
+    await expect(service.publish('1001')).rejects.toThrow(BadRequestException);
   });
 
   it('文档不存在时抛 NotFound', async () => {
     const { service } = makeService(null);
-    await expect(service.publish('doc-1')).rejects.toThrow(NotFoundException);
+    await expect(service.publish('1001')).rejects.toThrow(NotFoundException);
   });
 });
 
@@ -164,7 +164,7 @@ describe('DocumentService.publish 状态守卫', () => {
 describe('DocumentService.publish 双索引', () => {
   it('默认两条链路都可用', async () => {
     const { service } = makeService(makeDoc(0));
-    await expect(service.publish('doc-1')).resolves.toMatchObject({
+    await expect(service.publish('1001')).resolves.toMatchObject({
       indexed: true,
       chunks: 3,
       searchIndexed: true,
@@ -173,7 +173,7 @@ describe('DocumentService.publish 双索引', () => {
 
   it('RAG 不可用（缺 Embedding Key）时，文档搜索仍写入', async () => {
     const { service } = makeService(makeDoc(0), { rag: false });
-    await expect(service.publish('doc-1')).resolves.toMatchObject({
+    await expect(service.publish('1001')).resolves.toMatchObject({
       indexed: false,
       chunks: 0,
       searchIndexed: true,
@@ -185,7 +185,7 @@ describe('DocumentService.publish 双索引', () => {
       rag: false,
       search: false,
     });
-    await expect(service.publish('doc-1')).resolves.toMatchObject({
+    await expect(service.publish('1001')).resolves.toMatchObject({
       indexed: false,
       searchIndexed: false,
     });
@@ -195,7 +195,7 @@ describe('DocumentService.publish 双索引', () => {
 describe('DocumentService.remove 双索引清理', () => {
   it('删除已发布文档时清理向量块与文档搜索索引', async () => {
     const { service } = makeService(makeDoc(1));
-    await expect(service.remove('doc-1')).resolves.toMatchObject({
+    await expect(service.remove('1001')).resolves.toMatchObject({
       deleted: true,
       vectorsCleaned: true,
       searchCleaned: true,
@@ -204,7 +204,7 @@ describe('DocumentService.remove 双索引清理', () => {
 
   it('删除草稿 / 待审核文档不触发索引清理（本来就不在索引里）', async () => {
     const { service } = makeService(makeDoc(0));
-    await expect(service.remove('doc-1')).resolves.toMatchObject({
+    await expect(service.remove('1001')).resolves.toMatchObject({
       deleted: true,
       vectorsCleaned: false,
       searchCleaned: false,
@@ -218,19 +218,19 @@ describe('DocumentService 发布审核流程', () => {
     const { service, createdReviews } = makeService(makeDoc(0), {
       requireApproval: true,
     });
-    await expect(service.publish('doc-1')).resolves.toMatchObject({
+    await expect(service.publish('1001')).resolves.toMatchObject({
       status: Status.PendingReview,
       pendingApproval: true,
       reviewId: 'review-1',
     });
     expect(createdReviews).toEqual([
-      { documentId: 'doc-1', beforeStatus: Status.Draft },
+      { documentId: '1001', beforeStatus: Status.Draft },
     ]);
   });
 
   it('已发布文档改稿提审时会先清掉旧索引', async () => {
     const { service } = makeService(makeDoc(1), { requireApproval: true });
-    await expect(service.submitForReview('doc-1')).resolves.toMatchObject({
+    await expect(service.submitForReview('1001')).resolves.toMatchObject({
       status: Status.PendingReview,
       indexesCleaned: { vectorsCleaned: true, searchCleaned: true },
     });
@@ -239,7 +239,7 @@ describe('DocumentService 发布审核流程', () => {
   it('草稿提审不需要清索引（本来就不在索引里）', async () => {
     const { service } = makeService(makeDoc(0), { requireApproval: true });
     await expect(
-      service.submitForReview('doc-1'),
+      service.submitForReview('1001'),
     ).resolves.toMatchObject({
       status: Status.PendingReview,
       indexesCleaned: null,
@@ -248,7 +248,7 @@ describe('DocumentService 发布审核流程', () => {
 
   it('已归档文档不允许提审', async () => {
     const { service } = makeService(makeDoc(2), { requireApproval: true });
-    await expect(service.submitForReview('doc-1')).rejects.toThrow(
+    await expect(service.submitForReview('1001')).rejects.toThrow(
       BadRequestException,
     );
   });
@@ -285,7 +285,7 @@ describe('DocumentService 发布审核流程', () => {
 describe('DocumentService 归档 / 下架', () => {
   it('已发布文档可归档并清索引', async () => {
     const { service } = makeService(makeDoc(1));
-    await expect(service.archive('doc-1')).resolves.toMatchObject({
+    await expect(service.archive('1001')).resolves.toMatchObject({
       status: Status.Archived,
       vectorsCleaned: true,
       searchCleaned: true,
@@ -294,12 +294,12 @@ describe('DocumentService 归档 / 下架', () => {
 
   it('非已发布文档不可归档', async () => {
     const { service } = makeService(makeDoc(0));
-    await expect(service.archive('doc-1')).rejects.toThrow(BadRequestException);
+    await expect(service.archive('1001')).rejects.toThrow(BadRequestException);
   });
 
   it('已发布文档可下架为草稿并清索引', async () => {
     const { service } = makeService(makeDoc(1));
-    await expect(service.saveAsDraft('doc-1')).resolves.toMatchObject({
+    await expect(service.saveAsDraft('1001')).resolves.toMatchObject({
       status: Status.Draft,
       searchCleaned: true,
     });
@@ -307,7 +307,7 @@ describe('DocumentService 归档 / 下架', () => {
 
   it('非已发布文档不可下架为草稿', async () => {
     const { service } = makeService(makeDoc(3));
-    await expect(service.saveAsDraft('doc-1')).rejects.toThrow(
+    await expect(service.saveAsDraft('1001')).rejects.toThrow(
       BadRequestException,
     );
   });
@@ -317,28 +317,28 @@ describe('DocumentService.update 编辑门禁', () => {
   it('待审核文档不可改正文', async () => {
     const { service } = makeService(makeDoc(3));
     await expect(
-      service.update('doc-1', { content: '# 新内容' }),
+      service.update('1001', { content: '# 新内容' }),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('已发布文档可以改正文', async () => {
     const { service } = makeService(makeDoc(1));
     await expect(
-      service.update('doc-1', { content: '# 新内容' }),
+      service.update('1001', { content: '# 新内容' }),
     ).resolves.toMatchObject({ content: '# 新内容' });
   });
 
   it('PATCH 不允许直接改状态（状态走专用接口）', async () => {
     const { service } = makeService(makeDoc(0));
-    await expect(service.update('doc-1', { status: 1 })).rejects.toThrow(
+    await expect(service.update('1001', { status: 1 })).rejects.toThrow(
       BadRequestException,
     );
   });
 
   it('PATCH 传入与当前一致的状态不受影响', async () => {
     const { service } = makeService(makeDoc(1));
-    await expect(service.update('doc-1', { status: 1 })).resolves.toMatchObject(
-      { id: 'doc-1' },
+    await expect(service.update('1001', { status: 1 })).resolves.toMatchObject(
+      { id: '1001' },
     );
   });
 });
@@ -391,20 +391,20 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
 
   it('loadForIndex 返回元数据 + 正文的组合', async () => {
     const service = makeIndexService({
-      ids: ['doc-1', 'doc-2'],
-      contents: { 'doc-1': '正文一', 'doc-2': '正文二' },
+      ids: ['1001', 'doc-2'],
+      contents: { '1001': '正文一', 'doc-2': '正文二' },
     });
-    const docs = await service.loadForIndex(['doc-1', 'doc-2']);
+    const docs = await service.loadForIndex(['1001', 'doc-2']);
     expect(docs).toHaveLength(2);
-    expect(docs[0]).toMatchObject({ id: 'doc-1', title: '标题-doc-1', content: '正文一' });
+    expect(docs[0]).toMatchObject({ id: '1001', title: '标题-1001', content: '正文一' });
     expect(docs[1].content).toBe('正文二');
   });
 
   it('loadForIndex 跳过已删除/不存在的文档，不中断整批', async () => {
-    const service = makeIndexService({ ids: ['doc-1'], contents: { 'doc-1': '正文' } });
-    const docs = await service.loadForIndex(['doc-1', 'ghost']);
+    const service = makeIndexService({ ids: ['1001'], contents: { '1001': '正文' } });
+    const docs = await service.loadForIndex(['1001', 'ghost']);
     expect(docs).toHaveLength(1);
-    expect(docs[0].id).toBe('doc-1');
+    expect(docs[0].id).toBe('1001');
   });
 
   it('findPublishedIds 返回全部已发布未删除文档的 ID', async () => {

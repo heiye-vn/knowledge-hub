@@ -308,7 +308,12 @@ export class RetrievalService {
   private async filterAliveDocumentIds(
     documentIds: string[],
   ): Promise<Set<string>> {
-    const unique = Array.from(new Set(documentIds.filter(Boolean)));
+    // 召回数据可能混入非数字 id（如图谱/索引脏数据），
+    // 直接进 bigint 主键查询会让 PG 抛 invalid input syntax——静默丢弃即可，
+    // 一条脏召回不该让整个检索挂掉
+    const unique = Array.from(
+      new Set(documentIds.filter((id) => /^\d+$/.test(id))),
+    );
     if (!unique.length) return new Set();
 
     // 只取 id 一列，不拉整行

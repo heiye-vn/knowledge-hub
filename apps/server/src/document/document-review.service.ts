@@ -14,6 +14,13 @@ import {
 } from './entities/document-review.entity.js';
 import type { QueryReviewTasksDto } from './dto/review.dto.js';
 
+/** 文档主键为 bigint：非数字 id 直接抛 400，避免 PG 裸报 invalid input syntax */
+function assertNumericDocumentId(documentId: string): void {
+  if (!/^\d+$/.test(documentId)) {
+    throw new BadRequestException(`Invalid document id: ${documentId}`);
+  }
+}
+
 /**
  * 文档审核记录服务（只负责 kh_document_review 这一张表）
  *
@@ -144,6 +151,7 @@ export class DocumentReviewService {
 
   /** 该文档当前待审任务（无则 null） */
   async getCurrentReview(documentId: string) {
+    assertNumericDocumentId(documentId);
     return this.em.findOne(DocumentReviewEntity, {
       where: { documentId, reviewResult: IsNull() },
       order: { createdAt: 'DESC' },
@@ -152,6 +160,7 @@ export class DocumentReviewService {
 
   /** 该文档全部审核记录（含已通过、已驳回），按提交时间倒序 */
   async getReviewHistory(documentId: string) {
+    assertNumericDocumentId(documentId);
     return this.em.find(DocumentReviewEntity, {
       where: { documentId },
       order: { createdAt: 'DESC' },
