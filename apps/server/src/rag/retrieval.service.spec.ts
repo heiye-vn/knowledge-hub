@@ -29,8 +29,10 @@ async function isEsUp(): Promise<boolean> {
 
 const esUp = await isEsUp();
 
-const DOC_ALIVE = 'vitest-search-alive';
-const DOC_DOWN = 'vitest-search-down';
+// documentId 必须纯数字：生产环境 documents.id 是 bigint 主键，
+// filterAliveDocumentIds 会静默丢弃非数字 id（防止脏召回数据把 PG 查询打炸）
+const DOC_ALIVE = '910001';
+const DOC_DOWN = '910002';
 
 /**
  * 构造 1024 维假向量：前 512 维 = a，后 512 维 = b。

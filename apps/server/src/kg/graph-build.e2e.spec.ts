@@ -86,6 +86,9 @@ describe.skipIf(!neo4jUp)('GraphBuildService 集成（需要 Neo4j + LLM Key）'
     );
     await service.onModuleInit();
     if (!service.isAvailable()) throw new Error('Neo4j 不可用，跳过集成用例');
+    // 幂等预清理：上次运行中断（LLM 超时 / Ctrl+C）留下的残留节点会污染统计断言，
+    // 甚至经 /kg/overview 流入前端触发 GET /documents/<非数字id> 的 PG bigint 报错
+    await service.deleteForDocument(DOC_ID);
     before = await service.getStats();
   });
 
