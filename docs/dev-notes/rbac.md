@@ -176,9 +176,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_kh_permission_code
 ```
 同时在 TypeORM 实体 `PermissionEntity` 上声明 `@Index('uk_kh_permission_code', ['permissionCode'], { unique: true, where: 'deleted = false' })`，彻底规避软删除后的冲突风险。
 
+## 八、 【实录】存量 Docker 卷未自动同步新增 RBAC 表导致登录 500
+
+**现象**：前端输入账号密码点击登录时，报错 `500 QueryFailedError: relation "kh_user_permission" does not exist`。
+
+**原因**：
+1. 登录成功后，服务端调用 `UserService.validateCredentials()` → `PermissionService.getUserPermissionCodes()` 合并用户的角色权限与直接赋予权限，联查 `kh_user_permission` / `kh_role_permission` / `kh_permission`。
+2. 本地开发环境的 PostgreSQL 挂载了持久化数据卷（`volumes/postgres`）。Docker 官方镜像的 `/docker-entrypoint-initdb.d/` 机制仅在数据目录为空的首次初始化时执行脚本；迭代中追加到 `init-scripts/postgresql/01-init.sql` 的 RBAC 和团队体系表不会自动在存量卷中重放。
+
+**解法**：
+利用 `01-init.sql` 全量 DDL 脚本自带的 `CREATE TABLE IF NOT EXISTS`、`INDEX IF NOT EXISTS` 与 `INSERT ... ON CONFLICT DO NOTHING` 的幂等设计，在运行中的容器内重放该脚本：
+```bash
+docker exec -i knowledge_hub_postgres psql -U user -d knowledge_hub < init-scripts/postgresql/01-init.sql
+```
+补齐缺失的 5 张表（`kh_permission`、`kh_role_permission`、`kh_user_permission`、`kh_team`、`kh_team_member`）及种子数据。
+
+**如何验证**：
+1. 检查数据库表关系：`docker exec -i knowledge_hub_postgres psql -U user -d knowledge_hub -c "\dt"` 确认 11 张业务表全部就绪。
+2. 调用登录接口：`POST /auth/login`（参数 `{"username":"user","password":"123456"}`），返回 201 且出参带完整的 permissions 权限码数组，不再报表不存在错误。
+
 ---
 
-## 八、 已知局限与后续演进
+## 九、 已知局限与后续演进
 
 - **每请求权限计算的高并发缓存（Redis）**：目前每请求通过 2~3 条 SQL 连表计算权限（`direct ∪ role`），以此换取改完权限「即时生效」的极致一致性。后续进入高并发压测阶段时，可引入 Redis 缓存键 `user:perm:${userId}`（短 TTL 10~30 分钟），并在角色/用户权限分配时主动淘汰（Cache Eviction）。
 - **树形结构的构建复杂度优化**：当前 `PermissionService.getTree()` 与 `TeamService.getTree()` 采用内存递归 `filter`（$O(N^2)$），在当前几十至几百个节点规模下耗时小于 1ms。若后续组织架构和权限节点规模扩展至数千级，可重构成基于 `Map<parentId, children[]>` 的单次遍历构建（$O(N)$）。

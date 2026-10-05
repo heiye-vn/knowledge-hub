@@ -44,7 +44,9 @@
 | [queue-task-status.md](./queue-task-status.md) | 功能模块 · 队列任务状态查询（`GET /tasks/:taskId`） | 2026-09-28 | **`removeOnComplete: true` 会让「查完成任务」永远 404**；Redis 断连时 getJob 无限挂起必须加超时；jobId 全局唯一 → 两队列各查一次先命中先用 |
 | [user-module.md](./user-module.md) | 功能模块 · 用户模块完善（邮箱激活 / 重置密码 / 用户角色管理） | 2026-09-28 | **fail-open 与 fail-closed 按功能性质分流**（验证类 503 绝不放行）；激活 token 双键互指防旧链接复活；TTL 反推 60s 冷却省一个键；发信失败必须回滚 Redis 态 |
 | [rbac.md](./rbac.md) | 功能模块 · RBAC 权限系统 + 团队组织架构（feat-v9） | 2026-09-30 | **权限码要生效就不能再叠 @Roles**（参考项目把细粒度模型架空）；`@Public` + 类级角色声明会让公开接口 403；绑定必须事务化；权限 ID 校验的去重陷阱 |
+| [kg-overview-and-cors.md](./kg-overview-and-cors.md) | 功能模块 · 全景图谱与跨域配置（feat-v12） | 2026-10-04 | **CORS 白名单防御**；图谱路由收敛 `/kg`；Cypher tags 持久化与 Neo4j 时间格式统一；异常可观测不吞错 |
 | [reference-project-alignment.md](./reference-project-alignment.md) | 方法论 · 与参考项目的对照策略 | 2026-09-19 | 三层判断法（模式/实现/缺陷）：什么照搬、什么可换、什么必须改 |
+
 
 
 > 两类文件并存：
