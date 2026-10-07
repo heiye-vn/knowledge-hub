@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserService } from './user.service.js';
+import { UserCleanupService } from './user-cleanup.service.js';
 import { RoleService } from './role.service.js';
 import { PermissionService } from './permission.service.js';
 import { UserController } from './user.controller.js';
@@ -33,7 +34,7 @@ import { DocumentEntity } from '../document/entities/document.entity.js';
     ]),
   ],
   controllers: [UserController, RoleController, PermissionController],
-  providers: [UserService, RoleService, PermissionService],
+  providers: [UserService, UserCleanupService, RoleService, PermissionService],
   exports: [UserService, RoleService, PermissionService],
 })
 export class UserModule {}

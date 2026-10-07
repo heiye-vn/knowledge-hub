@@ -104,6 +104,19 @@ export class UserController {
     return this.userService.toUserVOById(id);
   }
 
+  /**
+   * 手动清理过期未激活账号（TODO §8.4）
+   * 软删 `email_verified=0` 且创建超过 days 天（默认 7）的账号，释放被占位的邮箱/用户名。
+   */
+  @Post('purge-inactive')
+  @RequirePermission('system:user')
+  purgeInactive(@Query('days') days?: string) {
+    const parsed = days ? Number(days) : undefined;
+    return this.userService.purgeInactiveAccounts(
+      parsed && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+    );
+  }
+
   @Post()
   @RequirePermission('system:user')
   async createUser(@Body() dto: CreateUserDto) {

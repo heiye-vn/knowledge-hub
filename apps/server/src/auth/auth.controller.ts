@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import {
   LoginDto,
   RefreshTokenDto,
   RegisterDto,
+  ResendActivationDto,
 } from './dto/auth.dto.js';
 import {
   ResetPasswordByEmailDto,
@@ -50,6 +51,23 @@ export class AuthController {
   @Get('verify-email')
   verifyEmail(@Query('token') token: string) {
     return this.authService.verifyEmail(token);
+  }
+
+  /**
+   * 重发激活邮件（TODO §8.2）：公开端点，凭用户名 + 密码自助触发，60 秒冷却。
+   * 未激活账号登录会被拒，只能这样自救，免得只能等 24h token 过期后重新注册。
+   */
+  @Public()
+  @Post('activation/resend')
+  resendActivation(@Body() dto: ResendActivationDto) {
+    return this.authService.resendActivation(dto);
+  }
+
+  /** 管理员代发激活邮件（TODO §8.2）：按 userId 定向重发，跳过密码与冷却 */
+  @Post('activation/resend/:userId')
+  @Roles(RoleCode.ADMIN)
+  resendActivationForUser(@Param('userId') userId: string) {
+    return this.authService.resendActivationForUser(userId);
   }
 
   /** 发送重置密码验证码（6 位，10 分钟有效，60 秒冷却） */

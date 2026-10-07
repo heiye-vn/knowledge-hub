@@ -6,8 +6,13 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
+import { compare } from 'bcryptjs';
 import type { AuthUser } from './auth-user.interface.js';
-import type { LoginDto, RegisterDto } from './dto/auth.dto.js';
+import type {
+  LoginDto,
+  RegisterDto,
+  ResendActivationDto,
+} from './dto/auth.dto.js';
 import type {
   ResetPasswordByEmailDto,
   SendResetCodeDto,
@@ -16,12 +21,18 @@ import { RoleCode } from '../common/constants/roles.js';
 import { UserService } from '../user/user.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { TokenRevocationService } from './token-revocation.service.js';
-import { EmailActivationService } from './email-activation.service.js';
+import {
+  ACTIVATION_TOKEN_TTL_SECONDS,
+  EmailActivationService,
+} from './email-activation.service.js';
 import {
   PasswordResetService,
   RESET_CODE_COOLDOWN_SECONDS,
   RESET_CODE_TTL_SECONDS,
 } from './password-reset.service.js';
+
+/** 重发激活邮件冷却：60 秒（与验证码重发同一节奏，用 TTL 反推，不额外存键） */
+export const ACTIVATION_RESEND_COOLDOWN_SECONDS = 60;
 
 /** 登录 / 刷新的返回结构 */
 export interface LoginResult {
@@ -181,6 +192,74 @@ export class AuthService {
     }
     const message = await this.userService.activateEmail(userId);
     return { message };
+  }
+
+  /**
+   * 重发激活邮件（TODO §8.2）：登录前凭「用户名 + 密码」自助触发，60 秒冷却。
+   *
+   * 未激活账号登录会被 validateCredentials 拦下（email_verified=0），
+   * 所以只能走公开端点；凭密码证明归属是为了不让它沦为对任意邮箱的轰炸入口。
+   */
+  async resendActivation(
+    dto: ResendActivationDto,
+  ): Promise<{ message: string; cooldownSeconds: number }> {
+    const user = await this.userService.findByUsername(dto.username);
+    if (!user || !(await compare(dto.password, user.password))) {
+      throw new UnauthorizedException('用户名或密码错误');
+    }
+    if (user.status !== 1) {
+      throw new UnauthorizedException('账户已禁用');
+    }
+
+    await this.sendActivation(user, false);
+    return {
+      message: '激活邮件已发送，请查收',
+      cooldownSeconds: ACTIVATION_RESEND_COOLDOWN_SECONDS,
+    };
+  }
+
+  /** 管理员代发激活邮件（TODO §8.2）：跳过密码与冷却，按 userId 定向重发 */
+  async resendActivationForUser(
+    userId: string,
+  ): Promise<{ message: string; cooldownSeconds: number }> {
+    const user = await this.userService.findByIdOrThrow(userId);
+    await this.sendActivation(user, true);
+    return {
+      message: '激活邮件已发送，请查收',
+      cooldownSeconds: ACTIVATION_RESEND_COOLDOWN_SECONDS,
+    };
+  }
+
+  /**
+   * 发激活邮件的公共部分：校验激活状态 → 冷却（可跳过）→ 建 token → 发信。
+   * 发信失败回滚 token，避免留下永远点不开的激活链接。
+   */
+  private async sendActivation(
+    user: { id: string; username: string; email?: string | null; emailVerified: number },
+    skipCooldown: boolean,
+  ): Promise<void> {
+    if (user.emailVerified === 1) {
+      throw new BadRequestException('账号已激活，无需重发激活邮件');
+    }
+    if (!user.email) {
+      throw new BadRequestException('账号未绑定邮箱，请联系管理员');
+    }
+
+    if (!skipCooldown) {
+      const ttl = await this.emailActivation.getTtlByUser(user.id);
+      // 剩余 TTL > 24h-60s 说明距上次发送不足 60s（与验证码冷却同一套 TTL 反推思路）
+      if (ttl > ACTIVATION_TOKEN_TTL_SECONDS - ACTIVATION_RESEND_COOLDOWN_SECONDS) {
+        throw new BadRequestException('激活邮件已发送，请稍后再试');
+      }
+    }
+
+    const token = await this.emailActivation.createToken(user.id);
+    try {
+      await this.mail.sendActivationEmail(user.email, user.username, token);
+    } catch {
+      await this.emailActivation.deleteByToken(token);
+      throw new BadRequestException('激活邮件发送失败，请稍后再试');
+    }
   }
 
   /** 发送重置密码验证码：邮箱必须已注册；60 秒冷却（Redis TTL 反推） */

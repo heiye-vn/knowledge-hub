@@ -203,11 +203,14 @@ S3 风格 XML 错误 `AccessDenied`。该问题与上面第 1 项联动：**决�
 - **候选方案**：验证码 verify 连错 5 次即作废（Redis 计数键 `kh_auth:reset-code:fail:{email}`，TTL 与验证码对齐）；登录/发码接口加 IP + 账号维度的滑动窗口限流。
 - **触发条件**：暴露到公网前必须做；纯内网开发环境可暂缓。
 
-### 8.2 重发激活邮件入口
+### 8.2 重发激活邮件入口 ✅ 已实现（2026-10-05）
 
 - **现状**：激活邮件丢失只能等 24h token 过期后重新注册，或管理员删号重建。
-- **候选方案**：`POST /auth/activation/resend`（登录前凭用户名+密码调用，或管理员侧触发）；复用 `EmailActivationService.createToken` 的「同用户旧 token 自动作废」语义。
-- **触发条件**：开启 `REQUIRE_EMAIL_VERIFICATION=true` 的真实注册流程上线时。
+- **实现**：
+  - `POST /auth/activation/resend`（公开端点）：body `{ username, password }`，60 秒冷却（复用 `EmailActivationService.getTtlByUser` 的 TTL 反推，与验证码冷却同一套思路）。未激活账号登录会被 `validateCredentials` 拦下，所以只能走公开端点；**凭密码证明账号归属**，否则任何人都能拿他人邮箱反复触发发信，沦为邮件轰炸入口。
+  - `POST /auth/activation/resend/:userId`（`@Roles(ADMIN)`）：管理员代发，跳过密码与冷却。
+  - 两者共用 `AuthService.sendActivation`：已激活 → 400；未绑邮箱 → 400；发信失败回滚 token（不留点不开的链接）。
+- **说明**：8.3（改邮箱重置验证状态）**尚未实现**，与本项联动时才算完整闭环。
 
 ### 8.3 管理员改邮箱不重置验证状态
 
@@ -215,12 +218,19 @@ S3 风格 XML 错误 `AccessDenied`。该问题与上面第 1 项联动：**决�
 - **候选方案**：email 变更时置 0（若邮箱验证开关开启），并触发新邮箱验证流程。
 - **触发条件**：与 8.2 一起做。
 
-### 8.4 未激活账号的过期清理（防垃圾数据与邮箱占位）
+### 8.4 未激活账号的过期清理（防垃圾数据与邮箱占位）✅ 已实现（2026-10-05）
 
 - **风险**：注册是公开接口且**先写库后验证**——任何人可用不存在的邮箱造 `email_verified=0` 的垃圾记录，也可用**他人的真实邮箱**注册占位：真实主人之后注册撞「该邮箱已被注册」，或重置密码验证码发到其邮箱形成骚扰（外部社区评论指出的真实短板，值得吸收）。
 - **决策**：**保持「激活链接」方案不变**，不改为「验证码随注册一起提交」——后者邮箱所有权虽在入库前验证，但每个注册都要发邮件，send-code 反而成为对任意邮箱的邮件轰炸入口，注册摩擦也变大。业界主流是激活链接 + 配套治理。
 - **候选方案**：定时任务（或启动时惰性执行）清理 `email_verified=0` 且 `created_at` 超过 7 天的账号（软删即可，部分唯一索引 `WHERE deleted=false` 会自动释放被占用的邮箱与用户名）；`send-code`/`register` 加 IP 维度限流（与 8.1 合并做）。
 - **触发条件**：开启 `REQUIRE_EMAIL_VERIFICATION=true` 上线真实注册时与 8.1/8.2 一并实现。
+- **实现**：
+  - `UserService.purgeInactiveAccounts(olderThanDays = 7)`：软删范围内的账号，天数非法兜底 1 天。
+  - 触发方式选**启动时惰性执行**（`UserCleanupService.onModuleInit`）——项目目前没有 `@nestjs/schedule`，清理是一次性低频 SQL，进程重启顺手做一次即可覆盖；清理失败只 warn 不阻断启动。
+  - `POST /users/purge-inactive?days=7`（`system:user` 权限）：管理员手动兜底入口。
+  - 配置项：`PURGE_INACTIVE_ON_BOOT`（默认 true）、`INACTIVE_ACCOUNT_TTL_DAYS`（默认 7）。
+  - 激活 token 不联动删除：24h 自然过期，且激活一个已软删账号无副作用（auth 反向依赖 user 会造成循环依赖）。
+- **剩余**：IP 维度限流仍归 8.1，未做。
 
 ---
 

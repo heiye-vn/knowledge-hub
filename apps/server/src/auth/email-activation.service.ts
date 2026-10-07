@@ -57,6 +57,15 @@ export class EmailActivationService {
     return userId;
   }
 
+  /**
+   * 该用户当前激活 token 的剩余有效期（秒）；无 token 返回 -1。
+   * 重发冷却判定用：刚写入时 TTL≈24h，若 > 24h-60s 说明距上次发送不足 60s。
+   */
+  async getTtlByUser(userId: string): Promise<number> {
+    this.redis.assertAvailable();
+    return this.redis.ttl(this.userKey(userId));
+  }
+
   /** 发信失败回滚：按 token 清理两个键，避免留下不可用的激活链接 */
   async deleteByToken(token: string): Promise<void> {
     this.redis.assertAvailable();

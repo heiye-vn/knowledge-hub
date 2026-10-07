@@ -35,3 +35,18 @@ export class RefreshTokenDto {
   @IsString()
   refreshToken: string;
 }
+
+/**
+ * 重发激活邮件入参（TODO §8.2）
+ *
+ * 未激活账号无法通过登录鉴权（validateCredentials 会拒），故该接口是公开端点，
+ * 用「用户名 + 密码」证明账号归属——否则任何人都能拿他人邮箱反复触发发信，
+ * 变成邮件轰炸入口。
+ */
+export class ResendActivationDto {
+  @IsString()
+  username: string;
+
+  @IsString()
+  password: string;
+}
