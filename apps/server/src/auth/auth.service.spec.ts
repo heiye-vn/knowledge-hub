@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
+import { hashSync } from 'bcryptjs';
 import { AuthService } from './auth.service.js';
 
 /**
@@ -27,6 +28,7 @@ function makeService(over: {
     createToken: vi.fn(async () => 'token-1'),
     consumeToken: vi.fn(async () => null as string | null),
     deleteByToken: vi.fn(async () => undefined),
+    getTtlByUser: vi.fn(async () => -1),
     ...over.activation,
   };
   const reset = {
@@ -48,6 +50,8 @@ function makeService(over: {
     })),
     activateEmail: vi.fn(async () => '邮箱验证成功，请登录'),
     findByEmail: vi.fn(async () => null as unknown),
+    findByUsername: vi.fn(async () => null as unknown),
+    findByIdOrThrow: vi.fn(async () => null as unknown),
     resetPasswordByEmail: vi.fn(async () => undefined),
     ...over.userService,
   };
@@ -134,6 +138,119 @@ describe('AuthService.register（邮箱验证开关）', () => {
       service.register({ username: 'tom', password: '123456', email: 'tom@x.com' }),
     ).rejects.toThrow(BadRequestException);
     expect(activation.deleteByToken).toHaveBeenCalledWith('token-1');
+  });
+});
+
+describe('AuthService.resendActivation（TODO §8.2）', () => {
+  /** 未激活 + 已绑邮箱的待激活账号，密码为明文 123456 */
+  const pendingUser = {
+    id: 'u1',
+    username: 'tom',
+    email: 'tom@x.com',
+    emailVerified: 0,
+    status: 1,
+    password: hashSync('123456', 4),
+  };
+
+  it('用户名或密码错误 → 401，不建 token', async () => {
+    const { service, activation } = makeService({
+      userService: { findByUsername: vi.fn(async () => pendingUser) },
+    });
+    await expect(
+      service.resendActivation({ username: 'tom', password: 'wrong' }),
+    ).rejects.toThrow('用户名或密码错误');
+    expect(activation.createToken).not.toHaveBeenCalled();
+  });
+
+  it('账号不存在 → 401（不泄露账号是否存在）', async () => {
+    const { service } = makeService({});
+    await expect(
+      service.resendActivation({ username: 'ghost', password: '123456' }),
+    ).rejects.toThrow('用户名或密码错误');
+  });
+
+  it('账号已激活 → 400，不重复发信', async () => {
+    const { service, mail } = makeService({
+      userService: {
+        findByUsername: vi.fn(async () => ({ ...pendingUser, emailVerified: 1 })),
+      },
+    });
+    await expect(
+      service.resendActivation({ username: 'tom', password: '123456' }),
+    ).rejects.toThrow('账号已激活');
+    expect(mail.sendActivationEmail).not.toHaveBeenCalled();
+  });
+
+  it('账号未绑定邮箱 → 400', async () => {
+    const { service } = makeService({
+      userService: {
+        findByUsername: vi.fn(async () => ({ ...pendingUser, email: null })),
+      },
+    });
+    await expect(
+      service.resendActivation({ username: 'tom', password: '123456' }),
+    ).rejects.toThrow('账号未绑定邮箱');
+  });
+
+  it('冷却中（TTL 反推）→ 400，不重复发信', async () => {
+    const { service, mail } = makeService({
+      userService: { findByUsername: vi.fn(async () => pendingUser) },
+      activation: { getTtlByUser: vi.fn(async () => 24 * 3600 - 10) },
+    });
+    await expect(
+      service.resendActivation({ username: 'tom', password: '123456' }),
+    ).rejects.toThrow('激活邮件已发送');
+    expect(mail.sendActivationEmail).not.toHaveBeenCalled();
+  });
+
+  it('正常重发 → 建 token 并发送激活邮件', async () => {
+    const { service, activation, mail } = makeService({
+      userService: { findByUsername: vi.fn(async () => pendingUser) },
+    });
+    const result = await service.resendActivation({
+      username: 'tom',
+      password: '123456',
+    });
+    expect(result.message).toContain('已发送');
+    expect(activation.createToken).toHaveBeenCalledWith('u1');
+    expect(mail.sendActivationEmail).toHaveBeenCalledWith(
+      'tom@x.com',
+      'tom',
+      'token-1',
+    );
+  });
+
+  it('发信失败 → 回滚 token，不留下点不开的激活链接', async () => {
+    const { service, activation } = makeService({
+      userService: { findByUsername: vi.fn(async () => pendingUser) },
+      mail: { sendActivationEmail: vi.fn(async () => { throw new Error('smtp down'); }) },
+    });
+    await expect(
+      service.resendActivation({ username: 'tom', password: '123456' }),
+    ).rejects.toThrow('激活邮件发送失败');
+    expect(activation.deleteByToken).toHaveBeenCalledWith('token-1');
+  });
+});
+
+describe('AuthService.resendActivationForUser（管理员代发）', () => {
+  it('跳过密码与冷却，按 userId 定向重发', async () => {
+    const { service, activation, mail } = makeService({
+      userService: {
+        findByIdOrThrow: vi.fn(async () => ({
+          id: 'u9',
+          username: 'jerry',
+          email: 'jerry@x.com',
+          emailVerified: 0,
+          status: 1,
+        })),
+      },
+      activation: { getTtlByUser: vi.fn(async () => 24 * 3600 - 10) },
+    });
+
+    const result = await service.resendActivationForUser('u9');
+    expect(result.message).toContain('已发送');
+    expect(activation.createToken).toHaveBeenCalledWith('u9');
+    expect(mail.sendActivationEmail).toHaveBeenCalled();
   });
 });
 
