@@ -56,6 +56,10 @@
     {
       "key": "userId2",
       "value": ""
+    },
+    {
+      "key": "sessionId",
+      "value": ""
     }
   ],
   "item": [
@@ -2622,6 +2626,181 @@
             }
           },
           "name": "批量移除成员（需 system:team）"
+        }
+      ]
+    },
+    {
+      "name": "AI 对话会话（feat-v13）",
+      "description": "RAG 对话自动落库本人会话（kh_ai_session / kh_ai_message）；支持会话分页、历史消息、重命名与删除。全部接口挂 search 权限码；会话按用户隔离，越权统一 404。删除会话时消息经外键 ON DELETE CASCADE 级联清理。",
+      "item": [
+        {
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "chat"
+              ]
+            },
+            "description": "RAG 对话：混合检索 → LLM 作答 → [n] 引用溯源 → 落库本人会话。不传 sessionId 自动新建会话（标题取首问，超 30 字截断）；传 sessionId 续聊。响应回传 sessionId 供前端续聊。落库失败不影响回答返回（尽力而为语义）。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"差旅补贴每天多少钱？\",\n  \"topK\": 5,\n  \"sessionId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "RAG 对话（自动/续聊会话）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/sessions?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "sessions"
+              ]
+            },
+            "description": "本人会话分页，按 updated_at 倒序（最近活跃在前）。返回 {items, total, page, pageSize}。"
+          },
+          "name": "会话列表（分页）"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "sessions"
+              ]
+            },
+            "description": "新建空会话；title 可选（默认「新对话」，首轮问答时自动用首问覆盖）。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"新对话\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "新建空会话"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/sessions/{{sessionId}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "sessions",
+                "{{sessionId}}",
+                "messages"
+              ]
+            },
+            "description": "会话历史消息，时间正序。一轮问答两条：role=user（sources 为 null）+ role=assistant（sources 为当轮引用溯源 JSONB，无引用为 null）。"
+          },
+          "name": "会话历史消息"
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/sessions/{{sessionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "sessions",
+                "{{sessionId}}"
+              ]
+            },
+            "description": "重命名会话，title 必填（1~80 字）。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"差旅制度问答\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "重命名会话"
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/sessions/{{sessionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "sessions",
+                "{{sessionId}}"
+              ]
+            },
+            "description": "删除会话，消息经外键级联清理。返回 {message: '已删除'}。"
+          },
+          "name": "删除会话"
         }
       ]
     }

@@ -137,6 +137,10 @@
 | **2026-09-30** | **AI 检索路由**（v11） | `POST /rag/search`（只检索）+ `POST /ai/chat` | 检索保持既有 `POST /search`（挂 search 权限码），只新增 `/ai/chat` | 主项目 `/search` 契约已在 postman 集合与 dev-notes 固化，不改路由；能力（挂码 + 精排）已对齐 |
 | **2026-10-04** | **跨域 CORS 配置**（v12） | `app.enableCors({ origin: true, credentials: true })` | 环境变量 `CORS_ORIGINS` 来源白名单配置（默认 `http://localhost:5173`）+ credentials | 修参考项目缺陷：`origin: true` 反射任意请求源，携带凭证时存在跨域劫持安全风险 |
 | **2026-10-04** | **图谱全景路由与异常**（v12） | `GET /graph/overview`，catch 吞错返回空数据 | `GET /kg/overview` 挂 `@RequirePermission('search')`，Neo4j 不可用时抛 503，查询失败抛错交全局异常拦截器 | 路由前缀统一在 `/kg` 域；不隐瞒后端故障，保证异常可观测 |
+| **2026-10-07** | **删除会话的级联策略**（v13） | 应用层先删消息再删会话（两条 DELETE） | 只删会话行，消息交给 `kh_ai_message` 外键 ON DELETE CASCADE | 库已声明级联，应用层重复删除是多余防御；删除路径单一且天然原子 |
+| **2026-10-07** | **会话落库失败的语义**（v13） | appendTurn 失败向上抛，已生成的回答随响应整单丢失 | 尽力而为：落库失败只记 error 日志，回答照常返回（sessionId 可能缺失） | 回答在 LLM 生成后已具备价值，存储故障不应让用户拿不到答案；落库缺失只影响历史回看，可在服务端日志发现补偿 |
+| **2026-10-07** | **溯源类型的归属**（v13） | ChatSource 定义在 ai-chat.service.ts 内 | 独立 chat.types.ts，服务 re-export | 实体（type-only）与会话服务都要引用，避免类型反向依赖服务实现文件 |
+
 
 
 ---
