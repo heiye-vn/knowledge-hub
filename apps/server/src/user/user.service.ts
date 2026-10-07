@@ -22,6 +22,9 @@ import { UpdateUserDto } from './dto/update-user.dto.js';
 import { UpdateProfileDto } from './dto/profile.dto.js';
 import { UserVO } from './vo/user.vo.js';
 
+/** 未激活账号保留天数（TODO §8.4）：超过即视为占位垃圾数据，可被清理 */
+export const DEFAULT_INACTIVE_TTL_DAYS = 7;
+
 /**
  * 用户服务：账户与角色的读写。
  *
@@ -212,6 +215,37 @@ export class UserService {
   async activateEmail(userId: string): Promise<string> {
     await this.userRepo.update(userId, { emailVerified: 1 });
     return '邮箱验证成功，请登录';
+  }
+
+  /**
+   * 清理过期未激活账号（TODO §8.4）：软删 `email_verified=0` 且创建超过 N 天的记录。
+   *
+   * 背景：注册是公开接口且「先写库后验证」——任何人可用不存在的邮箱造垃圾记录，
+   * 也可用**他人的真实邮箱**注册占位，真实主人之后注册会撞「该邮箱已被注册」，
+   * 重置密码验证码还会发到其邮箱形成骚扰。
+   *
+   * 软删即可：用户名 / 邮箱的唯一索引是部分索引（`WHERE deleted=false`），
+   * 软删后被占用的用户名与邮箱自动释放；保留数据痕迹也便于追溯滥用。
+   *
+   * 激活 token 不在这里联动删除——它 24h 自然过期，且激活一个已软删账号无副作用
+   * （auth 模块反向依赖 user 模块会造成循环依赖，不在这里引入 EmailActivationService）。
+   */
+  async purgeInactiveAccounts(
+    olderThanDays = DEFAULT_INACTIVE_TTL_DAYS,
+  ): Promise<{ purged: number; olderThanDays: number; cutoff: Date }> {
+    const days = Math.max(1, Math.floor(olderThanDays));
+    const cutoff = new Date(Date.now() - days * 86_400_000);
+
+    const result = await this.userRepo
+      .createQueryBuilder()
+      .update(UserEntity)
+      .set({ deleted: true, updatedAt: new Date() })
+      .where('email_verified = 0')
+      .andWhere('deleted = false')
+      .andWhere('created_at < :cutoff', { cutoff })
+      .execute();
+
+    return { purged: result.affected ?? 0, olderThanDays: days, cutoff };
   }
 
   /** 按邮箱重置密码（验证码已由 auth 模块校验通过） */
