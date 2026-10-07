@@ -1387,6 +1387,54 @@
             "method": "POST",
             "header": [],
             "url": {
+              "raw": "{{baseUrl}}/auth/activation/resend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "activation",
+                "resend"
+              ]
+            },
+            "description": "重发激活邮件（TODO §8.2）。公开端点：未激活账号登录会被拒（email_verified=0），只能凭「用户名 + 密码」自助触发——以此证明账号归属，避免沦为对任意邮箱的邮件轰炸入口。60 秒冷却（Redis TTL 反推）。已激活报「账号已激活，无需重发激活邮件」；未绑邮箱报「账号未绑定邮箱，请联系管理员」；发信失败回滚 token。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"user\",\n  \"password\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "name": "重发激活邮件（自助）"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/activation/resend/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "activation",
+                "resend",
+                "{{userId}}"
+              ]
+            },
+            "description": "管理员代发激活邮件（TODO §8.2）。按 userId 定向重发，跳过密码校验与 60 秒冷却；需 ADMIN 角色（@Roles(RoleCode.ADMIN)）。用于用户反馈收不到邮件时的管理员兜底。"
+          },
+          "name": "重发激活邮件（管理员代发）"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
               "raw": "{{baseUrl}}/auth/password/reset/send-code",
               "host": [
                 "{{baseUrl}}"
@@ -1582,6 +1630,36 @@
             "description": "分页查询用户（需 system:user 权限码）。keyword 模糊匹配用户名/姓名/邮箱；status 过滤（0 禁用 1 启用）。pageSize 上限 100。返回 {list, total, page, pageSize}，list 为 VO（不含密码）。"
           },
           "name": "分页查询用户（需 system:user）"
+        },
+        {
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/purge-inactive?days=7",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "purge-inactive"
+              ],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "7",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "手动清理过期未激活账号（需 system:user 权限码，TODO §8.4）。软删 email_verified=0 且创建超过 days 天（默认 7，非法值兜底 1 天）的账号，释放被占位的邮箱与用户名（唯一索引是 WHERE deleted=false 的部分索引）。返回 {purged, olderThanDays, cutoff}。启动时的惰性清理由 PURGE_INACTIVE_ON_BOOT 控制（默认开）。"
+          },
+          "name": "清理过期未激活账号（需 system:user）"
         },
         {
           "request": {
