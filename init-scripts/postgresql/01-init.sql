@@ -156,6 +156,11 @@ CREATE TABLE IF NOT EXISTS kh_user (
     deleted BOOLEAN NOT NULL DEFAULT false          -- 软删除标记
 );
 
+-- 存量卷幂等补列（v8 新增 email_verified 时更早的卷没有该列）
+ALTER TABLE kh_user ADD COLUMN IF NOT EXISTS email_verified SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE kh_user ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE kh_user ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
+
 -- 用户名唯一（仅约束未删除用户，软删后允许同名重建）
 CREATE UNIQUE INDEX IF NOT EXISTS uk_kh_user_username
     ON kh_user(username) WHERE deleted = false;
@@ -360,3 +365,33 @@ INSERT INTO kh_team_member (id, team_id, user_id, member_role) VALUES
     (9000000000000000002, 8000000000000000002, 1000000000000000001, 'leader'),  -- admin 是后端组负责人
     (9000000000000000003, 8000000000000000002, 1000000000000000003, 'member')   -- user 在后端组
 ON CONFLICT (id) DO NOTHING;
+
+-- ==================== AI 会话（feat-v13） ====================
+
+-- 对话会话（按用户隔离；删除会话时消息经外键级联清理）
+CREATE TABLE IF NOT EXISTS kh_ai_session (
+    id BIGINT PRIMARY KEY,                          -- 会话 ID（雪花）
+    user_id BIGINT NOT NULL,                        -- 所属用户
+    title VARCHAR(80) NOT NULL,                     -- 会话标题（首问自动生成，可重命名）
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_ai_session_user_updated
+    ON kh_ai_session(user_id, updated_at DESC);
+
+-- 会话消息（一轮问答落两条：user 提问 + assistant 回答）
+CREATE TABLE IF NOT EXISTS kh_ai_message (
+    id BIGINT PRIMARY KEY,                          -- 消息 ID（雪花）
+    session_id BIGINT NOT NULL REFERENCES kh_ai_session(id) ON DELETE CASCADE,
+    role VARCHAR(16) NOT NULL,                      -- user / assistant
+    content TEXT NOT NULL,                          -- 消息正文
+    sources JSONB,                                  -- assistant 消息的引用溯源（无引用为 NULL）
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_ai_message_session_id
+    ON kh_ai_message(session_id, created_at);
+
+COMMENT ON TABLE kh_ai_session IS 'AI 对话会话（updated_at 随最新一轮问答推进，列表按其倒序展示）';
+COMMENT ON COLUMN kh_ai_session.user_id IS '所属用户（→ kh_user.id）';
+COMMENT ON TABLE kh_ai_message IS 'AI 会话消息';
+COMMENT ON COLUMN kh_ai_message.sources IS 'assistant 消息的引用溯源（JSONB 数组，无引用为 NULL）';

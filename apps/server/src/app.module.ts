@@ -16,6 +16,8 @@ import { UserPermissionEntity } from './user/entities/user-permission.entity.js'
 import { TeamEntity } from './team/entities/team.entity.js';
 import { TeamMemberEntity } from './team/entities/team-member.entity.js';
 import { TeamModule } from './team/team.module.js';
+import { AiSessionEntity } from './ai/entities/ai-session.entity.js';
+import { AiMessageEntity } from './ai/entities/ai-message.entity.js';
 
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
@@ -53,6 +55,8 @@ import { AiModule } from './ai/ai.module.js';
           UserPermissionEntity,
           TeamEntity,
           TeamMemberEntity,
+          AiSessionEntity,
+          AiMessageEntity,
         ],
         synchronize: false,
       }),

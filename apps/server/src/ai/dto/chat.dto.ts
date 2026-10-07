@@ -3,6 +3,11 @@ import { Type } from 'class-transformer';
 
 /** RAG 对话请求（POST /ai/chat） */
 export class ChatDto {
+  /** 已有会话 ID；不传则自动新建会话 */
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
+
   /** 用户问题 */
   @IsString()
   @IsNotEmpty()

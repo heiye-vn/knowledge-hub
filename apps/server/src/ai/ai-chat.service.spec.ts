@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import { AiChatService } from './ai-chat.service.js';
 import { RetrievalService } from '../rag/retrieval.service.js';
+import { ChatSessionService } from './chat-session.service.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
 
 // ChatOpenAI 由构造函数内部创建，直接 mock 整个模块，
@@ -31,19 +32,45 @@ function hit(id: string, score: number): SearchHit {
   };
 }
 
+const USER = { userId: '1001', username: 'user', roles: [], permissions: [] };
+
+/** 会话服务 fake：appendTurn 可按用例覆盖行为 */
+function makeSessions(
+  appendTurn?: ChatSessionService['appendTurn'],
+): { sessions: ChatSessionService; appendTurn: ReturnType<typeof vi.fn> } {
+  const appendTurnFn =
+    appendTurn ??
+    (vi.fn(async () => ({
+      id: '9001',
+      userId: USER.userId,
+      title: '问题',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })) as unknown as ChatSessionService['appendTurn']);
+  return {
+    sessions: { appendTurn: appendTurnFn } as unknown as ChatSessionService,
+    appendTurn: appendTurnFn as unknown as ReturnType<typeof vi.fn>,
+  };
+}
+
 function makeService(
   searchImpl: (params: { query: string; topK?: number }) => Promise<SearchHit[]>,
-): AiChatService {
+  sessionsImpl?: Parameters<typeof makeSessions>[0],
+): AiChatService & { appendTurn: ReturnType<typeof vi.fn> } {
   const retrieval = {
     search: vi.fn(searchImpl),
   } as unknown as RetrievalService;
-  return new AiChatService(
+  const { sessions, appendTurn } = makeSessions(sessionsImpl);
+  const service = new AiChatService(
     {
       get: (k: string, d?: string) =>
         k === 'LLM_API_KEY' ? 'test-key' : d,
     } as unknown as ConfigService,
     retrieval,
-  );
+    sessions,
+  ) as AiChatService & { appendTurn: ReturnType<typeof vi.fn> };
+  service.appendTurn = appendTurn;
+  return service;
 }
 
 describe('AiChatService（mock 检索与 LLM）', () => {
@@ -59,6 +86,7 @@ describe('AiChatService（mock 检索与 LLM）', () => {
         get: (k: string, d?: string) => (k === 'LLM_API_KEY' ? 'k' : d),
       } as unknown as ConfigService,
       retrieval,
+      makeSessions().sessions,
     );
 
     const res = await service.chat('   ');
@@ -124,6 +152,7 @@ describe('AiChatService（mock 检索与 LLM）', () => {
         get: (k: string, d?: string) => (k === 'LLM_API_KEY' ? 'k' : d),
       } as unknown as ConfigService,
       retrieval,
+      makeSessions().sessions,
     );
 
     const res = await service.chat('问题');
@@ -138,5 +167,55 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     const res = await service.chat('问题');
     expect(typeof res.answer).toBe('string');
     expect(res.answer).toContain('数组型 content');
+  });
+
+  it('带用户且传 sessionId 时落库并回传原 sessionId（续聊）', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+
+    const res = await service.chat('问题', 5, USER, '8001');
+    expect(res.sessionId).toBe('9001');
+    expect(service.appendTurn).toHaveBeenCalledWith(
+      USER.userId,
+      '8001',
+      '问题',
+      '结论 [1]。',
+      expect.any(Array),
+    );
+  });
+
+  it('带用户未传 sessionId 时新建会话，问题照原文落库', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+
+    const res = await service.chat('  知识库是什么  ', 5, USER);
+    expect(res.sessionId).toBe('9001');
+    expect(service.appendTurn).toHaveBeenCalledWith(
+      USER.userId,
+      undefined,
+      '知识库是什么',
+      '结论 [1]。',
+      expect.any(Array),
+    );
+  });
+
+  it('不传用户时不落库（兼容未登录调用）', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+
+    const res = await service.chat('问题');
+    expect(res.sessionId).toBeNull();
+    expect(service.appendTurn).not.toHaveBeenCalled();
+  });
+
+  it('落库失败不影响回答返回（尽力而为语义）', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)], async () => {
+      throw new Error('db down');
+    });
+
+    const res = await service.chat('问题', 5, USER);
+    expect(res.answer).toBe('结论 [1]。');
+    expect(res.sessionId).toBeNull();
   });
 });

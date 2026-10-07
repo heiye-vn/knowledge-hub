@@ -8,21 +8,15 @@ import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { RetrievalService } from '../rag/retrieval.service.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
+import { ChatSessionService } from './chat-session.service.js';
+import type { AuthUser } from '../auth/auth-user.interface.js';
+import type { ChatSource } from './chat.types.js';
+
+export type { ChatSource } from './chat.types.js';
 
 const EXCERPT_LEN = 200;
 const CONTEXT_SNIPPET_LEN = 800;
 const CITATION_RE = /\[(\d+)\]/g;
-
-/** 返给前端的溯源条目（摘录，不含整块正文） */
-export interface ChatSource {
-  /** 资料编号，与回答中的 [n] 对应 */
-  index: number;
-  documentId: string;
-  documentTitle: string;
-  heading: string | null;
-  excerpt: string;
-  score: number;
-}
 
 /**
  * RAG 对话服务（feat-v11）：混合检索 → LLM 作答 → 引用溯源。
@@ -50,6 +44,7 @@ export class AiChatService {
   constructor(
     config: ConfigService,
     private readonly retrieval: RetrievalService,
+    private readonly sessions: ChatSessionService,
   ) {
     const apiKey =
       config.get<string>('LLM_API_KEY') ||
@@ -74,18 +69,28 @@ export class AiChatService {
     });
   }
 
-  async chat(question: string, topK = 5): Promise<{
+  async chat(
+    question: string,
+    topK = 5,
+    user?: AuthUser,
+    sessionId?: string,
+  ): Promise<{
+    sessionId: string | null;
     answer: string;
     sources: ChatSource[];
   }> {
     const trimmed = question.trim();
     if (!trimmed) {
-      return { answer: '请输入问题。', sources: [] };
+      return { sessionId: sessionId ?? null, answer: '请输入问题。', sources: [] };
     }
 
     const hits = await this.retrieval.search({ query: trimmed, topK });
     if (!hits.length) {
-      return { answer: '知识库里没有相关内容。', sources: [] };
+      const empty = { answer: '知识库里没有相关内容。', sources: [] as ChatSource[] };
+      const session = user
+        ? await this.persistTurn(user.userId, sessionId, trimmed, empty.answer, empty.sources)
+        : null;
+      return { sessionId: session?.id ?? sessionId ?? null, ...empty };
     }
 
     if (!this.llm) {
@@ -117,7 +122,39 @@ export class AiChatService {
     this.logger.log(
       `RAG 对话完成：hits=${hits.length}, cited=${sources.length}, answerLength=${answer.length}`,
     );
-    return { answer, sources };
+
+    const session = user
+      ? await this.persistTurn(user.userId, sessionId, trimmed, answer, sources)
+      : null;
+    return { sessionId: session?.id ?? sessionId ?? null, answer, sources };
+  }
+
+  /**
+   * 一轮问答落库（尽力而为）：回答已生成，持久化失败只记日志不抛错，
+   * 避免存储故障让用户拿不到答案（落库缺失影响的是历史回看，不是本次回答）。
+   */
+  private async persistTurn(
+    userId: string,
+    sessionId: string | undefined,
+    question: string,
+    answer: string,
+    sources: ChatSource[],
+  ) {
+    try {
+      return await this.sessions.appendTurn(
+        userId,
+        sessionId,
+        question,
+        answer,
+        sources,
+      );
+    } catch (err) {
+      this.logger.error(
+        `会话落库失败（回答正常返回）：sessionId=${sessionId ?? '新建'}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      return null;
+    }
   }
 
   /** 从回答中抽出 [n]，只返回实际引用的资料；未标注时回退为全部召回（摘录） */
