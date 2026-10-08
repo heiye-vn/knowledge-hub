@@ -139,7 +139,9 @@
 | **2026-10-04** | **图谱全景路由与异常**（v12） | `GET /graph/overview`，catch 吞错返回空数据 | `GET /kg/overview` 挂 `@RequirePermission('search')`，Neo4j 不可用时抛 503，查询失败抛错交全局异常拦截器 | 路由前缀统一在 `/kg` 域；不隐瞒后端故障，保证异常可观测 |
 | **2026-10-07** | **删除会话的级联策略**（v13） | 应用层先删消息再删会话（两条 DELETE） | 只删会话行，消息交给 `kh_ai_message` 外键 ON DELETE CASCADE | 库已声明级联，应用层重复删除是多余防御；删除路径单一且天然原子 |
 | **2026-10-07** | **会话落库失败的语义**（v13） | appendTurn 失败向上抛，已生成的回答随响应整单丢失 | 尽力而为：落库失败只记 error 日志，回答照常返回（sessionId 可能缺失） | 回答在 LLM 生成后已具备价值，存储故障不应让用户拿不到答案；落库缺失只影响历史回看，可在服务端日志发现补偿 |
-| **2026-10-07** | **溯源类型的归属**（v13） | ChatSource 定义在 ai-chat.service.ts 内 | 独立 chat.types.ts，服务 re-export | 实体（type-only）与会话服务都要引用，避免类型反向依赖服务实现文件 |
+| **2026-10-07** | **前端 StrictMode 的处理**（v13） | 为绕开 dev 环境 effect 双调用，直接删除 `StrictMode` | 保留 StrictMode，加载逻辑写成幂等 + `cancelled` 守卫 | 删除 StrictMode 等于放弃一整类问题的 dev 期暴露；双调用本来就该用取消守卫消化，代价远小于失去 StrictMode |
+| **2026-10-07** | **会话 UI 的溯源展示**（v13） | 历史消息用 antd `List` 直接拼 `[n] + 标题 + 摘录` | 复用主项目自研 `AnswerWithCitations` + `SourceCiteList` | 主项目已有带跳转到文档详情的溯源组件，历史回看与实时回答应共用同一套渲染 |
+| **2026-10-07** | **「仅检索」是否落库**（v13） | 未区分（/rag/search 与 /ai/chat 都是 AI 域下的调用） | 明确「仅检索」走 `/search` 纯检索、不落会话 | 检索调试/预览不是问答，进历史会污染会话列表 |
 
 
 

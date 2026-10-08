@@ -1,7 +1,9 @@
 import { del, get, patch, post, put, request } from './client'
 import type {
   AuthUser,
+  ChatMessage,
   ChatResult,
+  ChatSession,
   ChunkHit,
   DocumentItem,
   GraphEdge,
@@ -86,11 +88,21 @@ export const searchApi = {
 }
 
 export const aiApi = {
-  chat: (content: string, topK = 5) =>
-    post<ChatResult>('/ai/chat', { content, topK }),
-  /** 纯语义/混合检索（对齐主项目 POST /search，支持三种模式） */
+  chat: (content: string, topK = 5, sessionId?: string) =>
+    post<ChatResult>('/ai/chat', { content, topK, sessionId }),
+  /** 纯语义/混合检索（对齐主项目 POST /search，支持三种模式；不落会话） */
   ragSearch: (query: string, topK = 8, mode: SearchMode = 'hybrid') =>
     post<ChunkHit[]>('/search', { query, topK, mode }),
+  /** 本人会话分页，最近活跃在前 */
+  sessions: (page = 1, pageSize = 50) =>
+    get<PageResult<ChatSession>>(`/ai/sessions?page=${page}&pageSize=${pageSize}`),
+  /** 新建空会话 */
+  createSession: () => post<ChatSession>('/ai/sessions', {}),
+  /** 会话历史消息，时间正序 */
+  messages: (id: string) => get<ChatMessage[]>(`/ai/sessions/${id}/messages`),
+  renameSession: (id: string, title: string) =>
+    patch<ChatSession>(`/ai/sessions/${id}`, { title }),
+  removeSession: (id: string) => del<{ message: string }>(`/ai/sessions/${id}`),
 }
 
 export const graphApi = {

@@ -124,7 +124,8 @@ body,
   overflow: auto;
 }
 
-.kh-content:has(.kh-graph-layout) {
+.kh-content:has(.kh-graph-layout),
+.kh-content:has(.kh-chat-layout) {
   overflow: hidden;
 }
 
@@ -209,6 +210,78 @@ body,
   display: flex;
   flex-direction: column;
   height: calc(100vh - 120px);
+}
+
+/* ===== AI 问答：左会话栏 + 右消息区（feat-v13） ===== */
+.kh-page.kh-chat-layout {
+  display: flex;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.kh-chat-sessions {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: calc(100vh - 120px);
+}
+
+.kh-chat-layout .kh-chat {
+  flex: 1;
+  min-width: 0;
+}
+
+.kh-chat-session-list {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.kh-chat-session-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.kh-chat-session-item:hover {
+  background: #f5f7fa;
+}
+
+.kh-chat-session-item.active {
+  background: #e6f4ff;
+}
+
+.kh-chat-session-title {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kh-chat-session-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.kh-chat-session-meta .anticon {
+  visibility: hidden;
+  cursor: pointer;
+}
+
+.kh-chat-session-item:hover .anticon {
+  visibility: visible;
+}
+
+.kh-chat-session-meta .anticon:hover {
+  color: #ff4d4f;
 }
 
 .kh-chat-log {

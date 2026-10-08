@@ -61,7 +61,24 @@ kh_ai_session                    kh_ai_message
 - 全局 JWT Guard 下无匿名路径，chat 的 `user` 参数实际恒存在；
   保留 `user?` 可选签名是为了服务层可脱离 HTTP 上下文复用（含单测）。
 
-## 五、 已知局限与后续待办
+## 五、 前端接入（apps/web）
+
+契约与主项目 server 对齐（`/ai/*` 一套路由），前端改动集中在四处：
+
+- **api 层**：`chat` 增加可选 sessionId；新增 `sessions` / `createSession` /
+  `messages` / `renameSession` / `removeSession`（`client.ts` 的 get/post/patch/del 齐备）。
+- **URL 即会话态**：`/chat?session=<id>`。无参数 = 新会话（首问由服务端建会话后
+  `navigate(replace)` 回填 id）；切换会话拉历史消息映射成气泡。
+- **「仅检索」不落会话**：走 `/search` 纯检索，与 `/ai/chat` 分道，避免检索调试污染历史。
+- **历史消息复用溯源组件**：`AnswerWithCitations` + `SourceCiteList`（主项目自研，
+  比基线的 antd List 直拼更完整）。会话栏删除图标 `stopPropagation` 防误触。
+
+**StrictMode 保留（🟡 分叉）**：基线实现为绕开 dev 环境 effect 双调用，
+直接**删除了 StrictMode**。主项目保留它，改为把加载逻辑写成幂等 +
+`cancelled` 守卫（参考实现本身也写了守卫，删 StrictMode 属多余）。
+删掉 StrictMode 会失去一整类问题的 dev 期暴露，代价远大于适配成本。
+
+## 六、 已知局限与后续待办
 
 - **多轮上下文未进 LLM**：会话只是持久化，追问「那第二天呢」不会带上
   前文；每轮仍是独立检索 + 独立作答。要支持需把近 N 轮消息拼进

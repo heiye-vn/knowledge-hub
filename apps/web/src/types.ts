@@ -87,8 +87,28 @@ export interface ChatSource {
 }
 
 export interface ChatResult {
+  /** 本轮问答落库的会话 ID（服务端自动新建或续用），供续聊与历史回看 */
+  sessionId: string | null
   answer: string
   sources: ChatSource[]
+}
+
+/** AI 对话会话（kh_ai_session） */
+export interface ChatSession {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** AI 会话消息（kh_ai_message，assistant 消息带引用溯源） */
+export interface ChatMessage {
+  id: string
+  sessionId: string
+  role: 'user' | 'assistant'
+  content: string
+  sources?: ChatSource[] | null
+  createdAt: string
 }
 
 export interface GraphHit {
