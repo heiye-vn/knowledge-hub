@@ -64,6 +64,15 @@
 
 | （无，基线两条异步链路均无状态查询入口） | `mq/task-status.*` → `GET /tasks/:taskId` | 🔵 新增 | KG 建图与 RAG 全量重建共用一套任务状态查询：jobId（taskId）全局唯一，两队列各查一次先命中先用；完成任务保留 1 小时供查询（`removeOnComplete: true` 会导致查完成任务永远 404），失败任务永久保留 |
 
+| **v14** `ai/ai-stream.service.ts`（Agent 流式 + 协议转换） | 同名服务 | 🟡 分叉 | LangChain `createAgent`（web_search 工具 + `modelCallLimitMiddleware` 限 4 次）+ `createUIMessageStream` / `toUIMessageStream`（sendStart/Finish 关闭防重复）同构；分叉：Key/模型配置与 ai-chat.service 同源、检索复用 `RetrievalService`（继承 MIN_SCORE 过滤 + 死文档兜底）、传 sessionId 开场 `assertOwned` 校验 |
+| **v14** `POST /ai/chat/stream` | 同名端点（`@Controller('ai')` 前缀） | 🟢 对齐 | `@Res()` 手写响应绕过全局信封（SSE 逐帧写出）+ search 权限码，同款 |
+| **v14** `ai/web-search.service.ts`（Bocha） | 同名服务 | 🟢 对齐 | 无 BOCHA_API_KEY / 调用失败返回 error 文案由模型转述，不阻断知识库问答 |
+| **v14** `dto/chat-stream.dto.ts` | 同名 DTO | 🟢 对齐 | `@Allow()` 放行 useChat 附加字段（id / trigger / messageId）——两边都开 forbidNonWhitelisted，不放行必 400 |
+| **v14** `chat-session.service.ts` `touchTitle` | （无对应方法） | 🔴 超越 | 新会话直接以首问标题创建、旧会话默认标题由既有 `appendTurn` 覆盖兜底，少一次查询少一个方法 |
+| **v14** 前端 ChatPage 重写（useChat） | 同构重写 | 🟡 分叉 | `useChat` + `DefaultChatTransport`（Bearer 注入）+ data-session 回写 URL + 历史经 `historyToUIMessages` 回填同构；保留主项目 topK / 检索模式 / 「仅检索」能力（参考 v14 简化掉了这些输入） |
+| **v14** `ChatMessageParts.tsx`（按 part 渲染） | 同名组件 | 🟢 对齐 | ThinkBlock（reasoning）/ RetrieveCard（data-retrieve）/ WebSearchCard（web_search 工具）/ AnswerMarkdown 正文；`citedSources` 只展示回答实际标注的条目 |
+| **v14** `SourceCiteList` 卡片化 + 锚点联动 | 同款升级 | 🟢 对齐 | 横排引用卡 + `[n]` 点击 flash 定位 + react-markdown / remark-gfm；vite 代理 `timeout:0` 防 SSE 被掐 |
+
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
 ---
@@ -142,6 +151,9 @@
 | **2026-10-07** | **前端 StrictMode 的处理**（v13） | 为绕开 dev 环境 effect 双调用，直接删除 `StrictMode` | 保留 StrictMode，加载逻辑写成幂等 + `cancelled` 守卫 | 删除 StrictMode 等于放弃一整类问题的 dev 期暴露；双调用本来就该用取消守卫消化，代价远小于失去 StrictMode |
 | **2026-10-07** | **会话 UI 的溯源展示**（v13） | 历史消息用 antd `List` 直接拼 `[n] + 标题 + 摘录` | 复用主项目自研 `AnswerWithCitations` + `SourceCiteList` | 主项目已有带跳转到文档详情的溯源组件，历史回看与实时回答应共用同一套渲染 |
 | **2026-10-07** | **「仅检索」是否落库**（v13） | 未区分（/rag/search 与 /ai/chat 都是 AI 域下的调用） | 明确「仅检索」走 `/search` 纯检索、不落会话 | 检索调试/预览不是问答，进历史会污染会话列表 |
+| **2026-10-09** | **流式会话的标题与校验时机**（v14） | 新会话 `create` 后另有 `touchTitle` 用首问覆盖默认标题；传 sessionId 时归属校验迟到落库（onFinish 的 appendTurn 才发现越权） | 新会话以首问标题直接 `create`；传 sessionId 开场 `assertOwned`，越权当场 404 | SSE 已逐帧写出后才发现会话不合法，等于白跑一次 LLM；开场校验把失败前置到零成本时机。标题覆盖本就由 appendTurn 兜底，touchTitle 属重复防御 |
+| **2026-10-09** | **流式问答页的输入能力**（v14） | ChatPage 重写时简化掉 topK / 检索模式 / 仅检索入口 | 保留三输入：流式走服务端混合检索管线，topK 经 body 透传；「仅检索」仍走 `/search` 本地拼装展示 | 检索调参是主项目既有能力（postman 集合 / dev-notes 已固化），砍掉属于无意功能回退；分流语义延续 v13「仅检索不落库」决策 |
+| **2026-10-09** | **流式服务的 LLM 配置来源**（v14） | `OPENAI_API_KEY / DASHSCOPE_API_KEY` + 默认 qwen-plus | 与 ai-chat.service 同源：`LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY` 回退链 + `LLM_MODEL` 统一默认 | 同一进程两个 AI 服务各挂一套配置必然漂移；无 Key 环境下回退链保证流式与非流式要么同时可用要么同时禁用 |
 
 
 

@@ -257,3 +257,15 @@ S3 风格 XML 错误 `AccessDenied`。该问题与上面第 1 项联动：**决�
 | **多轮上下文进 LLM** | 会话目前只做持久化，每轮仍是独立检索 + 独立作答，追问「那第二天呢」带不上前文。要支持需把近 N 轮 user/assistant 消息拼进 prompt（消息表已就绪，只差读取与拼接） | 产品要求多轮追问能力时 |
 | **会话消息分页** | 历史消息一次全量返回，无分页 | 单会话消息量级大到影响响应体积时 |
 | **落库失败补偿** | appendTurn 尽力而为（失败只记日志），无补偿任务 | 出现真实落库失败事故或需要审计完整性时 |
+
+## 11. AI 流式对话（feat-v14）遗留项
+
+> 记录时间：2026-10-09（feat-v14）
+> 实现笔记见 `dev-notes/ai-streaming.md`
+
+| 项 | 说明 | 触发条件 |
+| :--- | :--- | :--- |
+| **流式接口 401 刷新** | `DefaultChatTransport` 自管 fetch，绕过 client.ts 的 401 自动刷新拦截；令牌过期时流式问答直接失败需重新登录（基线实现同样未处理） | 用户反馈令牌过期频繁时；可在 transport 的 headers 回调里做刷新重试 |
+| **@langchain/core 升级** | langchain 1.5.16 的 peer 要求 ^1.2.17、实装 1.2.11；createAgent / tool / middleware 已冒烟验证兼容 | 下次依赖变更时顺手 `pnpm --filter @knowledge-hub/server add @langchain/core@^1.2.17`（沙箱装依赖有删除配额，单独升级一次不划算） |
+| **web_search 可观测** | Bocha 失败仅 warn 日志；前端 WebSearchCard 有失败态展示，服务端无结构化统计 | 需要工具调用监控 / 成本统计时 |
+| **web 单 chunk 体积** | 单 bundle 2.8MB（echarts + ai SDK 全量入口打包），构建有 >500kB 警告 | 首屏性能有硬要求时做路由级 code-splitting |

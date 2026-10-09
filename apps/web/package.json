@@ -11,7 +11,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/react": "^4.0.96",
     "@ant-design/icons": "^6.3.4",
+    "ai": "^7.0.93",
     "antd": "^6.6.2",
     "dayjs": "^1.11.23",
     "echarts": "^6.1.0",

@@ -7,10 +7,14 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AiChatService } from './ai-chat.service.js';
+import { AiStreamService } from './ai-stream.service.js';
 import { ChatSessionService } from './chat-session.service.js';
 import { ChatDto } from './dto/chat.dto.js';
+import { ChatStreamDto } from './dto/chat-stream.dto.js';
 import {
   CreateSessionDto,
   QuerySessionDto,
@@ -33,6 +37,7 @@ import type { AuthUser } from '../auth/auth-user.interface.js';
 export class AiController {
   constructor(
     private readonly aiChat: AiChatService,
+    private readonly aiStream: AiStreamService,
     private readonly sessions: ChatSessionService,
   ) {}
 
@@ -44,6 +49,21 @@ export class AiController {
   @RequirePermission('search')
   chat(@Body() dto: ChatDto, @CurrentUser() user: AuthUser) {
     return this.aiChat.chat(dto.content, dto.topK ?? 5, user, dto.sessionId);
+  }
+
+  /**
+   * 流式 RAG 对话：LangChain Agent 经 UI Message Stream 协议（SSE）写回，
+   * 前端 useChat 消费。@Res() 手写响应绕过全局信封（SSE 逐帧写出，
+   * 不能等拦截器包装），onFinish 时复用会话落库。
+   */
+  @Post('chat/stream')
+  @RequirePermission('search')
+  streamChat(
+    @Body() dto: ChatStreamDto,
+    @CurrentUser() user: AuthUser,
+    @Res() res: Response,
+  ) {
+    return this.aiStream.streamChat(dto, user, res);
   }
 
   /** 本人会话分页，最近活跃在前 */

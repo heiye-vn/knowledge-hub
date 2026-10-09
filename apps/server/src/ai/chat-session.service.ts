@@ -125,6 +125,11 @@ export class ChatSessionService {
     return session;
   }
 
+  /** 校验会话存在且属于本人并返回（流式对话开场即校验，越权当场 404） */
+  async assertOwned(userId: string, id: string): Promise<AiSessionEntity> {
+    return this.getOwned(userId, id);
+  }
+
   /** 越权与不存在统一 404，查询条件同时带 id 与 userId */
   private async getOwned(userId: string, id: string) {
     const session = await this.em.findOne(AiSessionEntity, {

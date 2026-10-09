@@ -838,7 +838,40 @@
                 "chat"
               ]
             },
-            "description": "混合检索（kNN + BM25 + RRF + rerank 精排）→ LLM 生成回答 → 引用溯源。\n\n请求：{ content: 必填问题, topK: 1~10 召回块数（默认 5）}。\n返回 { answer, sources }：answer 中句末带 [n] 标注；sources 只含实际被引用的资料，\n每条 { index, documentId, documentTitle, heading, excerpt(200字), score }。\n\n依赖：LLM_API_KEY（或回退 EMBEDDING_API_KEY）+ RERANK_API_KEY（默认 qwen3.7-text-rerank）。\n降级：检索无命中直接返回「知识库里没有相关内容。」不调 LLM；rerank 失败自动降级 RRF 顺序。\n鉴权：search 权限码。SSE 流式版本属后续讲次。"
+            "description": "混合检索（kNN + BM25 + RRF + rerank 精排）→ LLM 生成回答 → 引用溯源。\n\n请求：{ content: 必填问题, topK: 1~10 召回块数（默认 5）}。\n返回 { answer, sources }：answer 中句末带 [n] 标注；sources 只含实际被引用的资料，\n每条 { index, documentId, documentTitle, heading, excerpt(200字), score }。\n\n依赖：LLM_API_KEY（或回退 EMBEDDING_API_KEY）+ RERANK_API_KEY（默认 qwen3.7-text-rerank）。\n降级：检索无命中直接返回「知识库里没有相关内容。」不调 LLM；rerank 失败自动降级 RRF 顺序。\n鉴权：search 权限码。SSE 流式版本见 /ai/chat/stream（feat-v14）。"
+          }
+        },
+        {
+          "name": "AI 流式对话（SSE，feat-v14）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    { \"role\": \"user\", \"parts\": [{ \"type\": \"text\", \"text\": \"公司的报销流程是什么？\" }] }\n  ],\n  \"sessionId\": \"<可选，续聊时传>\",\n  \"topK\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "chat",
+                "stream"
+              ]
+            },
+            "description": "流式 RAG 对话（SSE）：LangChain Agent（含 web_search 联网工具）经 UI Message Stream 协议逐帧写回，前端 useChat 消费。\n\n请求体为 useChat 的 UI Message 数组：messages[].parts[] 取最后一条 user 文本；sessionId 可选（续聊）；topK 1-10（默认 5）。\nid / trigger / messageId 为 SDK 自动附加字段，服务端 @Allow 放行（forbidNonWhitelisted 下必须显式声明）。\n\n事件序列：start → data-session（sessionId，新会话自动建并以首问为标题）→ data-status → data-retrieve / data-sources / source-document → reasoning / text-delta / tool-* → finish。\n落库在流结束后进行（尽力而为）：按 [n] 抽被引用资料存入本人会话。\n\n依赖：LLM_API_KEY（或回退链）+ LLM_ENABLE_THINKING（默认 true，思考内容走 reasoning 事件）；BOCHA_API_KEY 未配置时 web_search 返回错误文案由模型转述，不阻断问答。\n鉴权：search 权限码。响应为 text/event-stream，绕过全局信封；传非法 sessionId 开场即 404。"
           }
         }
       ]

@@ -46,6 +46,7 @@
 | [rbac.md](./rbac.md) | 功能模块 · RBAC 权限系统 + 团队组织架构（feat-v9） | 2026-09-30 | **权限码要生效就不能再叠 @Roles**（参考项目把细粒度模型架空）；`@Public` + 类级角色声明会让公开接口 403；绑定必须事务化；权限 ID 校验的去重陷阱 |
 | [kg-overview-and-cors.md](./kg-overview-and-cors.md) | 功能模块 · 全景图谱与跨域配置（feat-v12） | 2026-10-04 | **CORS 白名单防御**；图谱路由收敛 `/kg`；Cypher tags 持久化与 Neo4j 时间格式统一；异常可观测不吞错 |
 | [chat-sessions.md](./chat-sessions.md) | 功能模块 · AI 对话会话持久化（feat-v13） | 2026-10-07 | **落库尽力而为**（回答已生成就不因存储故障丢失）；越权与不存在统一 404；外键 CASCADE 就不用应用层重复防御；标题自动生成只覆盖默认名 |
+| [ai-streaming.md](./ai-streaming.md) | 功能模块 · AI 流式对话（SSE + useChat，feat-v14） | 2026-10-09 | **toUIMessageStream 要关 sendStart/Finish** 防双发；DTO 必须放行 useChat 附加字段否则 400；百炼思考内容要流上原位改写；vite 代理必须 timeout:0 |
 | [account-activation-governance.md](./account-activation-governance.md) | 功能模块 · 账号激活治理（重发激活邮件 / 未激活账号过期清理） | 2026-10-05 | **公开端点凭密码证明归属**防邮件轰炸；TTL 反推冷却、发信失败回滚 token；清理前核对所有 `email_verified=0` 写入点防误删；QueryBuilder update 需手动带 `updatedAt` |
 | [reference-project-alignment.md](./reference-project-alignment.md) | 方法论 · 与参考项目的对照策略 | 2026-09-19 | 三层判断法（模式/实现/缺陷）：什么照搬、什么可换、什么必须改 |
 
