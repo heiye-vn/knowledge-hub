@@ -14,6 +14,7 @@ import { PermissionEntity } from './entities/permission.entity.js';
 import { RolePermissionEntity } from './entities/role-permission.entity.js';
 import { UserPermissionEntity } from './entities/user-permission.entity.js';
 import { DocumentEntity } from '../document/entities/document.entity.js';
+import { TeamModule } from '../team/team.module.js';
 
 /**
  * 用户模块：六表仓储 + 用户/角色/权限服务 + 管理接口。
@@ -23,6 +24,7 @@ import { DocumentEntity } from '../document/entities/document.entity.js';
  */
 @Module({
   imports: [
+    TeamModule,
     TypeOrmModule.forFeature([
       UserEntity,
       RoleEntity,

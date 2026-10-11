@@ -16,6 +16,7 @@ import { UserEntity } from './entities/user.entity.js';
 import { RoleEntity } from './entities/role.entity.js';
 import { UserRoleEntity } from './entities/user-role.entity.js';
 import { PermissionService } from './permission.service.js';
+import { TeamService } from '../team/team.service.js';
 import { QueryUserDto } from './dto/query-user.dto.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
@@ -44,6 +45,7 @@ export class UserService {
     @InjectRepository(DocumentEntity)
     private readonly documentRepo: Repository<DocumentEntity>,
     private readonly permissionService: PermissionService,
+    private readonly teamService: TeamService,
   ) {}
 
   /** 按用户名查未删除用户（软删数据不算，避免注册查重误判） */
@@ -84,13 +86,14 @@ export class UserService {
 
   /**
    * Entity → 鉴权用视图对象（不含密码）。
-   * permissions 由调用方传入（buildAuthUser / validateCredentials 先算好），
-   * 本方法只做装配，不隐式查库——便于单测时直接构造 AuthUser。
+   * permissions / teamIds 由调用方传入（buildAuthUser / validateCredentials 先算好），
+   * 本方法保持同步，只做装配，不隐式查库——便于单测时直接构造 AuthUser。
    */
   toAuthUser(
     user: UserEntity,
     roles: string[],
     permissions: string[],
+    teamIds: string[] = [],
   ): AuthUser {
     return {
       userId: user.id,
@@ -100,6 +103,7 @@ export class UserService {
       avatar: user.avatar,
       roles,
       permissions,
+      teamIds,
     };
   }
 
@@ -126,17 +130,23 @@ export class UserService {
     return this.toUserVO(await this.findByIdOrThrow(userId));
   }
 
-  /** 按 ID 重建当前用户信息（禁用账户拒绝），JwtStrategy / me / refresh 共用 */
+  /**
+   * 按 ID 重建当前用户信息（禁用账户拒绝），JwtStrategy / me / refresh 共用。
+   * 每请求多查一次团队是有意取舍，保证用户调离/加入团队时，文档检索可见性即时生效（与权限码同风格）。
+   */
   async buildAuthUser(userId: string): Promise<AuthUser> {
     const user = await this.findByIdOrThrow(userId);
     if (user.status !== 1) {
       throw new UnauthorizedException('账户已禁用');
     }
-    const roles = await this.getRoleCodes(userId);
+    const [roles, teamIds] = await Promise.all([
+      this.getRoleCodes(userId),
+      this.teamService.listAccessibleTeamIds(userId),
+    ]);
     // 复用上面已查到的 roles，避免权限服务再执行一次同样的角色联查
     const permissions =
       await this.permissionService.getUserPermissionCodes(userId, roles);
-    return this.toAuthUser(user, roles, permissions);
+    return this.toAuthUser(user, roles, permissions, teamIds);
   }
 
   /**
@@ -162,11 +172,14 @@ export class UserService {
     if (!ok) {
       throw new UnauthorizedException('用户名或密码错误');
     }
-    const roles = await this.getRoleCodes(user.id);
+    const [roles, teamIds] = await Promise.all([
+      this.getRoleCodes(user.id),
+      this.teamService.listAccessibleTeamIds(user.id),
+    ]);
     // 复用上面已查到的 roles，避免权限服务再执行一次同样的角色联查
     const permissions =
       await this.permissionService.getUserPermissionCodes(user.id, roles);
-    return this.toAuthUser(user, roles, permissions);
+    return this.toAuthUser(user, roles, permissions, teamIds);
   }
 
   /**

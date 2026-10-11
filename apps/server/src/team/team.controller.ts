@@ -17,6 +17,8 @@ import {
 } from './dto/team.dto.js';
 import { Public } from '../auth/decorators/public.decorator.js';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { AuthUser } from '../auth/auth-user.interface.js';
 
 /**
  * 团队管理接口。
@@ -27,7 +29,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
  * 本项目：tree 只标 @Public、类上不标任何角色声明，公开语义真正生效；
  * 管理接口全部走 system:team 权限码。
  *
- * 【易错】路由顺序：具名路由（tree/page）必须声明在 :id 之前。
+ * 【易错】路由顺序：具名路由（tree/page/mine）必须声明在 :id 之前。
  */
 @Controller('teams')
 export class TeamController {
@@ -45,6 +47,13 @@ export class TeamController {
   page(@Query() query: QueryTeamDto) {
     return this.teamService.page(query);
   }
+
+  /** 当前用户所在团队（含担任负责人的），登录即可访问 */
+  @Get('mine')
+  listMine(@CurrentUser() user: AuthUser) {
+    return this.teamService.listMine(user.userId);
+  }
+
 
   @Get(':id')
   @RequirePermission('system:team')

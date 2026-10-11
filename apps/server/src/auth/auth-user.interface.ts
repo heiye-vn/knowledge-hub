@@ -12,4 +12,7 @@ export interface AuthUser {
    * 由 buildAuthUser 每请求重算，管理端改权限即时生效。
    */
   permissions: string[];
+  /** 所在团队 ID 列表（含普通成员与担任负责人的团队），用于文档可见性控制 */
+  teamIds: string[];
 }
+
