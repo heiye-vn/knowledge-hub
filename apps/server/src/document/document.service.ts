@@ -1,5 +1,6 @@
 import {
   Injectable,
+  OnModuleInit,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
@@ -119,7 +120,7 @@ export interface IndexCleanupResult {
  * 依赖保持单向（本服务 → 审核服务），避免循环依赖。
  */
 @Injectable()
-export class DocumentService {
+export class DocumentService implements OnModuleInit {
   private readonly logger = new Logger(DocumentService.name);
 
   constructor(
@@ -137,6 +138,90 @@ export class DocumentService {
     private readonly reviewService: DocumentReviewService,
     private readonly graphBuildService: GraphBuildService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    // 启动幂等执行存量回填：先探测有缺口才回填，失败只告警不阻塞服务启动
+    this.safeBackfillVisibility().catch((err) => {
+      this.logger.warn(
+        `存量可见性回填异步执行异常：${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
+
+  /**
+   * 存量数据可见性回填（参考基线未做、本项目主动增强）
+   * 探测 ES kh_chunk 与 Neo4j KnowledgeDocument 的可见性缺口，
+   * 对已发布文档执行原地更新，避免历史公开文档被误过滤。
+   */
+  async safeBackfillVisibility(): Promise<{
+    missingChunks: number;
+    missingKgDocs: number;
+    backfilled: boolean;
+  }> {
+    let missingChunks = 0;
+    let missingKgDocs = 0;
+
+    try {
+      if (this.ragOrchestrator?.countMissingVisibilityChunks) {
+        missingChunks = await this.ragOrchestrator.countMissingVisibilityChunks();
+      }
+    } catch (err) {
+      this.logger.warn(`探测 ES 存量可见性缺口失败：${err}`);
+    }
+
+    try {
+      if (this.graphBuildService?.countMissingVisibilityDocs) {
+        missingKgDocs = await this.graphBuildService.countMissingVisibilityDocs();
+      }
+    } catch (err) {
+      this.logger.warn(`探测 KG 存量可见性缺口失败：${err}`);
+    }
+
+    if (missingChunks === 0 && missingKgDocs === 0) {
+      this.logger.log('存量数据可见性字段完备，跳过回填');
+      return { missingChunks: 0, missingKgDocs: 0, backfilled: false };
+    }
+
+    this.logger.log(
+      `检测到存量可见性缺口：ES 缺 is_public 块数=${missingChunks}, KG 缺 isPublic 节点数=${missingKgDocs}，开始回填...`,
+    );
+
+    const docs = await this.em.find(DocumentEntity, {
+      where: { deleted: false, status: DocumentStatus.Published },
+      select: { id: true, isPublic: true, teamId: true, authorId: true },
+    });
+
+    if (!docs.length) {
+      this.logger.log('当前无已发布文档，回填结束');
+      return { missingChunks, missingKgDocs, backfilled: false };
+    }
+
+    if (missingChunks > 0 && this.ragOrchestrator?.backfillVisibility) {
+      try {
+        await this.ragOrchestrator.backfillVisibility(docs);
+        this.logger.log(`ES 向量块可见性回填完成，覆盖 ${docs.length} 篇文档`);
+      } catch (err) {
+        this.logger.error(`ES 向量块可见性回填失败：${err}`);
+      }
+    }
+
+    if (missingKgDocs > 0 && this.graphBuildService?.isAvailable?.()) {
+      for (const doc of docs) {
+        try {
+          await this.graphBuildService.updateVisibility(doc.id, {
+            isPublic: doc.isPublic,
+            teamId: doc.teamId,
+            authorId: doc.authorId,
+          });
+        } catch (err) {
+          this.logger.warn(`KG 节点可见性回填失败：documentId=${doc.id}, ${err}`);
+        }
+      }
+      this.logger.log(`KG 图谱节点可见性回填完成，覆盖 ${docs.length} 篇文档`);
+    }
+
+    return { missingChunks, missingKgDocs, backfilled: true };
+  }
 
   /** 写操作鉴权：仅作者本人或系统管理员可修改/发布/归档/删除文档 */
   private assertWritable(doc: DocumentEntity, actor?: AuthUser) {

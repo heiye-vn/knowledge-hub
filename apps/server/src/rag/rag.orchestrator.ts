@@ -131,6 +131,59 @@ export class RagOrchestrator {
     return this.vectorIndexService.updateVisibility(documentId, vis);
   }
 
+  /**
+   * 探测缺 is_public 字段的向量块数量（存量缺口基线统计）
+   */
+  async countMissingVisibilityChunks(): Promise<number> {
+    if (!this.esService.isEnabled()) return 0;
+    try {
+      const client = this.esService.getClient();
+      const res = await client.count({
+        index: this.esService.getIndexName(),
+        query: {
+          bool: {
+            must_not: [{ exists: { field: 'is_public' } }],
+          },
+        },
+      });
+      return res.count ?? 0;
+    } catch (err) {
+      this.logger.warn(
+        `探测 ES 存量向量块缺口失败：${err instanceof Error ? err.message : String(err)}`,
+      );
+      return 0;
+    }
+  }
+
+  /**
+   * 存量向量块可见性回填：逐文档调用 updateVisibility（幂等，可重复执行）
+   */
+  async backfillVisibility(
+    docs: Array<{
+      id: string;
+      isPublic: boolean;
+      teamId?: string | null;
+      authorId?: string | null;
+    }>,
+  ): Promise<number> {
+    let totalUpdated = 0;
+    for (const doc of docs) {
+      try {
+        const count = await this.vectorIndexService.updateVisibility(doc.id, {
+          isPublic: doc.isPublic,
+          teamId: doc.teamId,
+          authorId: doc.authorId,
+        });
+        totalUpdated += count;
+      } catch (err) {
+        this.logger.warn(
+          `回填文档向量可见性失败：documentId=${doc.id}, ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return totalUpdated;
+  }
+
   /** ES date 字段需要 ISO-8601；Date#toString() 会被拒绝 */
   private toIsoDate(value?: Date | string | null): string | null {
     if (value == null) return null;

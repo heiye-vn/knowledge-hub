@@ -586,3 +586,81 @@ describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
   });
 });
 
+describe('DocumentService.safeBackfillVisibility 存量可见性回填', () => {
+  it('当存在存量缺口时，触发 ES 向量块与 KG 图谱节点可见性回填', async () => {
+    const publishedDocs = [
+      { id: '101', isPublic: true, teamId: 't1', authorId: 'u1' },
+      { id: '102', isPublic: false, teamId: 't2', authorId: 'u2' },
+    ];
+
+    const mockRag = {
+      countMissingVisibilityChunks: vi.fn(async () => 5),
+      backfillVisibility: vi.fn(async () => 5),
+    };
+
+    const mockKg = {
+      isAvailable: vi.fn(() => true),
+      countMissingVisibilityDocs: vi.fn(async () => 2),
+      updateVisibility: vi.fn(async () => undefined),
+    };
+
+    const mockEm = {
+      find: vi.fn(async () => publishedDocs),
+    };
+
+    const service = new DocumentService(
+      mockEm as never,
+      {} as never,
+      {} as never,
+      mockRag as never,
+      {} as never,
+      {} as never,
+      { isRequireApproval: () => false } as never,
+      mockKg as never,
+    );
+
+    const result = await service.safeBackfillVisibility();
+
+    expect(result.backfilled).toBe(true);
+    expect(result.missingChunks).toBe(5);
+    expect(result.missingKgDocs).toBe(2);
+    expect(mockRag.backfillVisibility).toHaveBeenCalledWith(publishedDocs);
+    expect(mockKg.updateVisibility).toHaveBeenCalledTimes(2);
+    expect(mockKg.updateVisibility).toHaveBeenCalledWith('101', {
+      isPublic: true,
+      teamId: 't1',
+      authorId: 'u1',
+    });
+  });
+
+  it('当探测到缺口为 0 时跳过回填', async () => {
+    const mockRag = {
+      countMissingVisibilityChunks: vi.fn(async () => 0),
+      backfillVisibility: vi.fn(),
+    };
+    const mockKg = {
+      countMissingVisibilityDocs: vi.fn(async () => 0),
+      updateVisibility: vi.fn(),
+    };
+    const mockEm = {
+      find: vi.fn(async () => []),
+    };
+
+    const service = new DocumentService(
+      mockEm as never,
+      {} as never,
+      {} as never,
+      mockRag as never,
+      {} as never,
+      {} as never,
+      { isRequireApproval: () => false } as never,
+      mockKg as never,
+    );
+
+    const result = await service.safeBackfillVisibility();
+    expect(result.backfilled).toBe(false);
+    expect(mockRag.backfillVisibility).not.toHaveBeenCalled();
+    expect(mockKg.updateVisibility).not.toHaveBeenCalled();
+  });
+});
+

@@ -382,6 +382,22 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** 统计缺 isPublic 属性的图谱文档节点数量（存量缺口探测） */
+  async countMissingVisibilityDocs(): Promise<number> {
+    if (!this.isAvailable()) return 0;
+    const session = this.driver!.session();
+    try {
+      const result = await session.run(
+        `MATCH (d:KnowledgeDocument) WHERE d.isPublic IS NULL RETURN count(d) AS cnt`,
+      );
+      return toNum(result.records[0]?.get('cnt'));
+    } catch {
+      return 0;
+    } finally {
+      await session.close();
+    }
+  }
+
   /** 实体检索：按关键词（大小写不敏感的包含匹配）+ 提及次数排序 */
   async listEntities(keyword = '', limit = 20, scope?: DocumentAccessScope): Promise<GraphEntity[]> {
     if (!this.isAvailable()) return [];
