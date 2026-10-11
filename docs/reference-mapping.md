@@ -154,6 +154,10 @@
 | **2026-10-09** | **流式会话的标题与校验时机**（v14） | 新会话 `create` 后另有 `touchTitle` 用首问覆盖默认标题；传 sessionId 时归属校验迟到落库（onFinish 的 appendTurn 才发现越权） | 新会话以首问标题直接 `create`；传 sessionId 开场 `assertOwned`，越权当场 404 | SSE 已逐帧写出后才发现会话不合法，等于白跑一次 LLM；开场校验把失败前置到零成本时机。标题覆盖本就由 appendTurn 兜底，touchTitle 属重复防御 |
 | **2026-10-09** | **流式问答页的输入能力**（v14） | ChatPage 重写时简化掉 topK / 检索模式 / 仅检索入口 | 保留三输入：流式走服务端混合检索管线，topK 经 body 透传；「仅检索」仍走 `/search` 本地拼装展示 | 检索调参是主项目既有能力（postman 集合 / dev-notes 已固化），砍掉属于无意功能回退；分流语义延续 v13「仅检索不落库」决策 |
 | **2026-10-09** | **流式服务的 LLM 配置来源**（v14） | `OPENAI_API_KEY / DASHSCOPE_API_KEY` + 默认 qwen-plus | 与 ai-chat.service 同源：`LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY` 回退链 + `LLM_MODEL` 统一默认 | 同一进程两个 AI 服务各挂一套配置必然漂移；无 Key 环境下回退链保证流式与非流式要么同时可用要么同时禁用 |
+| **2026-10-11** | **可见性过滤的落点**（v15） | 参考项目改写关键词/向量查询结构（引入 `wrapEsQuery` 包装原 query） | 复用主项目既有 `filterClauses` 统一过滤通道，可见性子句由 `buildFilters` 并入 | 主项目检索侧本就有 bool.must + filter / knn.filter 的过滤架构，套一层包装等于重复结构；并入 filterClauses 后 keyword / vector / hybrid 三种 mode 一条路径同时生效 |
+| **2026-10-11** | **团队树接口的开放范围**（v15） | 参考项目把 `GET /teams/tree` 收为 ADMIN 专有（`@Roles(ADMIN)`），并另加 `/teams/mine` | 保留 `tree` 为 `@Public`（免登录），仅新增 `mine` 供文档可见范围使用 | 主项目 `/teams/tree` 承担注册等登录前场景的公开数据职责，收权会破坏免登录流程；且类级角色声明叠加 `@Public` 正是 v9 已登记的 403 缺陷 |
+| **2026-10-11** | **`toAuthUser` 的装配方式**（v15） | 参考项目把 `toAuthUser` 改成 async，内部自己查团队 | `toAuthUser` 保持同步签名、新增 `teamIds` 参数，由 `buildAuthUser` / `validateCredentials` 查好传入 | 避免 async 化引发调用点连锁改造；查询代价落在既有的每请求权限重算链路上，与权限码即时生效策略一致 |
+| **2026-10-11** | **存量索引的可见性字段**（v15） | 参考项目未做回填（旧索引缺 `is_public`，依赖重新发布） | 主动实现一次性回填（ES `updateByQuery` + Neo4j `SET`），并在启动幂等执行 | 不回填会让历史已发布公开文档在过滤上线后被整体误判为不可见，属于静默功能回退 |
 
 
 

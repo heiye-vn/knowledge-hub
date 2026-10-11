@@ -718,7 +718,8 @@
               ]
             },
             "description": "推荐默认用法：kNN 向量 + BM25 关键词双路召回，应用层 RRF 融合。\n\n返回结构要点：\n- score：RRF 融合分（Σ1/(60+rank)），量级 0.0x 是正常的\n- scores.vector / scores.keyword：两路原始分数，可用于对比调优\n- 结果只含 doc_status=1 的文档，且会回查 Postgres 过滤已删文档\n\n改上面的集合变量 keyword 即可换查询词试试。\n\n鉴权（feat-v11 起）：需 search 权限码（此前裸 JWT）；hybrid 模式经 RRF 融合后送 qwen3.7-text-rerank 精排，精排失败自动降级 RRF 顺序。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "纯向量检索 vector（GET）",
@@ -750,7 +751,8 @@
               ]
             },
             "description": "纯语义召回，验证向量能力：查询词可以与原文用词完全不同。\n\n⚠️ 低于 RAG_MIN_SCORE（默认 0.72）的结果会被丢弃——\nkNN 必然返回 topK 条，没有门槛会把无关内容也带出来。\n\n未配置 EMBEDDING_API_KEY 时返回空数组且不报错。\n\n鉴权（feat-v11 起）：需 search 权限码（此前裸 JWT）；hybrid 模式经 RRF 融合后送 qwen3.7-text-rerank 精排，精排失败自动降级 RRF 顺序。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "纯关键词检索 keyword（GET）",
@@ -781,7 +783,8 @@
               ]
             },
             "description": "BM25 + IK 中文分词，不依赖 Embedding Key，随时可用。\n\n与 vector 模式对比即可看出两路召回的差异。\n无词项匹配时会返回空数组（这是正常的，说明 IK 没匹配上）。\n\n鉴权（feat-v11 起）：需 search 权限码（此前裸 JWT）；hybrid 模式经 RRF 融合后送 qwen3.7-text-rerank 精排，精排失败自动降级 RRF 顺序。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "混合检索 hybrid（POST）",
@@ -812,7 +815,8 @@
               ]
             },
             "description": "POST 版。查询词含特殊字符或较长时用 POST 更稳妥。\n\n校验规则：query 必填；mode 只能是 hybrid/vector/keyword；topK 整数 1-50。\n多余字段会被拒绝（全局启用了 forbidNonWhitelisted）。\n\n鉴权（feat-v11 起）：需 search 权限码（此前裸 JWT）；hybrid 模式经 RRF 融合后送 qwen3.7-text-rerank 精排，精排失败自动降级 RRF 顺序。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "AI 对话（RAG 生成 + 引用溯源，feat-v11）",
@@ -839,7 +843,8 @@
               ]
             },
             "description": "混合检索（kNN + BM25 + RRF + rerank 精排）→ LLM 生成回答 → 引用溯源。\n\n请求：{ content: 必填问题, topK: 1~10 召回块数（默认 5）}。\n返回 { answer, sources }：answer 中句末带 [n] 标注；sources 只含实际被引用的资料，\n每条 { index, documentId, documentTitle, heading, excerpt(200字), score }。\n\n依赖：LLM_API_KEY（或回退 EMBEDDING_API_KEY）+ RERANK_API_KEY（默认 qwen3.7-text-rerank）。\n降级：检索无命中直接返回「知识库里没有相关内容。」不调 LLM；rerank 失败自动降级 RRF 顺序。\n鉴权：search 权限码。SSE 流式版本见 /ai/chat/stream（feat-v14）。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "AI 流式对话（SSE，feat-v14）",
@@ -872,7 +877,8 @@
               ]
             },
             "description": "流式 RAG 对话（SSE）：LangChain Agent（含 web_search 联网工具）经 UI Message Stream 协议逐帧写回，前端 useChat 消费。\n\n请求体为 useChat 的 UI Message 数组：messages[].parts[] 取最后一条 user 文本；sessionId 可选（续聊）；topK 1-10（默认 5）。\nid / trigger / messageId 为 SDK 自动附加字段，服务端 @Allow 放行（forbidNonWhitelisted 下必须显式声明）。\n\n事件序列：start → data-session（sessionId，新会话自动建并以首问为标题）→ data-status → data-retrieve / data-sources / source-document → reasoning / text-delta / tool-* → finish。\n落库在流结束后进行（尽力而为）：按 [n] 抽被引用资料存入本人会话。\n\n依赖：LLM_API_KEY（或回退链）+ LLM_ENABLE_THINKING（默认 true，思考内容走 reasoning 事件）；BOCHA_API_KEY 未配置时 web_search 返回错误文案由模型转述，不阻断问答。\n鉴权：search 权限码。响应为 text/event-stream，绕过全局信封；传非法 sessionId 开场即 404。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         }
       ]
     },
@@ -909,7 +915,8 @@
               ]
             },
             "description": "**文档级检索**：返回整篇文档列表（区别于 /search 的块级片段）。\n\n响应 hits[].highlight 为 ES 高亮片段（默认 <em> 标签），snippet 优先取 content 高亮，无高亮时退化为正文前 200 字。\n\n默认 status=1（只召回已发布文档）；显式传 status 可覆盖（0 草稿 / 1 已发布 / 2 已归档）。\nES 不可用时返回空结果而非报错。\n\n鉴权（feat-v10 起）：需 search 权限码（审核员/普通用户角色已预绑，管理员短路放行）。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "文档检索（POST）",
@@ -941,7 +948,8 @@
               ]
             },
             "description": "POST 版。查询词较长或含特殊字符时用 POST 更稳妥。\n\n可选字段：categoryId / authorId / teamId / status（0-2）。\n校验：pageSize 整数 1-50；未知字段会被拒绝（全局 forbidNonWhitelisted）。\n\n鉴权（feat-v10 起）：需 search 权限码（审核员/普通用户角色已预绑，管理员短路放行）。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         }
       ]
     },
@@ -978,7 +986,8 @@
               ]
             },
             "description": "按文档 ID 投递 KG 建图任务（BullMQ kg.graph 队列，异步执行）。\n\n响应 { taskId, queued }，任务在后台执行（单块抽取实测 19~57s，需耐心）。\n幂等：先清后建 + MERGE，重复触发不会使节点翻倍。\n需要 Redis 与 Neo4j 均可用，否则 503。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "手动触发建图（全量重建）",
@@ -1010,7 +1019,8 @@
               ]
             },
             "description": "不传 documentIds = 全量重建全部已发布文档。\n\n换 LLM 模型 / 修抽取 bug 后的标准补偿操作（对应 BUILD_ALL 消息）。\n🔴 参考项目的 BUILD_ALL 没有任何投递入口（死代码），这是补齐。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "图规模统计",
@@ -1028,7 +1038,8 @@
               ]
             },
             "description": "返回 { documents, chunks, entities, relations }。\n验证建图是否生效、删除是否清理干净的第一入口。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "实体检索",
@@ -1056,7 +1067,8 @@
               ]
             },
             "description": "实体名包含匹配（大小写不敏感），按被提及次数倒序。\n\n返回 [{ name, type, description, mentions }]，type 为 PERSON/ORGANIZATION/CONCEPT/DOCUMENT/PROCESS/PRODUCT 等。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "邻居查询",
@@ -1084,7 +1096,8 @@
               ]
             },
             "description": "某实体的全部 RELATED_TO 关联（不分方向，按权重倒序）。\n\n返回 [{ entity, relation, weight, direction: out|in }]。\n⚠️ 关系语义在 relation 属性上（边类型恒为 RELATED_TO），按属性读语义。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "图谱关键词检索（feat-v10）",
@@ -1112,7 +1125,8 @@
               ]
             },
             "description": "跨三类节点（KnowledgeDocument / DocumentChunk / KnowledgeEntity）全属性检索：\n文档 title/summary、块 heading/content、实体 name/description，大小写不敏感包含匹配。\n\n返回 [{ id, name, label, type, title, description, heading, documentId, summary, snippet }]，\nlabel 标识节点类型；snippet 为 content 前 160 字（不回传全文）。\n与「实体检索」的区别：那个只搜实体名，这里是图谱检索页的主查询。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "图谱节点列表（画图首屏，feat-v10）",
@@ -1136,7 +1150,8 @@
               ]
             },
             "description": "实体节点全量列表（可选 type 过滤：PERSON / ORGANIZATION / CONCEPT …），\n按被提及次数倒序——高频实体优先展示。\n\n返回 [{ id, name, type, description }]，与「图谱边列表」拼起来即画图初始视图。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "图谱边列表（画图首屏，feat-v10）",
@@ -1160,7 +1175,8 @@
               ]
             },
             "description": "实体间 RELATED_TO 边全量列表，按权重倒序。\n\n返回 [{ source, target, relation, weight }]，\nrelation 是关系语义（如「属于」「负责」），边类型恒为 RELATED_TO。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "全景图谱数据（feat-v12）",
@@ -1209,7 +1225,8 @@
               ]
             },
             "description": "全景图谱多维数据：文档节点、实体节点、标签节点及关联边拓扑，附带全库统计、热门实体、最新文档列表。\n供前端力导向图可视化直接渲染。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "name": "手动清理文档图谱",
@@ -1228,7 +1245,8 @@
               ]
             },
             "description": "清理某篇文档的图谱（文档 + 块 + 孤儿实体）。\n\n删除文档接口会自动触发，此处用于纠错重置。幂等：文档不存在等价于空操作。"
-          }
+          },
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         }
       ]
     },
@@ -2392,6 +2410,29 @@
               }
             ],
             "url": {
+              "raw": "{{baseUrl}}/teams/mine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "mine"
+              ]
+            },
+            "description": "当前登录用户所属团队（含担任负责人的团队），供文档「所属团队」下拉与顶栏/个人页可见范围展示使用。\n仅需登录态，不要求 system:team 权限。"
+          },
+          "name": "我所在团队（登录即可）"
+        },
+        {
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
               "raw": "{{baseUrl}}/teams/tree",
               "host": [
                 "{{baseUrl}}"
@@ -2696,7 +2737,8 @@
               }
             }
           },
-          "name": "RAG 对话（自动/续聊会话）"
+          "name": "RAG 对话（自动/续聊会话）",
+          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },
         {
           "request": {

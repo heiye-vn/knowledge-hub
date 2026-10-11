@@ -48,7 +48,8 @@
 | [chat-sessions.md](./chat-sessions.md) | 功能模块 · AI 对话会话持久化（feat-v13） | 2026-10-07 | **落库尽力而为**（回答已生成就不因存储故障丢失）；越权与不存在统一 404；外键 CASCADE 就不用应用层重复防御；标题自动生成只覆盖默认名 |
 | [ai-streaming.md](./ai-streaming.md) | 功能模块 · AI 流式对话（SSE + useChat，feat-v14） | 2026-10-09 | **toUIMessageStream 要关 sendStart/Finish** 防双发；DTO 必须放行 useChat 附加字段否则 400；百炼思考内容要流上原位改写；vite 代理必须 timeout:0 |
 | [account-activation-governance.md](./account-activation-governance.md) | 功能模块 · 账号激活治理（重发激活邮件 / 未激活账号过期清理） | 2026-10-05 | **公开端点凭密码证明归属**防邮件轰炸；TTL 反推冷却、发信失败回滚 token；清理前核对所有 `email_verified=0` 写入点防误删；QueryBuilder update 需手动带 `updatedAt` |
-| [reference-project-alignment.md](./reference-project-alignment.md) | 方法论 · 与参考项目的对照策略 | 2026-09-19 | 三层判断法（模式/实现/缺陷）：什么照搬、什么可换、什么必须改 |
+| [reference-project-alignment.md](./reference-project-alignment.md) | 方法论 · 与参考项目的对照策略 | 2026-09-19 | **三层判断法（模式/实现/缺陷）**：什么照搬、什么可换、什么必须改 |
+| [document-visibility.md](./document-visibility.md) | 功能模块 · 文档检索可见性控制（feat-v15） | 2026-10-11 | **存量回填防误杀**；ES 过滤必须挂 filter 上下文；Cypher 实体要沿 MENTIONS 穿透；就地更新与重建互斥 | 三层判断法（模式/实现/缺陷）：什么照搬、什么可换、什么必须改 |
 
 
 
