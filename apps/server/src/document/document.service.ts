@@ -546,10 +546,11 @@ export class DocumentService implements OnModuleInit {
     this.logger.log(
       `同步可见性：documentId=${doc.id}, isPublic=${vis.isPublic}, teamId=${vis.teamId ?? '-'}`,
     );
+    // 三套索引并发刷可见性字段；任一失败由外层 catch 统一告警
     await Promise.all([
-      (this.searchIndexService as any).updateVisibility?.(doc.id, vis),
-      (this.ragOrchestrator as any).updateVisibility?.(doc.id, vis),
-      (this.graphBuildService as any).updateVisibility?.(doc.id, vis),
+      this.searchIndexService.updateVisibility(doc.id, vis),
+      this.ragOrchestrator.updateVisibility(doc.id, vis),
+      this.graphBuildService.updateVisibility(doc.id, vis),
     ]);
   }
 

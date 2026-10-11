@@ -309,10 +309,10 @@ export class RetrievalService {
     if (filters?.authorId) {
       clauses.push({ term: { author_id: filters.authorId } });
     }
+    // 可见性子句：无 scope 时不加过滤（仅服务内部无用户上下文的调用走此分支，
+    // 注意此时返回全量数据，务必确认调用场景，避免越权）
     const vis = scope ? esVisibilityFilter(scope) : null;
-    if (vis) {
-      clauses.push(vis);
-    }
+    if (vis) clauses.push(vis);
     return clauses;
   }
 
