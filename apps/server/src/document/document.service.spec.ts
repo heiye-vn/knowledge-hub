@@ -1,5 +1,5 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { describe, expect, it, vi } from 'vitest';
 import type { RagOrchestrator } from '../rag/rag.orchestrator.js';
 import type { StorageService } from '../storage/storage.service.js';
 import { DocumentService } from './document.service.js';
@@ -117,6 +117,7 @@ function makeService(
     searchIndexService as unknown as SearchIndexService,
     kgBuildPublisher as never,
     reviewService as unknown as DocumentReviewService,
+    {} as never,
   );
 
   return { service, saved, createdReviews };
@@ -384,6 +385,7 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
       {} as unknown as SearchIndexService,
       {} as never,
       reviewService as unknown as DocumentReviewService,
+      {} as never,
     );
 
     return service;
@@ -457,6 +459,7 @@ describe('DocumentService 图片上传解析闭环', () => {
         /** 免审模式：上传解析链路不涉及审核，用默认 false 保持用例语义 */
         isRequireApproval: () => false,
       } as never,
+      {} as never,
     );
 
     const fakeFile = {
@@ -484,6 +487,102 @@ describe('DocumentService 图片上传解析闭环', () => {
     expect(savedContent).toMatchObject({
       content: '# 解析出的架构图\n\n- 前端组件\n- 网关层',
     });
+  });
+});
+
+describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
+  const authorUser = { userId: 'u1', username: 'author', roles: [], permissions: [], teamIds: ['t1'] };
+  const otherUser = { userId: 'u2', username: 'other', roles: [], permissions: [], teamIds: ['t2'] };
+  const adminUser = { userId: 'u9', username: 'admin', roles: ['ROLE_ADMIN'], permissions: [], teamIds: [] };
+
+  it('findOne: 本人无论是否发布均可读取', async () => {
+    const doc = { id: '1001', authorId: 'u1', status: Status.Draft, isPublic: false } as unknown as DocumentEntity;
+    const { service } = makeService(doc);
+    await expect(service.findOne('1001', false, authorUser)).resolves.toEqual(doc);
+  });
+
+  it('findOne: 未发布文档非作者访问抛 Forbidden', async () => {
+    const doc = { id: '1001', authorId: 'u1', status: Status.Draft, isPublic: true } as unknown as DocumentEntity;
+    const { service } = makeService(doc);
+    await expect(service.findOne('1001', false, otherUser)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('findOne: 已发布公开文档任何用户可读', async () => {
+    const doc = { id: '1001', authorId: 'u1', status: Status.Published, isPublic: true } as unknown as DocumentEntity;
+    const { service } = makeService(doc);
+    await expect(service.findOne('1001', false, otherUser)).resolves.toEqual(doc);
+  });
+
+  it('findOne: 已发布团队文档同团队用户可读，不同团队抛 Forbidden', async () => {
+    const doc = { id: '1001', authorId: 'u1', teamId: 't1', status: Status.Published, isPublic: false } as unknown as DocumentEntity;
+    const { service } = makeService(doc);
+    await expect(service.findOne('1001', false, { ...otherUser, teamIds: ['t1'] })).resolves.toEqual(doc);
+    await expect(service.findOne('1001', false, otherUser)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('assertWritable: 非作者调用 update / publish / submit / archive / saveAsDraft / remove 抛 Forbidden', async () => {
+    const doc = { id: '1001', authorId: 'u1', status: Status.Draft, isPublic: false } as unknown as DocumentEntity;
+    const { service } = makeService(doc);
+
+    await expect(service.update('1001', { title: '新标题' }, otherUser)).rejects.toThrow(ForbiddenException);
+    await expect(service.publish('1001', otherUser)).rejects.toThrow(ForbiddenException);
+    await expect(service.submitForReview('1001', otherUser)).rejects.toThrow(ForbiddenException);
+    await expect(service.archive('1001', otherUser)).rejects.toThrow(ForbiddenException);
+    await expect(service.saveAsDraft('1001', otherUser)).rejects.toThrow(ForbiddenException);
+    await expect(service.remove('1001', otherUser)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('assertWritable: 作者本人或管理员放行写操作', async () => {
+    const doc = { id: '1001', authorId: 'u1', status: Status.Draft, isPublic: false } as unknown as DocumentEntity;
+    const { service } = makeService(doc);
+
+    await expect(service.update('1001', { title: '新标题' }, authorUser)).resolves.toBeDefined();
+    await expect(service.update('1001', { title: '管理员修改' }, adminUser)).resolves.toBeDefined();
+  });
+
+  it('update: 已发布文档仅改可见性时触发索引同步', async () => {
+    const doc = {
+      id: '1001',
+      authorId: 'u1',
+      status: Status.Published,
+      isPublic: false,
+      teamId: 't1',
+    } as unknown as DocumentEntity;
+
+    let syncCalled = false;
+    const customSearchIndex = {
+      isAvailable: () => true,
+      updateVisibility: vi.fn(async () => { syncCalled = true; }),
+    };
+
+    const em: FakeEm = {
+      findOne: async () => doc,
+      save: async (d) => d,
+      update: async () => undefined,
+      find: async () => [],
+      count: async () => 0,
+      transaction: async (cb) => cb(em),
+      create: (_e, data) => data,
+    };
+
+    const service = new DocumentService(
+      em as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      customSearchIndex as never,
+      {} as never,
+      { isRequireApproval: () => false } as never,
+      {} as never,
+    );
+
+    await service.update('1001', { isPublic: true }, authorUser);
+    expect(customSearchIndex.updateVisibility).toHaveBeenCalledWith('1001', {
+      isPublic: true,
+      teamId: 't1',
+      authorId: 'u1',
+    });
+    expect(syncCalled).toBe(true);
   });
 });
 

@@ -46,7 +46,7 @@ export class TeamService {
         .getRawMany<{ teamId: string | number }>(),
       this.teamRepo.find({
         where: { leaderId: userId, deleted: false },
-        select: ['id'],
+        select: { id: true },
       }),
     ]);
     const ids = [
@@ -59,7 +59,7 @@ export class TeamService {
     // 成员记录可能仍指向已软删团队，按 kh_team.deleted = false 二次过滤
     const teams = await this.teamRepo.find({
       where: { id: In(ids), deleted: false },
-      select: ['id'],
+      select: { id: true },
     });
     return teams.map((row) => String(row.id));
   }

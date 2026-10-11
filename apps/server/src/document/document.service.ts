@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
@@ -31,11 +32,18 @@ import type { PipelineDocument } from '../rag/types/rag.types.js';
 import { FileParserService } from './parser/file-parser.service.js';
 import { SearchIndexService } from '../search/search-index.service.js';
 import { KgBuildPublisher } from '../kg/kg-build.publisher.js';
+import { GraphBuildService } from '../kg/graph-build.service.js';
+import {
+  accessFromUser,
+  canReadDocument,
+  canWriteDocument,
+} from './document-access.js';
 import {
   decodeUploadFilename,
   getExtension,
   titleFromFilename,
 } from './parser/utils/markdown.util.js';
+
 
 /**
  * 文档主键为 bigint：非数字 id 直接抛 400。
@@ -127,7 +135,16 @@ export class DocumentService {
     private readonly kgBuildPublisher: KgBuildPublisher,
     /** 发布审核：审核开关判定 + 审核流水读写 */
     private readonly reviewService: DocumentReviewService,
+    private readonly graphBuildService: GraphBuildService,
   ) {}
+
+  /** 写操作鉴权：仅作者本人或系统管理员可修改/发布/归档/删除文档 */
+  private assertWritable(doc: DocumentEntity, actor?: AuthUser) {
+    if (actor && !canWriteDocument(doc, actor)) {
+      throw new ForbiddenException('无权修改该文档');
+    }
+  }
+
 
   /**
    * 创建文档
@@ -219,8 +236,9 @@ export class DocumentService {
   /**
    * 分页查询文档列表（只返回 Postgres 元数据，不含正文）
    * 支持按标题模糊、分类 / 团队 / 作者 / 状态筛选
+   * 普通用户可见范围：自己写的 ∪ 已发布且公开 ∪ 已发布且所在团队；管理员/审核员不限制
    */
-  async findAll(query: QueryDocumentDto) {
+  async findAll(query: QueryDocumentDto, user?: AuthUser) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
 
@@ -228,6 +246,27 @@ export class DocumentService {
     const qb = this.em
       .createQueryBuilder(DocumentEntity, 'doc')
       .where('doc.deleted = :deleted', { deleted: false });
+
+    if (user) {
+      const scope = accessFromUser(user);
+      if (!scope.unrestricted) {
+        if (scope.teamIds.length) {
+          qb.andWhere(
+            `(doc.author_id = :me OR (doc.status = :published AND (doc.is_public = true OR doc.team_id IN (:...teamIds))))`,
+            {
+              me: scope.userId,
+              published: DocumentStatus.Published,
+              teamIds: scope.teamIds,
+            },
+          );
+        } else {
+          qb.andWhere(
+            `(doc.author_id = :me OR (doc.status = :published AND doc.is_public = true))`,
+            { me: scope.userId, published: DocumentStatus.Published },
+          );
+        }
+      }
+    }
 
     // 标题模糊匹配（不区分大小写）
     if (query.title) {
@@ -266,14 +305,18 @@ export class DocumentService {
   /**
    * 查询文档详情
    * @param withContent 是否附带正文（kh_document_content），默认 true
+   * @param user 当前登录用户，用于读取鉴权校验
    */
-  async findOne(id: string, withContent = true) {
+  async findOne(id: string, withContent = true, user?: AuthUser) {
     assertNumericId(id);
     const doc = await this.em.findOne(DocumentEntity, {
       where: { id, deleted: false },
     });
     if (!doc) {
       throw new NotFoundException(`Document ${id} not found`);
+    }
+    if (user && !canReadDocument(doc, accessFromUser(user))) {
+      throw new ForbiddenException('无权查看该文档');
     }
 
     if (!withContent) {
@@ -315,6 +358,7 @@ export class DocumentService {
     if (!doc) {
       throw new NotFoundException(`Document ${id} not found`);
     }
+    this.assertWritable(doc, actor);
 
     if (!canEditContent(doc.status)) {
       throw new BadRequestException(
@@ -330,6 +374,8 @@ export class DocumentService {
     }
 
     const oldStatus = doc.status;
+    const oldIsPublic = doc.isPublic;
+    const oldTeamId = doc.teamId ?? null;
     let newContent: string | undefined;
 
     // —— 正文变更 ——
@@ -376,19 +422,52 @@ export class DocumentService {
     const saved = await this.em.save(doc);
     const finalContent = newContent ?? (await this.loadContent(id));
 
+    const visibilityChanged =
+      saved.isPublic !== oldIsPublic || (saved.teamId ?? null) !== oldTeamId;
+
     // 已发布文档改正文后的索引同步：
-    // 免审模式直接重建；需审模式下保持旧索引不动，等 submit 时清、审核通过时重建
-    // ——避免「改了正文但审核还没过」的窗口期里，新内容已经可被检索到。
+    // 免审模式直接重建（整篇重建已包含最新 is_public/team_id）；
+    // 仅当「内容未变 且 已发布 且 可见性变更」时，才走就地轻量同步，二者互斥。
     if (
       newContent !== undefined &&
       oldStatus === DocumentStatus.Published &&
       !this.reviewService.isRequireApproval()
     ) {
       await this.buildIndexes(saved, finalContent);
+    } else if (
+      oldStatus === DocumentStatus.Published &&
+      visibilityChanged
+    ) {
+      try {
+        await this.syncVisibility(saved);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `可见性同步失败（不影响文档保存）：documentId=${saved.id}, ${message}`,
+        );
+      }
     }
 
     return { ...saved, content: finalContent };
   }
+
+  /** 已发布文档只改公开/团队时，只刷三套索引可见性字段，不重跑 embedding / 抽实体 */
+  private async syncVisibility(doc: DocumentEntity) {
+    const vis = {
+      isPublic: doc.isPublic ?? false,
+      teamId: doc.teamId ?? null,
+      authorId: doc.authorId ?? null,
+    };
+    this.logger.log(
+      `同步可见性：documentId=${doc.id}, isPublic=${vis.isPublic}, teamId=${vis.teamId ?? '-'}`,
+    );
+    await Promise.all([
+      (this.searchIndexService as any).updateVisibility?.(doc.id, vis),
+      (this.ragOrchestrator as any).updateVisibility?.(doc.id, vis),
+      (this.graphBuildService as any).updateVisibility?.(doc.id, vis),
+    ]);
+  }
+
 
   /**
    * 发布文档
@@ -399,8 +478,9 @@ export class DocumentService {
    * 「免审直接发布」分支 —— 归档文档能绕过审核直接上线。本项目把归档定为终态，
    * 两个模式下都拒绝，从源头堵住这个后门。
    */
-  async publish(id: string) {
+  async publish(id: string, actor?: AuthUser) {
     const doc = await this.findActive(id);
+    this.assertWritable(doc, actor);
 
     if (doc.status === DocumentStatus.PendingReview) {
       throw new BadRequestException('文档审核中，请等待审核结果');
@@ -414,7 +494,7 @@ export class DocumentService {
     }
 
     if (this.reviewService.isRequireApproval()) {
-      return this.submitForReview(id);
+      return this.submitForReview(id, actor);
     }
 
     return this.markPublishedAndIndex(doc);
@@ -424,8 +504,9 @@ export class DocumentService {
    * 提交审核：草稿 / 已发布 → 待审核
    * 来自已发布时先清索引——审核期间文档不该继续被检索到
    */
-  async submitForReview(id: string) {
+  async submitForReview(id: string, actor?: AuthUser) {
     const doc = await this.findActive(id);
+    this.assertWritable(doc, actor);
     if (!canSubmitReview(doc.status)) {
       throw new BadRequestException('只有草稿或已发布状态的文档才能提交审核');
     }
@@ -536,8 +617,9 @@ export class DocumentService {
   }
 
   /** 归档：已发布 → 已归档（终态），清索引但保留正文 */
-  async archive(id: string) {
+  async archive(id: string, actor?: AuthUser) {
     const doc = await this.findActive(id);
+    this.assertWritable(doc, actor);
     if (!canArchive(doc.status)) {
       throw new BadRequestException('只有已发布文档可以归档');
     }
@@ -552,8 +634,9 @@ export class DocumentService {
   }
 
   /** 下架编辑：已发布 → 草稿，清索引后可改内容再重新提审 / 发布 */
-  async saveAsDraft(id: string) {
+  async saveAsDraft(id: string, actor?: AuthUser) {
     const doc = await this.findActive(id);
+    this.assertWritable(doc, actor);
     if (!canSaveAsDraft(doc.status)) {
       throw new BadRequestException('只有已发布文档可以保存为草稿');
     }
@@ -792,7 +875,7 @@ export class DocumentService {
    * 仅已发布文档需要清索引——草稿 / 待审核 / 归档本来就不在索引里，
    * 无条件投递清理消息只会给 ES 和 Neo4j 增加无谓的写放大。
    */
-  async remove(id: string) {
+  async remove(id: string, actor?: AuthUser) {
     assertNumericId(id);
     const doc = await this.em.findOne(DocumentEntity, {
       where: { id, deleted: false },
@@ -800,6 +883,7 @@ export class DocumentService {
     if (!doc) {
       throw new NotFoundException(`Document ${id} not found`);
     }
+    this.assertWritable(doc, actor);
 
     doc.deleted = true;
     await this.em.save(doc);

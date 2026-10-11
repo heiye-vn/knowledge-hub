@@ -118,18 +118,18 @@ export class DocumentController {
     });
   }
 
-  /** 分页查询文档列表（仅元数据） */
+  /** 分页查询文档列表（仅元数据，按用户权限过滤可见性） */
   @Get()
   @RequirePermission('document:list')
-  findAll(@Query() query: QueryDocumentDto) {
-    return this.documentService.findAll(query);
+  findAll(@Query() query: QueryDocumentDto, @CurrentUser() user: AuthUser) {
+    return this.documentService.findAll(query, user);
   }
 
-  /** 查询文档详情（含正文） */
+  /** 查询文档详情（含正文，校验读取权限） */
   @Get(':id')
   @RequirePermission('document:list')
-  findOne(@Param('id') id: string) {
-    return this.documentService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.findOne(id, true, user);
   }
 
   /** 更新文档（待审核中不可改正文/标题；不允许改状态，状态走专用接口） */
@@ -155,15 +155,15 @@ export class DocumentController {
    */
   @Put(':id/publish')
   @RequirePermission('document:edit')
-  publish(@Param('id') id: string) {
-    return this.documentService.publish(id);
+  publish(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.publish(id, user);
   }
 
   /** 提交审核：草稿 / 已发布 → 待审核（原为已发布会先清索引） */
   @Post(':id/reviews/submit')
   @RequirePermission('document:edit')
-  submitReview(@Param('id') id: string) {
-    return this.documentService.submitForReview(id);
+  submitReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.submitForReview(id, user);
   }
 
   /** 当前待审任务（无则 null） */
@@ -183,21 +183,22 @@ export class DocumentController {
   /** 归档：已发布 → 已归档（终态），清索引但保留正文 */
   @Put(':id/archive')
   @RequirePermission('document:edit')
-  archive(@Param('id') id: string) {
-    return this.documentService.archive(id);
+  archive(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.archive(id, user);
   }
 
   /** 下架编辑：已发布 → 草稿，清索引后可改内容再重新发布 / 提审 */
   @Put(':id/save-draft')
   @RequirePermission('document:edit')
-  saveAsDraft(@Param('id') id: string) {
-    return this.documentService.saveAsDraft(id);
+  saveAsDraft(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.saveAsDraft(id, user);
   }
 
   /** 软删除文档（已发布的同时清索引，其余状态本就不在索引里） */
   @Delete(':id')
   @RequirePermission('document:delete')
-  remove(@Param('id') id: string) {
-    return this.documentService.remove(id);
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.remove(id, user);
   }
 }
+

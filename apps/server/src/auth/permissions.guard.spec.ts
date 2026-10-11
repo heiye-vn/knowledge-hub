@@ -38,6 +38,7 @@ function makeUser(roles: string[], permissions: string[]): AuthUser {
     username: 'u',
     roles,
     permissions,
+    teamIds: [],
   };
 }
 

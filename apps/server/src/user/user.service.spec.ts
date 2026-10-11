@@ -36,6 +36,7 @@ function makeService(affected: number) {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   return { service, qb };
 }

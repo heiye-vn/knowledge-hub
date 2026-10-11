@@ -32,7 +32,7 @@ function hit(id: string, score: number): SearchHit {
   };
 }
 
-const USER = { userId: '1001', username: 'user', roles: [], permissions: [] };
+const USER = { userId: '1001', username: 'user', roles: [], permissions: [], teamIds: [] };
 
 /** 会话服务 fake：appendTurn 可按用例覆盖行为 */
 function makeSessions(
