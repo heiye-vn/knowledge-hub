@@ -1,18 +1,30 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, Col, Form, Input, Row, Statistic, message } from 'antd'
-import { userApi } from '../api'
+import {
+  Button,
+  Card,
+  Col,
+  Form,
+  Input,
+  Row,
+  Statistic,
+  Tag,
+  message,
+} from 'antd'
+import { teamApi, userApi } from '../api'
 import { ApiError } from '../api/client'
-import type { UserStats } from '../types'
+import type { TeamItem, UserStats } from '../types'
 import { updateUser, useAuth } from '../auth'
 
 export default function ProfilePage() {
   const user = useAuth()
   const [stats, setStats] = useState<UserStats | null>(null)
+  const [myTeams, setMyTeams] = useState<TeamItem[]>([])
   const [profileForm] = Form.useForm()
   const [pwdForm] = Form.useForm()
 
   useEffect(() => {
     userApi.stats().then(setStats).catch(() => undefined)
+    teamApi.mine().then(setMyTeams).catch(() => setMyTeams([]))
     profileForm.setFieldsValue({
       realName: user?.realName,
       email: user?.email,
@@ -57,6 +69,17 @@ export default function ProfilePage() {
         >
           <Form.Item label="用户名">
             <Input disabled value={user?.username} />
+          </Form.Item>
+          <Form.Item label="所在团队">
+            {myTeams.length ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {myTeams.map((team) => (
+                  <Tag key={team.id}>{team.teamName}</Tag>
+                ))}
+              </div>
+            ) : (
+              <span style={{ color: '#8c8c8c' }}>暂未加入团队</span>
+            )}
           </Form.Item>
           <Form.Item name="realName" label="姓名">
             <Input placeholder="真实姓名" />

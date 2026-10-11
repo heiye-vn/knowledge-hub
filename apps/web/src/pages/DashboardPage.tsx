@@ -15,10 +15,10 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 import { Avatar, Button, Card, Col, Row, Space, Spin, Tag, Typography, message } from 'antd'
-import { userApi } from '../api'
+import { teamApi, userApi } from '../api'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth'
-import type { UserStats } from '../types'
+import type { TeamItem, UserStats } from '../types'
 import { can, displayName, isAdmin, isReviewer } from '../utils'
 
 const { Title, Paragraph, Text } = Typography
@@ -28,6 +28,11 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<UserStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [myTeams, setMyTeams] = useState<TeamItem[]>([])
+
+  useEffect(() => {
+    teamApi.mine().then(setMyTeams).catch(() => setMyTeams([]))
+  }, [])
 
   useEffect(() => {
     userApi
@@ -344,6 +349,20 @@ export default function DashboardPage() {
                 {r}
               </Tag>
             ))}
+          </div>
+          <div>
+            <Text type="secondary" style={{ marginRight: 8 }}>所在团队：</Text>
+            {myTeams.length ? (
+              <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6 }}>
+                {myTeams.map((team) => (
+                  <Tag color="purple" key={team.id}>
+                    {team.teamName}
+                  </Tag>
+                ))}
+              </div>
+            ) : (
+              <Text type="secondary">暂未加入团队</Text>
+            )}
           </div>
           <div>
             <Text type="secondary" style={{ marginRight: 8 }}>已获权限码：</Text>

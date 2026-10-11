@@ -16,10 +16,11 @@ import {
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons'
-import { Avatar, Badge, Dropdown, Layout, Menu, theme } from 'antd'
+import { Avatar, Badge, Dropdown, Layout, Menu, Tag, theme } from 'antd'
 import type { MenuProps } from 'antd'
-import { authApi } from '../api'
+import { authApi, teamApi } from '../api'
 import { clearAuth, updateUser, useAuth } from '../auth'
+import type { TeamItem } from '../types'
 import { can, displayName, isAdmin, isReviewer } from '../utils'
 import { BrandLogo } from '../components/BrandLogo'
 
@@ -32,12 +33,15 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+  const [myTeams, setMyTeams] = useState<TeamItem[]>([])
   const {
     token: { colorBgContainer },
   } = theme.useToken()
 
   useEffect(() => {
     authApi.me().then(updateUser).catch(() => undefined)
+    // 顶栏展示所属团队，便于快速确认文档可见范围
+    teamApi.mine().then(setMyTeams).catch(() => setMyTeams([]))
   }, [])
 
   const topKey = useMemo(() => {
@@ -242,6 +246,11 @@ export default function AppLayout() {
                 src={user?.avatar || undefined}
               />
               <span>{displayName(user)}</span>
+              {myTeams.slice(0, 2).map((team) => (
+                <Tag key={team.id} style={{ marginInlineEnd: 0 }}>
+                  {team.teamName}
+                </Tag>
+              ))}
             </div>
           </Dropdown>
         </div>

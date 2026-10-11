@@ -990,3 +990,29 @@ body,
   font-size: 12px;
 }
 
+/* ===== 权限与可见性提示条（feat-v15） ===== */
+.kh-access-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #389e0d;
+}
+
+.kh-access-hint.info {
+  background: #e6f4ff;
+  border-color: #91caff;
+  color: #0958d9;
+}
+
+.kh-access-hint.warning {
+  background: #fffbe6;
+  border-color: #ffe58f;
+  color: #d46b08;
+}
+

@@ -148,7 +148,7 @@ export default function GraphPage() {
           <div className="kh-graph-toolbar">
             <Input
               allowClear
-              placeholder="搜索实体、文档或标签"
+              placeholder="搜索你有权限的实体、文档或标签"
               style={{ width: 200 }}
               value={keyword}
               prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
@@ -200,7 +200,7 @@ export default function GraphPage() {
           <div className="kh-graph-canvas">
             {!loading && !nodes.length ? (
               <div className="kh-graph-empty">
-                <Empty description="暂无符合条件的知识图谱网络，尝试放宽筛选条件" />
+                <Empty description="暂无你有权限的图谱数据。发布文档后会写入 Neo4j，或尝试放宽筛选条件。" />
               </div>
             ) : (
               <ForceGraph

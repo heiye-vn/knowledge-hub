@@ -1,13 +1,28 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Popconfirm, Space, Spin, Tag, Typography, message } from 'antd'
+import {
+  Button,
+  Empty,
+  Popconfirm,
+  Space,
+  Spin,
+  Tag,
+  Typography,
+  message,
+} from 'antd'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { documentApi } from '../api'
 import { ApiError } from '../api/client'
 import type { DocumentItem } from '../types'
 import { useAuth } from '../auth'
-import { DOC_STATUS, can, formatTime } from '../utils'
+import {
+  DOC_STATUS,
+  can,
+  canWriteDocument,
+  formatTime,
+  getVisibilityMeta,
+} from '../utils'
 import { FileTypeIcon } from '../components/FileTypeIcon'
 
 export default function DocumentDetailPage() {
@@ -16,13 +31,22 @@ export default function DocumentDetailPage() {
   const user = useAuth()
   const [doc, setDoc] = useState<DocumentItem | null>(null)
   const [loading, setLoading] = useState(true)
+  const [forbidden, setForbidden] = useState(false)
 
   async function load() {
     setLoading(true)
+    setForbidden(false)
     try {
       setDoc(await documentApi.get(id))
     } catch (error) {
-      message.error(error instanceof ApiError ? error.message : '加载失败')
+      setDoc(null)
+      // 后端对无权文档返回 403，前端据此给出友好空状态
+      if (error instanceof ApiError && error.status === 403) {
+        setForbidden(true)
+        message.error('无权查看该文档')
+      } else {
+        message.error(error instanceof ApiError ? error.message : '加载失败')
+      }
     } finally {
       setLoading(false)
     }
@@ -32,7 +56,7 @@ export default function DocumentDetailPage() {
     void load()
   }, [id])
 
-  if (loading || !doc) {
+  if (loading) {
     return (
       <div className="kh-page">
         <Spin />
@@ -40,16 +64,28 @@ export default function DocumentDetailPage() {
     )
   }
 
+  if (!doc) {
+    return (
+      <div className="kh-page">
+        <Empty description={forbidden ? '无权查看该文档' : '文档不存在或已删除'}>
+          <Button onClick={() => navigate('/documents')}>返回列表</Button>
+        </Empty>
+      </div>
+    )
+  }
+
   const status = DOC_STATUS[doc.status]
+  const vis = getVisibilityMeta(doc)
+  const writable = can(user, 'document:edit') && canWriteDocument(doc, user)
 
   return (
     <div className="kh-page">
       <Space style={{ marginBottom: 12 }} wrap>
         <Button onClick={() => navigate('/documents')}>返回列表</Button>
-        {can(user, 'document:edit') ? (
+        {writable ? (
           <Button onClick={() => navigate(`/documents/${id}/edit`)}>编辑</Button>
         ) : null}
-        {can(user, 'document:edit') && (doc.status === 0 || doc.status === 2) ? (
+        {writable && (doc.status === 0 || doc.status === 2) ? (
           <Button
             type="primary"
             onClick={async () => {
@@ -98,7 +134,7 @@ export default function DocumentDetailPage() {
             </Button>
           </>
         ) : null}
-        {can(user, 'document:delete') ? (
+        {can(user, 'document:delete') && writable ? (
           <Popconfirm
             title="确认删除该文档？"
             onConfirm={async () => {
@@ -125,7 +161,7 @@ export default function DocumentDetailPage() {
         </div>
         <div className="kh-doc-meta">
           <Tag color={status?.color}>{status?.label}</Tag>
-          {doc.isPublic ? <Tag color="blue">公开</Tag> : <Tag>私有</Tag>}
+          <Tag color={vis.color}>{vis.label}</Tag>
           <span>更新于 {formatTime(doc.updatedAt)}</span>
           {doc.wordCount ? <span>约 {doc.wordCount} 字</span> : null}
         </div>
