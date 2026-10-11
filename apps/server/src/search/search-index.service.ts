@@ -8,6 +8,10 @@ import { ConfigService } from '@nestjs/config';
 import { ElasticsearchService } from '../rag/elasticsearch.service.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
 import {
+  type DocumentAccessScope,
+  esVisibilityFilter,
+} from '../document/document-access.js';
+import {
   HIGHLIGHT_POST_TAG,
   HIGHLIGHT_PRE_TAG,
   KH_DOCUMENT_INDEX,
@@ -47,6 +51,8 @@ export interface DocumentSearchHit {
   tags: string[];
   categoryId: string | null;
   authorId: string | null;
+  teamId: string | null;
+  isPublic: boolean | null;
   publishTime: string | null;
   viewCount: number;
   likeCount: number;
@@ -69,6 +75,8 @@ interface DocumentSource {
   status?: number;
   category_id?: string | null;
   author_id?: string | null;
+  team_id?: string | null;
+  is_public?: boolean;
   publish_time?: string | null;
   view_count?: number;
   like_count?: number;
@@ -242,7 +250,10 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** 文档级全文检索；ES 不可用时返回空结果而不是抛错（检索是读路径，不该拖垮页面） */
-  async search(params: DocumentSearchParams): Promise<DocumentSearchResult> {
+  async search(
+    params: DocumentSearchParams,
+    scope?: DocumentAccessScope,
+  ): Promise<DocumentSearchResult> {
     const { query, page, pageSize } = params;
     const empty: DocumentSearchResult = {
       total: 0,
@@ -271,6 +282,13 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
     pushTerm('category_id', params.categoryId);
     pushTerm('author_id', params.authorId);
     pushTerm('team_id', params.teamId);
+
+    if (scope) {
+      const visFilter = esVisibilityFilter(scope);
+      if (visFilter) {
+        filter.push(visFilter);
+      }
+    }
 
     const response = (await client.search({
       index: this.indexName,
@@ -321,6 +339,49 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /** 仅修改公开度 / 所属团队时就地更新 ES 记录，无需全量重写正文 */
+  async updateVisibility(
+    documentId: string,
+    vis: {
+      isPublic: boolean;
+      teamId?: string | null;
+      authorId?: string | null;
+    },
+  ): Promise<void> {
+    if (!this.isAvailable()) {
+      this.logger.warn(
+        `跳过文档搜索索引可见性更新（ES 不可用）：documentId=${documentId}`,
+      );
+      return;
+    }
+
+    await this.ensureIndex();
+    const client = this.esService.getClient();
+    try {
+      await client.update({
+        index: this.indexName,
+        id: documentId,
+        doc: {
+          is_public: vis.isPublic,
+          team_id: vis.teamId ?? null,
+          author_id: vis.authorId ?? null,
+        },
+        refresh: true,
+      });
+      this.logger.log(
+        `文档搜索索引可见性已更新：documentId=${documentId}, isPublic=${vis.isPublic}, teamId=${vis.teamId ?? '-'}`,
+      );
+    } catch (err) {
+      if (isNotFound(err)) {
+        this.logger.warn(
+          `文档搜索索引记录不存在，跳过可见性更新：documentId=${documentId}`,
+        );
+        return;
+      }
+      throw err;
+    }
+  }
+
   /** 组装写入 ES 的文档：PG 侧是逗号分隔的 tags，这里拆成数组以便精确过滤 */
   private toEsDocument(doc: PipelineDocument): Record<string, unknown> {
     return {
@@ -365,6 +426,8 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
       tags: source.tags ?? [],
       categoryId: source.category_id ?? null,
       authorId: source.author_id ?? null,
+      teamId: source.team_id ?? null,
+      isPublic: source.is_public ?? null,
       publishTime: source.publish_time ?? null,
       viewCount: source.view_count ?? 0,
       likeCount: source.like_count ?? 0,

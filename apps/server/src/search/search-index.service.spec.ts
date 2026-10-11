@@ -142,4 +142,55 @@ describe.skipIf(!esUp)('SearchIndexService 集成（需要本地 ES + IK）', ()
     });
     expect(result.hits.map((h) => h.id)).not.toContain('test-doc-1');
   });
+
+  it('updateVisibility 可原地更新公开度与团队，并影响带 scope 的检索结果', async () => {
+    await service.indexDocument(
+      fakeDoc({
+        id: 'test-doc-vis',
+        isPublic: false,
+        authorId: 'author-1',
+        teamId: 'team-1',
+      }),
+    );
+
+    const scopeUserA = {
+      unrestricted: false,
+      userId: 'other-user',
+      teamIds: ['team-other'],
+    };
+    let res = await service.search(
+      { query: '差旅费报销', page: 1, pageSize: 10, status: 1 },
+      scopeUserA,
+    );
+    expect(res.hits.map((h) => h.id)).not.toContain('test-doc-vis');
+
+    const scopeUserB = {
+      unrestricted: false,
+      userId: 'other-user',
+      teamIds: ['team-1'],
+    };
+    res = await service.search(
+      { query: '差旅费报销', page: 1, pageSize: 10, status: 1 },
+      scopeUserB,
+    );
+    const hit = res.hits.find((h) => h.id === 'test-doc-vis');
+    expect(hit).toBeDefined();
+    expect(hit?.isPublic).toBe(false);
+    expect(hit?.teamId).toBe('team-1');
+
+    await service.updateVisibility('test-doc-vis', {
+      isPublic: true,
+      teamId: null,
+      authorId: 'author-1',
+    });
+
+    res = await service.search(
+      { query: '差旅费报销', page: 1, pageSize: 10, status: 1 },
+      scopeUserA,
+    );
+    expect(res.hits.map((h) => h.id)).toContain('test-doc-vis');
+    const updatedHit = res.hits.find((h) => h.id === 'test-doc-vis');
+    expect(updatedHit?.isPublic).toBe(true);
+    expect(updatedHit?.teamId).toBeNull();
+  });
 });

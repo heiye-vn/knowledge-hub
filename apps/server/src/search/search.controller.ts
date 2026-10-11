@@ -1,4 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { AuthUser } from '../auth/auth-user.interface.js';
+import { accessFromUser } from '../document/document-access.js';
 import {
   DEFAULT_SEARCH_PAGE,
   DEFAULT_SEARCH_PAGE_SIZE,
@@ -29,15 +32,21 @@ export class SearchController {
   /** 检索（POST：查询词可能含中文与特殊字符，放 body 更稳妥） */
   @Post('documents')
   @RequirePermission('search')
-  search(@Body() dto: DocumentSearchDto) {
-    return this.searchIndexService.search(this.toParams(dto));
+  search(@Body() dto: DocumentSearchDto, @CurrentUser() user: AuthUser) {
+    return this.searchIndexService.search(
+      this.toParams(dto),
+      accessFromUser(user),
+    );
   }
 
   /** 检索（GET 便捷版，供 curl / 浏览器快速验证） */
   @Get('documents')
   @RequirePermission('search')
-  searchByQuery(@Query() dto: DocumentSearchDto) {
-    return this.searchIndexService.search(this.toParams(dto));
+  searchByQuery(@Query() dto: DocumentSearchDto, @CurrentUser() user: AuthUser) {
+    return this.searchIndexService.search(
+      this.toParams(dto),
+      accessFromUser(user),
+    );
   }
 
   private toParams(dto: DocumentSearchDto) {
