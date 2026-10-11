@@ -25,6 +25,7 @@ export interface DocumentChunk {
   categoryId?: string | null;
   authorId?: string | null;
   teamId?: string | null;
+  isPublic?: boolean;
   docStatus?: number | null;
   publishTime?: string | null;
   /** 向量；分块阶段为空，EmbeddingService 填充后写入 ES dense_vector */

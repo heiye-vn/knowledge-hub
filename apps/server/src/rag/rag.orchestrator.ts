@@ -61,6 +61,7 @@ export class RagOrchestrator {
       authorId: doc.authorId,
       teamId: doc.teamId,
       docStatus: doc.status,
+      isPublic: doc.isPublic,
       publishTime: this.toIsoDate(doc.publishTime),
     });
 
@@ -116,6 +117,18 @@ export class RagOrchestrator {
    */
   async deleteDocument(documentId: string): Promise<void> {
     await this.vectorIndexService.deleteByDocumentId(documentId);
+  }
+
+  /** 原地更新文档向量块的可见性（is_public, team_id, author_id） */
+  async updateVisibility(
+    documentId: string,
+    vis: {
+      isPublic: boolean;
+      teamId?: string | null;
+      authorId?: string | null;
+    },
+  ): Promise<number> {
+    return this.vectorIndexService.updateVisibility(documentId, vis);
   }
 
   /** ES date 字段需要 ISO-8601；Date#toString() 会被拒绝 */

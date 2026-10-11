@@ -9,6 +9,10 @@ import {
   DocumentEntity,
   DocumentStatus,
 } from '../document/entities/document.entity.js';
+import {
+  esVisibilityFilter,
+  type DocumentAccessScope,
+} from '../document/document-access.js';
 import type { SearchHit, SearchMode } from './types/rag.types.js';
 
 export interface SearchParams {
@@ -60,7 +64,10 @@ export class RetrievalService {
     return mode === 'keyword' || this.embeddingService.isConfigured();
   }
 
-  async search(params: SearchParams): Promise<SearchHit[]> {
+  async search(
+    params: SearchParams,
+    scope?: DocumentAccessScope,
+  ): Promise<SearchHit[]> {
     const query = params.query?.trim();
     if (!query) return [];
 
@@ -80,7 +87,7 @@ export class RetrievalService {
     // RRF 融合后送精排的候选数（须 ≥ topK，精排后再截回 topK；feat-v11）
     const hybridTopK = Number(this.config.get('RAG_HYBRID_TOP_K', 20));
 
-    const filterClauses = this.buildFilters(params.filters);
+    const filterClauses = this.buildFilters(params.filters, scope);
 
     const queryVector =
       mode === 'keyword' ? null : await this.embeddingService.embed(query);
@@ -287,6 +294,7 @@ export class RetrievalService {
   /** 结构化过滤条件：默认只检索已发布文档 */
   private buildFilters(
     filters?: SearchParams['filters'],
+    scope?: DocumentAccessScope,
   ): Record<string, unknown>[] {
     const clauses: Record<string, unknown>[] = [
       { term: { doc_status: DocumentStatus.Published } },
@@ -300,6 +308,10 @@ export class RetrievalService {
     }
     if (filters?.authorId) {
       clauses.push({ term: { author_id: filters.authorId } });
+    }
+    const vis = scope ? esVisibilityFilter(scope) : null;
+    if (vis) {
+      clauses.push(vis);
     }
     return clauses;
   }

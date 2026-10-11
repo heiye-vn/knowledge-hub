@@ -60,6 +60,7 @@ export function buildKhChunkIndexBody(dims = KH_CHUNK_EMBEDDING_DIMS): IndexSett
         category_id: { type: 'keyword' },
         author_id: { type: 'keyword' },
         team_id: { type: 'keyword' },
+        is_public: { type: 'boolean' },
         doc_status: { type: 'integer' },
         publish_time: { type: 'date' },
         indexed_at: { type: 'date' },

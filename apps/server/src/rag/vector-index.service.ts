@@ -98,6 +98,7 @@ export class VectorIndexService {
       category_id: chunk.categoryId ?? null,
       author_id: chunk.authorId ?? null,
       team_id: chunk.teamId ?? null,
+      is_public: chunk.isPublic ?? false,
       doc_status: chunk.docStatus ?? null,
       publish_time: chunk.publishTime ?? null,
       indexed_at: new Date().toISOString(),
@@ -107,5 +108,52 @@ export class VectorIndexService {
       doc.embedding = chunk.embedding;
     }
     return doc;
+  }
+
+  /** 原地更新文档向量块的可见性（is_public, team_id, author_id） */
+  async updateVisibility(
+    documentId: string,
+    vis: {
+      isPublic: boolean;
+      teamId?: string | null;
+      authorId?: string | null;
+    },
+  ): Promise<number> {
+    if (!this.esService.isEnabled()) {
+      this.logger.warn(
+        `跳过更新向量块可见性（ES 不可用）：documentId=${documentId}`,
+      );
+      return 0;
+    }
+
+    try {
+      const res = await this.esService.getClient().updateByQuery({
+        index: this.esService.getIndexName(),
+        query: { term: { document_id: documentId } },
+        script: {
+          lang: 'painless',
+          source:
+            'ctx._source.is_public = params.is_public; ctx._source.team_id = params.team_id; ctx._source.author_id = params.author_id;',
+          params: {
+            is_public: vis.isPublic,
+            team_id: vis.teamId ?? null,
+            author_id: vis.authorId ?? null,
+          },
+        },
+        refresh: true,
+      });
+      const updated = (res as any).updated ?? 0;
+      this.logger.log(
+        `已更新文档向量块可见性：documentId=${documentId}, updatedChunks=${updated}`,
+      );
+      return updated;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/index_not_found/i.test(message)) return 0;
+      this.logger.error(
+        `ES 更新向量块可见性失败：documentId=${documentId}, error=${message}`,
+      );
+      throw err;
+    }
   }
 }

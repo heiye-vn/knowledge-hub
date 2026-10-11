@@ -114,6 +114,26 @@ describe.skipIf(!esUp)('VectorIndexService（集成，依赖 localhost:9200）',
     expect(totalOf(res)).toBe(0);
   });
 
+  it('原地更新可见性字段（is_public, team_id, author_id）', async () => {
+    await service.indexChunks(makeChunks(documentId, 2));
+    const updated = await service.updateVisibility(documentId, {
+      isPublic: true,
+      teamId: 'team-99',
+      authorId: 'author-88',
+    });
+    expect(updated).toBe(2);
+
+    const res = await esService.getClient().search({
+      index: esService.getIndexName(),
+      query: { term: { document_id: documentId } },
+      size: 10,
+    });
+    const first = res.hits.hits[0]._source as Record<string, any>;
+    expect(first.is_public).toBe(true);
+    expect(first.team_id).toBe('team-99');
+    expect(first.author_id).toBe('author-88');
+  });
+
   it('空输入不发起写入', async () => {
     await expect(service.indexChunks([])).resolves.toBeUndefined();
   });

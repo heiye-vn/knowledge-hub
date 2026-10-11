@@ -144,6 +144,30 @@ describe.skipIf(!esUp)('RetrievalService（集成，依赖 localhost:9200）', (
     expect(hits.every((h) => h.documentId === DOC_ALIVE)).toBe(true);
   });
 
+  it('可见性控制：普通用户不可见私有文档，作者/公开/管理员可见', async () => {
+    // 默认 DOC_ALIVE 未公开且无作者/团队
+    const hidden = await service.search(
+      { query: '流程说明', mode: 'keyword', topK: 10 },
+      { unrestricted: false, userId: 'other-user', teamIds: [] },
+    );
+    expect(hidden.length).toBe(0);
+
+    // 管理员/审核员放行
+    const adminHits = await service.search(
+      { query: '流程说明', mode: 'keyword', topK: 10 },
+      { unrestricted: true, userId: 'other-user', teamIds: [] },
+    );
+    expect(adminHits.length).toBeGreaterThan(0);
+
+    // 更新为公开后普通用户亦可见
+    await vectorIndex.updateVisibility(DOC_ALIVE, { isPublic: true });
+    const publicHits = await service.search(
+      { query: '流程说明', mode: 'keyword', topK: 10 },
+      { unrestricted: false, userId: 'other-user', teamIds: [] },
+    );
+    expect(publicHits.length).toBeGreaterThan(0);
+  });
+
   it('一致性兜底：PG 侧已下线的文档即使残留在 ES 也会被过滤', async () => {
     // 场景：ES 清理失败，DOC_DOWN 仍在索引里且 doc_status=1，但 PG 已软删
     await vectorIndex.indexChunks([

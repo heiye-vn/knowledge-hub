@@ -14,6 +14,7 @@ export interface ChunkParams {
   categoryId?: string | null;
   authorId?: string | null;
   teamId?: string | null;
+  isPublic?: boolean;
   docStatus?: number | null;
   publishTime?: string | null;
 }
@@ -105,6 +106,7 @@ export class ChunkingService {
         categoryId: params.categoryId ?? null,
         authorId: params.authorId ?? null,
         teamId: params.teamId ?? null,
+        isPublic: params.isPublic ?? false,
         docStatus: params.docStatus ?? null,
         publishTime: params.publishTime ?? null,
       });

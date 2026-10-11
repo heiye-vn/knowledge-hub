@@ -108,6 +108,10 @@ export class ElasticsearchService implements OnModuleInit {
     const client = this.getClient();
     const exists = await client.indices.exists({ index: this.indexName });
 
+    if (exists) {
+      await this.ensureVisibilityMapping();
+    }
+
     if (!exists) {
       const dims = Number(
         this.config.get<string>(
@@ -137,6 +141,24 @@ export class ElasticsearchService implements OnModuleInit {
     }
 
     await this.assertEmbeddingDims();
+  }
+
+  /** 存量部署保护：已存在的 kh_chunk 补全 is_public 映射 */
+  private async ensureVisibilityMapping(): Promise<void> {
+    const client = this.getClient();
+    try {
+      await client.indices.putMapping({
+        index: this.indexName,
+        properties: {
+          is_public: { type: 'boolean' },
+        },
+      });
+      this.logger.log(`已确保索引 ${this.indexName} 包含 is_public 映射`);
+    } catch (err) {
+      this.logger.warn(
+        `补全 is_public 映射失败：${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**

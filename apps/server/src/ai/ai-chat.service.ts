@@ -10,6 +10,7 @@ import { RetrievalService } from '../rag/retrieval.service.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
 import { ChatSessionService } from './chat-session.service.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
+import { accessFromUser } from '../document/document-access.js';
 import type { ChatSource } from './chat.types.js';
 
 export type { ChatSource } from './chat.types.js';
@@ -84,7 +85,10 @@ export class AiChatService {
       return { sessionId: sessionId ?? null, answer: '请输入问题。', sources: [] };
     }
 
-    const hits = await this.retrieval.search({ query: trimmed, topK });
+    const hits = await this.retrieval.search(
+      { query: trimmed, topK },
+      user ? accessFromUser(user) : undefined,
+    );
     if (!hits.length) {
       const empty = { answer: '知识库里没有相关内容。', sources: [] as ChatSource[] };
       const session = user

@@ -20,6 +20,7 @@ import type { SearchHit } from '../rag/types/rag.types.js';
 import { ChatSessionService } from './chat-session.service.js';
 import { WebSearchService } from './web-search.service.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
+import { accessFromUser } from '../document/document-access.js';
 import type { ChatSource } from './chat.types.js';
 import type { ChatStreamDto } from './dto/chat-stream.dto.js';
 
@@ -190,7 +191,10 @@ export class AiStreamService {
 
         let hits: SearchHit[] = [];
         try {
-          hits = await this.retrieval.search({ query: question, topK });
+          hits = await this.retrieval.search(
+            { query: question, topK },
+            user ? accessFromUser(user) : undefined,
+          );
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
           this.logger.warn(`RAG 检索失败：${detail}`);
