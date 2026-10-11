@@ -1,4 +1,4 @@
-import type { AuthUser } from './types'
+import type { AuthUser, TeamTreeNode } from './types'
 
 export const DOC_STATUS: Record<number, { label: string; color: string }> = {
   0: { label: '草稿', color: 'default' },
@@ -45,4 +45,46 @@ export function safeHighlight(html?: string) {
     .replace(/>/g, '&gt;')
     .replace(/&lt;em&gt;/g, '<em>')
     .replace(/&lt;\/em&gt;/g, '</em>')
+}
+
+/** 写权限守卫：系统管理员或作者本人可编辑/删除/发布 */
+export function canWriteDocument(
+  doc: { authorId?: string | null },
+  user?: AuthUser | null,
+): boolean {
+  if (!user) return false
+  if (user.roles.includes('ROLE_ADMIN') || user.permissions.includes('*')) return true
+  return Boolean(doc.authorId && user.userId === doc.authorId)
+}
+
+/** 可见性标签与样式元信息 */
+export function getVisibilityMeta(doc: {
+  isPublic?: boolean | null
+  teamId?: string | null
+}) {
+  if (doc.isPublic) return { label: '公开', color: 'green', scope: 'public' as const }
+  if (doc.teamId) return { label: '团队', color: 'blue', scope: 'team' as const }
+  return { label: '个人', color: 'purple', scope: 'private' as const }
+}
+
+export interface FlatTeamOption {
+  id: string
+  name: string
+  depth: number
+}
+
+/** 递归扁平化团队树为下拉选项列表（带全角空格缩进展示层级） */
+export function flattenTeams(nodes: TeamTreeNode[], depth = 0): FlatTeamOption[] {
+  const result: FlatTeamOption[] = []
+  for (const node of nodes) {
+    result.push({
+      id: node.id,
+      name: `${'　'.repeat(depth)}${node.teamName}`,
+      depth,
+    })
+    if (node.children && node.children.length > 0) {
+      result.push(...flattenTeams(node.children, depth + 1))
+    }
+  }
+  return result
 }

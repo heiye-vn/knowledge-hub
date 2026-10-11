@@ -18,6 +18,7 @@ import type {
   SearchHit,
   SearchMode,
   TeamItem,
+  TeamTreeNode,
   UserStats,
   UserVO,
 } from '../types'
@@ -202,7 +203,8 @@ export const teamApi = {
     }
     return get<PageResult<TeamItem>>(`/teams/page?${params}`)
   },
-  tree: () => get<unknown[]>('/teams/tree'),
+  tree: () => get<TeamTreeNode[]>('/teams/tree'),
+  mine: () => get<TeamItem[]>('/teams/mine'),
   create: (body: Record<string, unknown>) => post<TeamItem>('/teams', body),
   update: (id: string, body: Record<string, unknown>) =>
     put<TeamItem>(`/teams/${id}`, body),

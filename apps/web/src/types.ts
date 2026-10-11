@@ -6,6 +6,7 @@ export interface AuthUser {
   avatar?: string | null
   roles: string[]
   permissions: string[]
+  teamIds?: string[]
 }
 
 export interface LoginResult {
@@ -58,6 +59,8 @@ export interface SearchHit {
     summary: string[]
     content: string[]
   }
+  teamId?: string | null
+  isPublic?: boolean | null
 }
 
 export type SearchMode = 'hybrid' | 'vector' | 'keyword'
@@ -204,6 +207,10 @@ export interface TeamItem {
   sort?: number
   status?: number
   memberCount?: number
+}
+
+export interface TeamTreeNode extends TeamItem {
+  children?: TeamTreeNode[]
 }
 
 export interface ReviewTask {
