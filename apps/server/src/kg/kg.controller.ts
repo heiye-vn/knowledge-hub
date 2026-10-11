@@ -21,6 +21,9 @@ import {
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { RoleCode } from '../common/constants/roles.js';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { AuthUser } from '../auth/auth-user.interface.js';
+import { accessFromUser } from '../document/document-access.js';
 
 /** 手动建图 / 删图请求体 */
 export class KgBuildDto {
@@ -96,35 +99,35 @@ export class KgController {
   /** 全景图谱数据（feat-v12）：文档/实体/标签多维拓扑与统计，供前端力导向图呈现 */
   @Get('overview')
   @RequirePermission('search')
-  async overview(@Query() dto: GraphOverviewDto) {
+  async overview(@Query() dto: GraphOverviewDto, @CurrentUser() user: AuthUser) {
     return this.graphBuildService.getOverview({
       keyword: dto.keyword,
       entityType: dto.entityType,
       from: dto.from,
       to: dto.to,
       docLimit: dto.docLimit,
-    });
+    }, accessFromUser(user));
   }
 
   /** 图规模统计：文档 / 块 / 实体 / 关系 数量 */
   @Get('stats')
   @RequirePermission('search')
-  async stats() {
-    return this.graphBuildService.getStats();
+  async stats(@CurrentUser() user: AuthUser) {
+    return this.graphBuildService.getStats(accessFromUser(user));
   }
 
   /** 实体检索：按关键词过滤，按被提及次数倒序 */
   @Get('entities')
   @RequirePermission('search')
-  async entities(@Query() dto: GraphEntitiesDto) {
-    return this.graphBuildService.listEntities(dto.keyword ?? '', dto.limit ?? 20);
+  async entities(@Query() dto: GraphEntitiesDto, @CurrentUser() user: AuthUser) {
+    return this.graphBuildService.listEntities(dto.keyword ?? '', dto.limit ?? 20, accessFromUser(user));
   }
 
   /** 邻居查询：某实体的全部关联实体与关系语义 */
   @Get('neighbors')
   @RequirePermission('search')
-  async neighbors(@Query() dto: GraphNeighborsDto) {
-    return this.graphBuildService.getNeighbors(dto.name, dto.limit ?? 20);
+  async neighbors(@Query() dto: GraphNeighborsDto, @CurrentUser() user: AuthUser) {
+    return this.graphBuildService.getNeighbors(dto.name, dto.limit ?? 20, accessFromUser(user));
   }
 
   /**
@@ -134,21 +137,21 @@ export class KgController {
    */
   @Get('search')
   @RequirePermission('search')
-  async search(@Query() dto: GraphSearchDto) {
-    return this.graphBuildService.searchGraph(dto.keyword, dto.limit ?? 50);
+  async search(@Query() dto: GraphSearchDto, @CurrentUser() user: AuthUser) {
+    return this.graphBuildService.searchGraph(dto.keyword, dto.limit ?? 50, accessFromUser(user));
   }
 
   /** 图谱可视化：实体节点全量列表（type 可选过滤，按提及次数倒序） */
   @Get('nodes')
   @RequirePermission('search')
-  async nodes(@Query() dto: GraphQueryDto) {
-    return this.graphBuildService.listNodes(dto.type, dto.limit ?? 200);
+  async nodes(@Query() dto: GraphQueryDto, @CurrentUser() user: AuthUser) {
+    return this.graphBuildService.listNodes(dto.type, dto.limit ?? 200, accessFromUser(user));
   }
 
   /** 图谱可视化：实体间 RELATED_TO 边全量列表（按权重倒序） */
   @Get('edges')
   @RequirePermission('search')
-  async edges(@Query() dto: GraphQueryDto) {
-    return this.graphBuildService.listEdges(dto.limit ?? 500);
+  async edges(@Query() dto: GraphQueryDto, @CurrentUser() user: AuthUser) {
+    return this.graphBuildService.listEdges(dto.limit ?? 500, accessFromUser(user));
   }
 }
