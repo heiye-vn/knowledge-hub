@@ -7,10 +7,11 @@ import {
 } from 'ai';
 import { toUIMessageStream } from '@ai-sdk/langchain';
 import { ChatOpenAI } from '@langchain/openai';
-import { HumanMessage } from '@langchain/core/messages';
+import { HumanMessage, type BaseMessage } from '@langchain/core/messages';
 import {
   createAgent,
   modelCallLimitMiddleware,
+  summarizationMiddleware,
   tool,
 } from 'langchain';
 import { z } from 'zod';
@@ -18,6 +19,10 @@ import type { Response } from 'express';
 import { RetrievalService } from '../rag/retrieval.service.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
 import { ChatSessionService } from './chat-session.service.js';
+import { ChatShortMemoryService } from './chat-short-memory.service.js';
+import { ChatLongMemoryService } from './chat-long-memory.service.js';
+import { ChatQueryRewriteService } from './chat-query-rewrite.service.js';
+import { dbRowsToMessages } from './chat-memory.util.js';
 import { WebSearchService } from './web-search.service.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
 import { accessFromUser } from '../document/document-access.js';
@@ -30,6 +35,8 @@ const CITATION_RE = /\[(\d+)\]/g;
 
 const SYSTEM =
   '你是企业知识库助手。优先根据「检索到的资料」回答。' +
+  '结合对话历史和记忆里的用户背景，但制度/流程以本轮资料为准，不要用记忆替代文档。' +
+  '没有检索资料且是寒暄时，直接回应，不必调用 web_search。' +
   '资料不足、需要时效性或外部公开信息时，调用 web_search。' +
   '依据资料的陈述句末标 [n]，与资料编号一致。' +
   '联网结果用标题+链接说明，不要编造。资料不够就明确说不知道。';
@@ -81,6 +88,9 @@ export class AiStreamService {
     private readonly retrieval: RetrievalService,
     private readonly sessions: ChatSessionService,
     private readonly webSearch: WebSearchService,
+    private readonly shortMemory: ChatShortMemoryService,
+    private readonly longMemory: ChatLongMemoryService,
+    private readonly queryRewrite: ChatQueryRewriteService,
   ) {
     const apiKey =
       config.get<string>('LLM_API_KEY') ||
@@ -107,6 +117,16 @@ export class AiStreamService {
       streamUsage: false,
       configuration: { baseURL },
       modelKwargs: enableThinking ? { enable_thinking: true } : undefined,
+    });
+    // 摘要用独立模型实例：关思考，结构化程度更稳
+    const compactLlm = new ChatOpenAI({
+      apiKey,
+      model: modelName,
+      temperature: 0,
+      timeout: Number(config.get('AI_CHAT_TIMEOUT_MS', 60000)),
+      maxRetries: 0,
+      useResponsesApi: false,
+      configuration: { baseURL },
     });
 
     const search = this.webSearch;
@@ -135,6 +155,15 @@ export class AiStreamService {
       ],
       systemPrompt: SYSTEM,
       middleware: [
+        // 长对话折叠：超过 12 条时保留最近 6 条 + 摘要，避免整段历史进模型；
+        // 只压缩本次调用的上下文，不改 Redis / Postgres 里的存储
+        summarizationMiddleware({
+          model: compactLlm,
+          trigger: { messages: 12 },
+          keep: { messages: 6 },
+          summaryPrompt:
+            '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
+        }),
         // 单次对话最多 4 次模型调用，防 web_search 循环打爆；超限正常收流
         modelCallLimitMiddleware({ runLimit: 4, exitBehavior: 'end' }),
       ],
@@ -146,6 +175,7 @@ export class AiStreamService {
     const topK = dto.topK ?? 5;
     let persistSessionId = dto.sessionId;
     let persistSources: ChatSource[] = [];
+    let persistHistory: BaseMessage[] = [];
 
     // 归属校验必须在流外：execute 内抛错只会降级成 SSE error 事件（HTTP 200），
     // 出不了 404 语义；流前抛出走全局异常拦截器正常返回
@@ -184,28 +214,47 @@ export class AiStreamService {
           data: { sessionId },
         });
 
-        writer.write({
-          type: 'data-status',
-          data: { stage: 'retrieve', text: '正在检索知识库…' },
-        });
+        const history = await this.loadWorkingHistory(user.userId, sessionId);
+        persistHistory = history;
 
-        let hits: SearchHit[] = [];
-        try {
-          hits = await this.retrieval.search(
-            { query: question, topK },
-            user ? accessFromUser(user) : undefined,
-          );
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`RAG 检索失败：${detail}`);
+        if (history.length) {
+          writer.write({
+            type: 'data-status',
+            data: { stage: 'rewrite', text: '正在理解问题…' },
+          });
         }
+        const plan = await this.queryRewrite.rewrite(question, history);
+
+        if (plan.needRetrieve) {
+          writer.write({
+            type: 'data-status',
+            data: { stage: 'retrieve', text: '正在检索知识库…' },
+          });
+        }
+
+        const [hits, memHits] = await Promise.all([
+          plan.needRetrieve
+            ? this.retrieval
+                .search(
+                  { query: plan.query, topK },
+                  user ? accessFromUser(user) : undefined,
+                )
+                .catch((error) => {
+                  const detail =
+                    error instanceof Error ? error.message : String(error);
+                  this.logger.warn(`RAG 检索失败：${detail}`);
+                  return [] as SearchHit[];
+                })
+            : Promise.resolve([] as SearchHit[]),
+          this.longMemory.search(user.userId, sessionId, plan.query),
+        ]);
 
         const sources = this.toSources(hits);
         persistSources = sources;
         writer.write({
           type: 'data-retrieve',
           data: {
-            query: question,
+            query: plan.query,
             items: sources.map((src) => ({
               index: src.index,
               documentId: src.documentId,
@@ -233,12 +282,21 @@ export class AiStreamService {
           return;
         }
 
+        const memoryMsg = this.longMemory.buildSystemMessage(memHits);
         const prompt = hits.length
           ? `检索到的资料：\n${this.buildContext(hits)}\n\n用户问题：${question}`
-          : `知识库没有召回到相关内容。\n\n用户问题：${question}`;
+          : plan.needRetrieve
+            ? `知识库没有召回到相关内容。\n\n用户问题：${question}`
+            : `用户问题：${question}`;
 
         const langchainStream = await this.agent.stream(
-          { messages: [new HumanMessage(prompt)] },
+          {
+            messages: [
+              ...(memoryMsg ? [memoryMsg] : []),
+              ...history,
+              new HumanMessage(prompt),
+            ],
+          },
           // messages：模型 token/思考；tools：web_search 调用，交适配层转 tool-* 事件
           { streamMode: ['messages', 'tools'] },
         );
@@ -268,25 +326,62 @@ export class AiStreamService {
           ? persistSources.filter((s) => used.has(s.index))
           : [];
         if (!question || !persistSessionId) return;
+        const finalAnswer = answer || '未能生成回答。';
         try {
           await this.sessions.appendTurn(
             user.userId,
             persistSessionId,
             question,
-            answer || '未能生成回答。',
+            finalAnswer,
             sources,
+          );
+          await this.shortMemory.appendTurn(
+            user.userId,
+            persistSessionId,
+            persistHistory,
+            question,
+            finalAnswer,
           );
         } catch (error) {
           this.logger.warn(
             `流式对话落库失败：${error instanceof Error ? error.message : String(error)}`,
           );
         }
+        // 长期记忆抽取异步执行：分类器 + Mem0 往返较慢，不拖住 SSE 收尾
+        void this.longMemory.rememberTurn(
+          user.userId,
+          persistSessionId,
+          question,
+          finalAnswer,
+        );
       },
       onError: (error) =>
         error instanceof Error ? error.message : String(error),
     });
 
     await pipeUIMessageStreamToResponse({ response: res, stream });
+  }
+
+  /** 短期记忆工作窗口：Redis 命中直接用；miss 从 Postgres 取最近 N 条并回填 */
+  private async loadWorkingHistory(
+    userId: string,
+    sessionId: string,
+  ): Promise<BaseMessage[]> {
+    const cached = await this.shortMemory.tryLoad(userId, sessionId);
+    if (cached) return cached;
+    const rows = await this.sessions.listRecentMessages(
+      userId,
+      sessionId,
+      this.shortMemory.windowSize,
+    );
+    const history = dbRowsToMessages(rows);
+    if (history.length) {
+      await this.shortMemory.save(userId, sessionId, history);
+      this.logger.log(
+        `短期记忆从库回填：sessionId=${sessionId}, n=${history.length}`,
+      );
+    }
+    return history;
   }
 
   private toSources(hits: SearchHit[]): ChatSource[] {

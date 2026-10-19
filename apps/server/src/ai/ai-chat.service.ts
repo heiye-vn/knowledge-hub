@@ -5,10 +5,14 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import { RetrievalService } from '../rag/retrieval.service.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
 import { ChatSessionService } from './chat-session.service.js';
+import { ChatShortMemoryService } from './chat-short-memory.service.js';
+import { ChatLongMemoryService } from './chat-long-memory.service.js';
+import { ChatQueryRewriteService } from './chat-query-rewrite.service.js';
+import { dbRowsToMessages } from './chat-memory.util.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
 import { accessFromUser } from '../document/document-access.js';
 import type { ChatSource } from './chat.types.js';
@@ -46,6 +50,9 @@ export class AiChatService {
     config: ConfigService,
     private readonly retrieval: RetrievalService,
     private readonly sessions: ChatSessionService,
+    private readonly shortMemory: ChatShortMemoryService,
+    private readonly longMemory: ChatLongMemoryService,
+    private readonly queryRewrite: ChatQueryRewriteService,
   ) {
     const apiKey =
       config.get<string>('LLM_API_KEY') ||
@@ -85,15 +92,42 @@ export class AiChatService {
       return { sessionId: sessionId ?? null, answer: '请输入问题。', sources: [] };
     }
 
-    const hits = await this.retrieval.search(
-      { query: trimmed, topK },
-      user ? accessFromUser(user) : undefined,
-    );
-    if (!hits.length) {
+    const history = user
+      ? await this.loadWorkingHistory(user.userId, sessionId)
+      : [];
+    const plan = await this.queryRewrite.rewrite(trimmed, history);
+    const [hits, memHits] = await Promise.all([
+      plan.needRetrieve
+        ? this.retrieval.search(
+            { query: plan.query, topK },
+            user ? accessFromUser(user) : undefined,
+          )
+        : Promise.resolve([] as SearchHit[]),
+      user
+        ? this.longMemory.search(user.userId, sessionId, plan.query)
+        : Promise.resolve({ user: [] as string[], session: [] as string[] }),
+    ]);
+
+    if (plan.needRetrieve && !hits.length) {
       const empty = { answer: '知识库里没有相关内容。', sources: [] as ChatSource[] };
       const session = user
         ? await this.persistTurn(user.userId, sessionId, trimmed, empty.answer, empty.sources)
         : null;
+      if (user && session) {
+        await this.shortMemory.appendTurn(
+          user.userId,
+          session.id,
+          history,
+          trimmed,
+          empty.answer,
+        );
+        void this.longMemory.rememberTurn(
+          user.userId,
+          session.id,
+          trimmed,
+          empty.answer,
+        );
+      }
       return { sessionId: session?.id ?? sessionId ?? null, ...empty };
     }
 
@@ -103,18 +137,23 @@ export class AiChatService {
       );
     }
 
-    const context = this.buildContext(hits);
+    const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+    const userTurn = hits.length
+      ? `检索到的资料：\n${this.buildContext(hits)}\n\n用户问题：${trimmed}`
+      : `用户问题：${trimmed}`;
     const response = await this.llm.invoke([
       new SystemMessage(
-        '你是企业知识库助手。只根据「检索到的资料」回答用户问题。' +
-          '若资料不足以回答，明确说不知道，不要编造。' +
+        '你是企业知识库助手。有检索资料时只根据资料回答用户问题。' +
+          '结合对话历史和记忆里的用户背景，但制度/流程以本轮资料为准，不要用记忆替代文档。' +
+          '没有检索资料时，可回应寒暄或对话，不要编造制度。' +
+          '若资料不足以回答制度问题，明确说不知道，不要编造。' +
           '凡是依据某条资料作出的陈述，必须在句末标注对应编号，如 [1]、[2]。' +
           '编号必须与资料列表一致，不要标注未使用的编号，不要编造文档标题或链接。' +
           '回答简洁，必要时列出条目。',
       ),
-      new HumanMessage(
-        `检索到的资料：\n${context}\n\n用户问题：${trimmed}`,
-      ),
+      ...(memoryMsg ? [memoryMsg] : []),
+      ...history,
+      new HumanMessage(userTurn),
     ]);
 
     const answer =
@@ -130,7 +169,48 @@ export class AiChatService {
     const session = user
       ? await this.persistTurn(user.userId, sessionId, trimmed, answer, sources)
       : null;
+    if (user && session) {
+      await this.shortMemory.appendTurn(
+        user.userId,
+        session.id,
+        history,
+        trimmed,
+        answer,
+      );
+      void this.longMemory.rememberTurn(
+        user.userId,
+        session.id,
+        trimmed,
+        answer,
+      );
+    }
     return { sessionId: session?.id ?? sessionId ?? null, answer, sources };
+  }
+
+  /**
+   * 短期记忆工作窗口：Redis 命中直接用；miss 从 Postgres 取最近 N 条并回填。
+   * 新建会话（无 sessionId）没有历史。
+   */
+  private async loadWorkingHistory(
+    userId: string,
+    sessionId: string | undefined,
+  ): Promise<BaseMessage[]> {
+    if (!sessionId) return [];
+    const cached = await this.shortMemory.tryLoad(userId, sessionId);
+    if (cached) return cached;
+    const rows = await this.sessions.listRecentMessages(
+      userId,
+      sessionId,
+      this.shortMemory.windowSize,
+    );
+    const history = dbRowsToMessages(rows);
+    if (history.length) {
+      await this.shortMemory.save(userId, sessionId, history);
+      this.logger.log(
+        `短期记忆从库回填：sessionId=${sessionId}, n=${history.length}`,
+      );
+    }
+    return history;
   }
 
   /**
