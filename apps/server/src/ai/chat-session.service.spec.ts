@@ -14,8 +14,29 @@ function makeEm() {
   };
 }
 
+/** 记忆服务 fake：清理方法需要断言被调用 */
+const memory = {
+  shortMemory: {
+    windowSize: 20,
+    tryLoad: vi.fn(async () => null),
+    save: vi.fn(async () => {}),
+    appendTurn: vi.fn(async () => {}),
+    clear: vi.fn(async () => {}),
+  },
+  longMemory: {
+    search: vi.fn(async () => ({ user: [], session: [] })),
+    buildSystemMessage: vi.fn(() => null),
+    rememberTurn: vi.fn(async () => {}),
+    clearSession: vi.fn(async () => {}),
+  },
+};
+
 function makeService(em: ReturnType<typeof makeEm>) {
-  return new ChatSessionService(em as unknown as never);
+  return new ChatSessionService(
+    em as unknown as never,
+    memory.shortMemory as unknown as never,
+    memory.longMemory as unknown as never,
+  );
 }
 
 /** 模拟库里的会话行（plain object，避免类实例展开丢失原型） */
@@ -107,13 +128,52 @@ describe('ChatSessionService（fake EntityManager）', () => {
     expect(lastAssistant.sources).toHaveLength(1);
   });
 
-  it('删除会话只删会话行，消息交给外键级联', async () => {
+  it('删除会话只删会话行，消息交给外键级联，并清理短期窗口与长期会话层', async () => {
     const em = makeEm();
     em.findOne.mockResolvedValue(SESSION);
     const service = makeService(em);
+    memory.shortMemory.clear.mockClear();
+    memory.longMemory.clearSession.mockClear();
 
     await service.remove('1001', '8001');
     expect(em.remove).toHaveBeenCalledWith(SESSION);
     expect(em.find).not.toHaveBeenCalled();
+    expect(memory.shortMemory.clear).toHaveBeenCalledWith('1001', '8001');
+    expect(memory.longMemory.clearSession).toHaveBeenCalledWith('1001', '8001');
+  });
+
+  it('listRecentMessages 取最近 N 条并按时间正序返回（回填用）', async () => {
+    const em = makeEm();
+    em.findOne.mockResolvedValue(SESSION);
+    // 库返回倒序（新 → 旧）
+    em.find.mockResolvedValue([
+      { role: 'assistant', content: '第二答' },
+      { role: 'user', content: '第二问' },
+      { role: 'assistant', content: '第一答' },
+      { role: 'user', content: '第一问' },
+    ]);
+    const service = makeService(em);
+
+    const rows = await service.listRecentMessages('1001', '8001', 20);
+    expect(rows.map((r) => (r as { content: string }).content)).toEqual([
+      '第一问',
+      '第一答',
+      '第二问',
+      '第二答',
+    ]);
+    expect(em.find).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ take: 20 }),
+    );
+  });
+
+  it('listRecentMessages 校验会话归属（他人会话 404）', async () => {
+    const em = makeEm();
+    em.findOne.mockResolvedValue(null);
+    const service = makeService(em);
+
+    await expect(
+      service.listRecentMessages('1002', '8001', 20),
+    ).rejects.toThrow(NotFoundException);
   });
 });

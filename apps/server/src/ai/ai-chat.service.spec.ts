@@ -3,6 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { AiChatService } from './ai-chat.service.js';
 import { RetrievalService } from '../rag/retrieval.service.js';
 import { ChatSessionService } from './chat-session.service.js';
+import { ChatShortMemoryService } from './chat-short-memory.service.js';
+import { ChatLongMemoryService } from './chat-long-memory.service.js';
+import { ChatQueryRewriteService } from './chat-query-rewrite.service.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
 
 // ChatOpenAI 由构造函数内部创建，直接 mock 整个模块，
@@ -48,19 +51,51 @@ function makeSessions(
       updatedAt: new Date(),
     })) as unknown as ChatSessionService['appendTurn']);
   return {
-    sessions: { appendTurn: appendTurnFn } as unknown as ChatSessionService,
+    sessions: {
+      appendTurn: appendTurnFn,
+      listRecentMessages: vi.fn(async () => []),
+    } as unknown as ChatSessionService,
     appendTurn: appendTurnFn as unknown as ReturnType<typeof vi.fn>,
   };
+}
+
+/** 记忆与改写 fake：默认空历史、直检、无长期记忆命中 */
+function makeMemoryFakes() {
+  const shortMemory = {
+    windowSize: 20,
+    tryLoad: vi.fn(async () => null),
+    save: vi.fn(async () => {}),
+    appendTurn: vi.fn(async () => {}),
+    clear: vi.fn(async () => {}),
+  } as unknown as ChatShortMemoryService;
+  const longMemory = {
+    search: vi.fn(async () => ({ user: [], session: [] })),
+    buildSystemMessage: vi.fn(() => null),
+    rememberTurn: vi.fn(async () => {}),
+    clearSession: vi.fn(async () => {}),
+  } as unknown as ChatLongMemoryService;
+  const queryRewrite = {
+    rewrite: vi.fn(async (question: string) => ({
+      query: question,
+      needRetrieve: true,
+    })),
+  } as unknown as ChatQueryRewriteService;
+  return { shortMemory, longMemory, queryRewrite };
 }
 
 function makeService(
   searchImpl: (params: { query: string; topK?: number }) => Promise<SearchHit[]>,
   sessionsImpl?: Parameters<typeof makeSessions>[0],
-): AiChatService & { appendTurn: ReturnType<typeof vi.fn> } {
+): AiChatService & {
+  appendTurn: ReturnType<typeof vi.fn>;
+  fakes: ReturnType<typeof makeMemoryFakes>;
+  retrievalSearch: ReturnType<typeof vi.fn>;
+} {
   const retrieval = {
     search: vi.fn(searchImpl),
   } as unknown as RetrievalService;
   const { sessions, appendTurn } = makeSessions(sessionsImpl);
+  const fakes = makeMemoryFakes();
   const service = new AiChatService(
     {
       get: (k: string, d?: string) =>
@@ -68,8 +103,19 @@ function makeService(
     } as unknown as ConfigService,
     retrieval,
     sessions,
-  ) as AiChatService & { appendTurn: ReturnType<typeof vi.fn> };
+    fakes.shortMemory,
+    fakes.longMemory,
+    fakes.queryRewrite,
+  ) as AiChatService & {
+    appendTurn: ReturnType<typeof vi.fn>;
+    fakes: ReturnType<typeof makeMemoryFakes>;
+    retrievalSearch: ReturnType<typeof vi.fn>;
+  };
   service.appendTurn = appendTurn;
+  service.fakes = fakes;
+  service.retrievalSearch = retrieval.search as unknown as ReturnType<
+    typeof vi.fn
+  >;
   return service;
 }
 
@@ -81,12 +127,16 @@ describe('AiChatService（mock 检索与 LLM）', () => {
   it('空问题返回固定话术，不调检索与 LLM', async () => {
     const search = vi.fn();
     const retrieval = { search } as unknown as RetrievalService;
+    const { shortMemory, longMemory, queryRewrite } = makeMemoryFakes();
     const service = new AiChatService(
       {
         get: (k: string, d?: string) => (k === 'LLM_API_KEY' ? 'k' : d),
       } as unknown as ConfigService,
       retrieval,
       makeSessions().sessions,
+      shortMemory,
+      longMemory,
+      queryRewrite,
     );
 
     const res = await service.chat('   ');
@@ -147,12 +197,16 @@ describe('AiChatService（mock 检索与 LLM）', () => {
         { ...hit('a', 0.9), content: longContent },
       ]),
     } as unknown as RetrievalService;
+    const { shortMemory, longMemory, queryRewrite } = makeMemoryFakes();
     const service = new AiChatService(
       {
         get: (k: string, d?: string) => (k === 'LLM_API_KEY' ? 'k' : d),
       } as unknown as ConfigService,
       retrieval,
       makeSessions().sessions,
+      shortMemory,
+      longMemory,
+      queryRewrite,
     );
 
     const res = await service.chat('问题');
@@ -217,5 +271,94 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     const res = await service.chat('问题', 5, USER);
     expect(res.answer).toBe('结论 [1]。');
     expect(res.sessionId).toBeNull();
+  });
+
+  it('改写后的独立查询用于检索，而不是原问题', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+    service.fakes.queryRewrite.rewrite = vi.fn(async () => ({
+      query: '差旅费超五千 加签 审批人',
+      needRetrieve: true,
+    })) as never;
+
+    await service.chat('那这个找谁？', 5, USER, '8001');
+    expect(service.retrievalSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: '差旅费超五千 加签 审批人' }),
+      expect.anything(),
+    );
+  });
+
+  it('寒暄 needRetrieve=false 时跳过检索，仍正常生成回答', async () => {
+    invokeMock.mockResolvedValue({ content: '不客气。' });
+    const service = makeService(async () => []);
+    service.fakes.queryRewrite.rewrite = vi.fn(async () => ({
+      query: '好的谢谢',
+      needRetrieve: false,
+    })) as never;
+
+    const res = await service.chat('好的谢谢', 5, USER, '8001');
+    expect(service.retrievalSearch).not.toHaveBeenCalled();
+    expect(res.answer).toBe('不客气。');
+    expect(res.answer).not.toBe('知识库里没有相关内容。');
+  });
+
+  it('长期记忆命中时作为系统消息注入上下文', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const { SystemMessage } = await import('@langchain/core/messages');
+    const service = makeService(async () => [hit('a', 0.9)]);
+    service.fakes.longMemory.search = vi.fn(async () => ({
+      user: ['用户是成都研发中心后端'],
+      session: [],
+    })) as never;
+    service.fakes.longMemory.buildSystemMessage = vi.fn(
+      (hits: { user: string[] }) =>
+        new SystemMessage(`【用户长期记忆】\n${hits.user.join('\n')}`),
+    ) as never;
+
+    await service.chat('问题', 5, USER, '8001');
+    const messages = invokeMock.mock.calls[0][0] as Array<{ content: unknown }>;
+    expect(messages.some((m) => String(m.content).includes('【用户长期记忆】'))).toBe(
+      true,
+    );
+  });
+
+  it('检索无命中时也写短期窗口与长期记忆（空结果同样是一轮对话）', async () => {
+    const service = makeService(async () => []);
+    const res = await service.chat('问题', 5, USER, '8001');
+
+    expect(res.answer).toBe('知识库里没有相关内容。');
+    expect(service.fakes.shortMemory.appendTurn).toHaveBeenCalledWith(
+      USER.userId,
+      '9001',
+      expect.any(Array),
+      '问题',
+      '知识库里没有相关内容。',
+    );
+    expect(service.fakes.longMemory.rememberTurn).toHaveBeenCalledWith(
+      USER.userId,
+      '9001',
+      '问题',
+      '知识库里没有相关内容。',
+    );
+  });
+
+  it('正常回答后回写短期窗口并异步写长期记忆', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+
+    await service.chat('问题', 5, USER, '8001');
+    expect(service.fakes.shortMemory.appendTurn).toHaveBeenCalledWith(
+      USER.userId,
+      '9001',
+      expect.any(Array),
+      '问题',
+      '结论 [1]。',
+    );
+    expect(service.fakes.longMemory.rememberTurn).toHaveBeenCalledWith(
+      USER.userId,
+      '9001',
+      '问题',
+      '结论 [1]。',
+    );
   });
 });
