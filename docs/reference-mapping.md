@@ -80,6 +80,14 @@
 | （无） | 存量索引可见性回填（启动幂等执行） | 🔴 超越 | 参考未回填、依赖重新发布，历史公开文档会被过滤误杀；本项目 ES `updateByQuery` + Neo4j `SET` 一次性补齐（分叉登记 2026-10-11） |
 | **v15** 前端 TeamsPage 成员搜索加人 / 确认移出 | 同款交互（fix-v15-followup 补齐） | 🟢 对齐 | 团队是可见性判定入口，成员管理从裸用户 ID 输入升级为按用户名搜索选择；问答页同步「可见知识库」口径文案 |
 
+| **v16** `ai/chat-short-memory.service.ts` | 同名文件 | 🟢 对齐 | Redis 热窗口：TTL 24h / 最多 20 条 / langchain StoredMessage 序列化；差异：复用本项目 `RedisService` 薄封装，key 前缀 `kh:chat` |
+| **v16** `ai/chat-long-memory.service.ts` | 同名文件 | 🟢 对齐 | Mem0 user / session 双层 + zod 分类器；只从用户提问抽事实；分叉：LLM 配置走本项目回退链与 `LLM_MODEL` |
+| **v16** `ai/chat-query-rewrite.service.ts` | 同名文件 | 🟢 对齐 | `standalone_query` + `need_retrieve` 结构化输出，失败回退原问题；改写上下文压缩同款（最近 4 条 / 200·120 字） |
+| **v16** `ai/chat-memory.util.ts` | 同名文件 | 🟢 对齐 | 消息文本提取 / 工作消息过滤 / PG 行转消息 / 改写上下文，逐函数对应 |
+| **v16** `chat-session.service.ts` `listRecentMessages` + 删除清记忆 | 同名方法 | 🟡 分叉 | 删除沿用「只删会话行 + 外键 CASCADE」，记忆清理放删除成功后（基线应用层删两张表） |
+| **v16** Agent `summarizationMiddleware`（12 条触发 / 保留 6 条） | 同款配置 | 🟢 对齐 | 独立 compactLlm 关思考；只压缩运行期上下文，不改 Redis 窗口与 PG 历史 |
+| **v16** 前端（无改动） | 前端无改动 | 🟢 对齐 | `data-status` 不是白名单，新增 `rewrite` 阶段文案可直接展示，无需前端改造 |
+
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
 ---
@@ -165,6 +173,9 @@
 | **2026-10-11** | **团队树接口的开放范围**（v15） | 参考项目把 `GET /teams/tree` 收为 ADMIN 专有（`@Roles(ADMIN)`），并另加 `/teams/mine` | 保留 `tree` 为 `@Public`（免登录），仅新增 `mine` 供文档可见范围使用 | 主项目 `/teams/tree` 承担注册等登录前场景的公开数据职责，收权会破坏免登录流程；且类级角色声明叠加 `@Public` 正是 v9 已登记的 403 缺陷 |
 | **2026-10-11** | **`toAuthUser` 的装配方式**（v15） | 参考项目把 `toAuthUser` 改成 async，内部自己查团队 | `toAuthUser` 保持同步签名、新增 `teamIds` 参数，由 `buildAuthUser` / `validateCredentials` 查好传入 | 避免 async 化引发调用点连锁改造；查询代价落在既有的每请求权限重算链路上，与权限码即时生效策略一致 |
 | **2026-10-11** | **存量索引的可见性字段**（v15） | 参考项目未做回填（旧索引缺 `is_public`，依赖重新发布） | 主动实现一次性回填（ES `updateByQuery` + Neo4j `SET`），并在启动幂等执行 | 不回填会让历史已发布公开文档在过滤上线后被整体误判为不可见，属于静默功能回退 |
+| 2026-10-19 | **短期记忆的连接复用**（v16） | 新建独立 Redis 连接（AI 模块自管 client） | 复用既有 `RedisService` 薄封装（get / set(ttl) / del），AiModule 显式导入 RedisModule | 连接样板只留一份，既有探测与降级逻辑直接继承；key 前缀 `kh:chat` 与 `kh_auth` 同命名空间 |
+| 2026-10-19 | **会话删除后的记忆清理**（v16） | 应用层先删消息再删会话，再清缓存与 Mem0 | 沿用「只删会话行 + 外键 CASCADE」，删除成功后清 Redis 与 Mem0 会话层 | 主项目 v13 已把级联下沉到外键，应用层重复删除是多余防御；两个 clear 内部吞错，不影响删除结果 |
+| 2026-10-19 | **记忆链路的 LLM 配置**（v16） | `OPENAI_API_KEY / DASHSCOPE_API_KEY` + `MODEL_NAME` | 与 ai-chat / ai-stream 同源回退链（`LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY`）+ `LLM_MODEL` | 同一进程三处 AI 服务各挂一套配置必然漂移；主项目无 DASHSCOPE_API_KEY 变量 |
 
 
 
