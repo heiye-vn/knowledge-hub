@@ -73,6 +73,13 @@
 | **v14** `ChatMessageParts.tsx`（按 part 渲染） | 同名组件 | 🟢 对齐 | ThinkBlock（reasoning）/ RetrieveCard（data-retrieve）/ WebSearchCard（web_search 工具）/ AnswerMarkdown 正文；`citedSources` 只展示回答实际标注的条目 |
 | **v14** `SourceCiteList` 卡片化 + 锚点联动 | 同款升级 | 🟢 对齐 | 横排引用卡 + `[n]` 点击 flash 定位 + react-markdown / remark-gfm；vite 代理 `timeout:0` 防 SSE 被掐 |
 
+| **v15** `document/document-access.ts` | 同名文件 | 🟢 对齐 | 可见性规则 SSOT（作用域构造 / 读写判定 / ES 与 Cypher 过滤片段）；差异：ES 字段映射统一 snake_case 只维护单套（参考因两索引命名不一致维护两套） |
+| **v15** `user.service` 异步化 `toAuthUser` 查团队 | 同步签名 + `teamIds` 参数，`buildAuthUser` 并行查好传入 | 🟡 分叉 | 避免 async 化连锁改造；团队变动即时生效与权限码策略一致（分叉登记 2026-10-11） |
+| **v15** `GET /teams/mine` | 同名接口（登录即可访问） | 🟢 对齐 | `teamIds` = 成员身份 ∪ 担任负责人；`/teams/tree` 保持 `@Public` 不收权（分叉登记 2026-10-11） |
+| **v15** `wrapEsQuery` 包装可见性过滤 | 复用既有 `filterClauses`，可见性子句由 `buildFilters` 并入 | 🟡 分叉 | keyword / vector / hybrid 三种 mode 一条路径同时生效；`wrapEsQuery` 仅作无过滤架构场景的兼容工具保留 |
+| （无） | 存量索引可见性回填（启动幂等执行） | 🔴 超越 | 参考未回填、依赖重新发布，历史公开文档会被过滤误杀；本项目 ES `updateByQuery` + Neo4j `SET` 一次性补齐（分叉登记 2026-10-11） |
+| **v15** 前端 TeamsPage 成员搜索加人 / 确认移出 | 同款交互（fix-v15-followup 补齐） | 🟢 对齐 | 团队是可见性判定入口，成员管理从裸用户 ID 输入升级为按用户名搜索选择；问答页同步「可见知识库」口径文案 |
+
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
 ---

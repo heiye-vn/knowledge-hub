@@ -68,11 +68,11 @@ EXISTS { MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]-
 
 ---
 
-## 五、 【易错】scope 缺省是静默 fail-closed
+## 五、 【易错】scope 缺省是静默 fail-open
 
-`buildFilters` 中 `scope ? esVisibilityFilter(scope) : null`。任何**忘记传 user** 的调用方（未来的 worker / 后台任务 / 脚本）会静默拿到空结果而不是报错。
+`buildFilters` 中 `scope ? esVisibilityFilter(scope) : null`——无 scope 时**不加可见性子句、返回全量数据**（fail-open），而不是报错，与「缺省即收紧」的直觉相反。任何**忘记传 user** 的调用方（未来的 worker / 后台任务 / 脚本）会静默拿到未过滤结果。
 
-排查特征：检索「什么都查不到」且日志无异常。给检索入口补显式注释，或让内部非用户调用显式构造 `unrestricted` scope。
+排查特征：某条新链路的检索结果「比预期多」（能看到他人私有 / 团队文档）且日志无异常。新增检索调用方必须显式传 `accessFromUser(user)`；确需全量的内部任务应显式构造 `unrestricted` scope，把意图写进代码而不是靠缺省。
 
 ---
 
