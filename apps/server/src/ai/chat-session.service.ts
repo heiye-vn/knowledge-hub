@@ -9,6 +9,8 @@ import { nextSnowflakeId } from '../common/snowflake-id.js';
 import { AiSessionEntity } from './entities/ai-session.entity.js';
 import { AiMessageEntity } from './entities/ai-message.entity.js';
 import type { ChatSource } from './chat.types.js';
+import { ChatShortMemoryService } from './chat-short-memory.service.js';
+import { ChatLongMemoryService } from './chat-long-memory.service.js';
 import {
   CreateSessionDto,
   QuerySessionDto,
@@ -38,6 +40,8 @@ export class ChatSessionService {
   constructor(
     @InjectEntityManager()
     private readonly em: EntityManager,
+    private readonly shortMemory: ChatShortMemoryService,
+    private readonly longMemory: ChatLongMemoryService,
   ) {}
 
   /** 本人的会话分页，最近活跃在前 */
@@ -71,10 +75,13 @@ export class ChatSessionService {
     return this.em.save(session);
   }
 
-  /** 删除会话；消息经外键级联清理 */
+  /** 删除会话；消息经外键级联清理，缓存与长期记忆会话层同步清掉 */
   async remove(userId: string, id: string) {
     const session = await this.getOwned(userId, id);
     await this.em.remove(session);
+    // 两个 clear 内部均吞错，删会话已成功不因清理失败回滚
+    await this.shortMemory.clear(userId, id);
+    await this.longMemory.clearSession(userId, id);
     return { message: '已删除' };
   }
 
@@ -85,6 +92,17 @@ export class ChatSessionService {
       where: { sessionId },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
+  }
+
+  /** 最近 N 条，时间正序，供短期记忆 Redis miss 时回填工作窗口 */
+  async listRecentMessages(userId: string, sessionId: string, limit: number) {
+    await this.getOwned(userId, sessionId);
+    const rows = await this.em.find(AiMessageEntity, {
+      where: { sessionId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: Math.max(limit, 1),
+    });
+    return rows.reverse();
   }
 
   /**
