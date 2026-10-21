@@ -11,6 +11,7 @@ import { PermissionsGuard } from './permissions.guard.js';
 import { TokenRevocationService } from './token-revocation.service.js';
 import { EmailActivationService } from './email-activation.service.js';
 import { PasswordResetService } from './password-reset.service.js';
+import { AuthRateLimitGuard } from './rate-limit.guard.js';
 import { RedisModule } from '../redis/redis.module.js';
 import { MailModule } from '../mail/mail.module.js';
 import { UserModule } from '../user/user.module.js';
@@ -35,6 +36,8 @@ import { UserModule } from '../user/user.module.js';
     TokenRevocationService,
     EmailActivationService,
     PasswordResetService,
+    // 认证类接口限流（按 @AuthRateLimit 声明生效，未声明的端点直接放行）
+    AuthRateLimitGuard,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import {
   LoginDto,
@@ -14,6 +14,8 @@ import { Public } from './decorators/public.decorator.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Roles } from './decorators/roles.decorator.js';
 import { RoleCode } from '../common/constants/roles.js';
+import { AuthRateLimit } from './rate-limit.decorator.js';
+import { AuthRateLimitGuard } from './rate-limit.guard.js';
 import type { AuthUser } from './auth-user.interface.js';
 
 /** 认证接口：注册 / 登录 / 刷新 / 激活 / 重置密码为公开端点，其余需登录 */
@@ -21,14 +23,23 @@ import type { AuthUser } from './auth-user.interface.js';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  /** 注册：同一 IP 10 分钟最多 5 次，防批量造号 */
   @Public()
   @Post('register')
+  @UseGuards(AuthRateLimitGuard)
+  @AuthRateLimit({ dimension: 'ip', limit: 5, windowSeconds: 600 })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
+  /** 登录：IP 30 次/分钟防撞库，账号 10 次/分钟防定点爆破 */
   @Public()
   @Post('login')
+  @UseGuards(AuthRateLimitGuard)
+  @AuthRateLimit(
+    { dimension: 'ip', limit: 30, windowSeconds: 60 },
+    { dimension: 'account', limit: 10, windowSeconds: 60 },
+  )
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
@@ -70,9 +81,14 @@ export class AuthController {
     return this.authService.resendActivationForUser(userId);
   }
 
-  /** 发送重置密码验证码（6 位，10 分钟有效，60 秒冷却） */
+  /** 发送重置密码验证码（6 位，10 分钟有效，60 秒冷却；IP 与邮箱双维度限流防轰炸） */
   @Public()
   @Post('password/reset/send-code')
+  @UseGuards(AuthRateLimitGuard)
+  @AuthRateLimit(
+    { dimension: 'ip', limit: 5, windowSeconds: 600 },
+    { dimension: 'email', limit: 3, windowSeconds: 600 },
+  )
   sendResetCode(@Body() dto: SendResetCodeDto) {
     return this.authService.sendResetCode(dto);
   }
@@ -80,6 +96,11 @@ export class AuthController {
   /** 验证码重置密码（一次性提交邮箱 + 验证码 + 新密码） */
   @Public()
   @Post('password/reset')
+  @UseGuards(AuthRateLimitGuard)
+  @AuthRateLimit(
+    { dimension: 'ip', limit: 10, windowSeconds: 600 },
+    { dimension: 'email', limit: 10, windowSeconds: 600 },
+  )
   resetPassword(@Body() dto: ResetPasswordByEmailDto) {
     return this.authService.resetPasswordByEmail(dto);
   }
