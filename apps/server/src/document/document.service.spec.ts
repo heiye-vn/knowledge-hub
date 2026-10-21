@@ -81,12 +81,18 @@ function makeService(
       chunks: 3,
     }),
     deleteDocument: async () => undefined,
+    updateVisibility: async () => 1,
   };
 
   const searchIndexService = {
     isAvailable: () => opts.search !== false,
     indexDocument: async () => undefined,
     deleteDocument: async () => undefined,
+    updateVisibility: async () => 1,
+  };
+
+  const graphBuildService = {
+    updateVisibility: async () => undefined,
   };
 
   const kgBuildPublisher = {
@@ -109,6 +115,10 @@ function makeService(
     reject: async () => ({ id: 'review-1', documentId: doc?.id ?? '1001' }),
   };
 
+  const outbox = {
+    record: vi.fn(async () => 'outbox-1'),
+  };
+
   const service = new DocumentService(
     em as never,
     {} as unknown as FileParserService,
@@ -117,10 +127,20 @@ function makeService(
     searchIndexService as unknown as SearchIndexService,
     kgBuildPublisher as never,
     reviewService as unknown as DocumentReviewService,
-    {} as never,
+    graphBuildService as never,
+    outbox as never,
   );
 
-  return { service, saved, createdReviews };
+  return {
+    service,
+    saved,
+    createdReviews,
+    outbox,
+    ragOrchestrator,
+    searchIndexService,
+    kgBuildPublisher,
+    graphBuildService,
+  };
 }
 
 describe('DocumentService.publish 状态守卫', () => {
@@ -386,6 +406,7 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
       {} as never,
       reviewService as unknown as DocumentReviewService,
       {} as never,
+      {} as never,
     );
 
     return service;
@@ -459,6 +480,7 @@ describe('DocumentService 图片上传解析闭环', () => {
         /** 免审模式：上传解析链路不涉及审核，用默认 false 保持用例语义 */
         isRequireApproval: () => false,
       } as never,
+      {} as never,
       {} as never,
     );
 
@@ -574,6 +596,7 @@ describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
       {} as never,
       { isRequireApproval: () => false } as never,
       {} as never,
+      {} as never,
     );
 
     await service.update('1001', { isPublic: true }, authorUser);
@@ -617,6 +640,7 @@ describe('DocumentService.safeBackfillVisibility 存量可见性回填', () => {
       {} as never,
       { isRequireApproval: () => false } as never,
       mockKg as never,
+      {} as never,
     );
 
     const result = await service.safeBackfillVisibility();
@@ -655,12 +679,92 @@ describe('DocumentService.safeBackfillVisibility 存量可见性回填', () => {
       {} as never,
       { isRequireApproval: () => false } as never,
       mockKg as never,
+      {} as never,
     );
 
     const result = await service.safeBackfillVisibility();
     expect(result.backfilled).toBe(false);
     expect(mockRag.backfillVisibility).not.toHaveBeenCalled();
     expect(mockKg.updateVisibility).not.toHaveBeenCalled();
+  });
+});
+
+describe('DocumentService 索引补偿 outbox', () => {
+  it('RAG 索引失败写入 outbox 并上抛', async () => {
+    const { service, ragOrchestrator, outbox } = makeService(makeDoc(Status.Draft));
+    vi.spyOn(ragOrchestrator, 'indexDocument').mockRejectedValue(
+      new Error('es down'),
+    );
+
+    await expect(service.publish('1001')).rejects.toThrow('es down');
+
+    expect(outbox.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: '1001',
+        target: 'rag',
+        operation: 'upsert',
+      }),
+    );
+  });
+
+  it('文档搜索索引失败写入 outbox，但发布继续返回', async () => {
+    const { service, searchIndexService, outbox } = makeService(
+      makeDoc(Status.Draft),
+    );
+    vi.spyOn(searchIndexService, 'indexDocument').mockRejectedValue(
+      new Error('bulk failed'),
+    );
+
+    const result = await service.publish('1001');
+
+    expect(result).toMatchObject({ searchIndexed: false });
+    expect(outbox.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: '1001',
+        target: 'search',
+        operation: 'upsert',
+      }),
+    );
+  });
+
+  it('KG 入队失败写入 outbox，但发布继续返回', async () => {
+    const { service, kgBuildPublisher, outbox } = makeService(
+      makeDoc(Status.Draft),
+    );
+    vi.spyOn(kgBuildPublisher, 'enqueueBuildByDocIds').mockRejectedValue(
+      new Error('redis down'),
+    );
+
+    const result = await service.publish('1001');
+
+    expect(result).toMatchObject({ kgQueued: false });
+    expect(outbox.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: '1001',
+        target: 'kg',
+        operation: 'upsert',
+      }),
+    );
+  });
+
+  it('可见性同步失败写入 outbox，但不影响文档保存', async () => {
+    const { service, graphBuildService, outbox } = makeService(
+      makeDoc(Status.Published),
+    );
+    vi.spyOn(graphBuildService, 'updateVisibility').mockRejectedValue(
+      new Error('neo4j down'),
+    );
+
+    const result = await service.update('1001', { isPublic: true });
+
+    expect(result).toMatchObject({ id: '1001', isPublic: true });
+    expect(outbox.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: '1001',
+        target: 'visibility',
+        operation: 'visibility',
+      }),
+    );
   });
 });
 

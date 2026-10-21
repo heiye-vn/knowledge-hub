@@ -11,6 +11,7 @@ import { RoleEntity } from '../user/entities/role.entity.js';
 import { UserPermissionEntity } from '../user/entities/user-permission.entity.js';
 import { UserRoleEntity } from '../user/entities/user-role.entity.js';
 import { UserEntity } from '../user/entities/user.entity.js';
+import { IndexOutboxEntity } from '../indexing/entities/index-outbox.entity.js';
 
 /**
  * 实体清单（单一事实源）：
@@ -32,4 +33,5 @@ export const ENTITIES = [
   TeamMemberEntity,
   AiSessionEntity,
   AiMessageEntity,
+  IndexOutboxEntity,
 ];

@@ -34,6 +34,8 @@ import { FileParserService } from './parser/file-parser.service.js';
 import { SearchIndexService } from '../search/search-index.service.js';
 import { KgBuildPublisher } from '../kg/kg-build.publisher.js';
 import { GraphBuildService } from '../kg/graph-build.service.js';
+import { IndexOutboxService } from '../indexing/index-outbox.service.js';
+import { RoleCode } from '../common/constants/roles.js';
 import {
   accessFromUser,
   canReadDocument,
@@ -137,6 +139,8 @@ export class DocumentService implements OnModuleInit {
     /** 发布审核：审核开关判定 + 审核流水读写 */
     private readonly reviewService: DocumentReviewService,
     private readonly graphBuildService: GraphBuildService,
+    /** 索引失败补偿：写入 kh_index_outbox，由 Worker 退避重试 */
+    private readonly indexOutbox: IndexOutboxService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -230,6 +234,29 @@ export class DocumentService implements OnModuleInit {
     }
   }
 
+  /**
+   * 审计字段只能由管理员显式指定。
+   * 否则可伪造作者归属或操作流水；actor 为空表示服务层内部调用，沿用原有信任模型。
+   */
+  private assertAuditFieldsAllowed(
+    fields: { authorId?: string; createBy?: string; updateBy?: string },
+    actor?: AuthUser,
+  ) {
+    if (!actor) return;
+    const isAdmin = actor.roles?.includes(RoleCode.ADMIN) ?? false;
+    if (isAdmin) return;
+
+    if (
+      fields.authorId !== undefined ||
+      fields.createBy !== undefined ||
+      fields.updateBy !== undefined
+    ) {
+      throw new ForbiddenException(
+        '仅管理员可指定作者 / 创建人 / 更新人等审计字段',
+      );
+    }
+  }
+
 
   /**
    * 创建文档
@@ -268,6 +295,8 @@ export class DocumentService implements OnModuleInit {
     const status = requestedStatus;
     // 未传 summary 时，从正文截取预览作为 contentSummary
     const contentSummary = dto.summary ?? this.buildContentSummary(dto.content);
+
+    this.assertAuditFieldsAllowed(dto, actor);
 
     const saved = await this.em.transaction(async (tx) => {
       const doc = tx.create(DocumentEntity, {
@@ -461,7 +490,10 @@ export class DocumentService implements OnModuleInit {
     const oldStatus = doc.status;
     const oldIsPublic = doc.isPublic;
     const oldTeamId = doc.teamId ?? null;
+    const oldAuthorId = doc.authorId ?? null;
     let newContent: string | undefined;
+
+    this.assertAuditFieldsAllowed(dto, actor);
 
     // —— 正文变更 ——
     if (dto.content !== undefined) {
@@ -508,7 +540,11 @@ export class DocumentService implements OnModuleInit {
     const finalContent = newContent ?? (await this.loadContent(id));
 
     const visibilityChanged =
-      saved.isPublic !== oldIsPublic || (saved.teamId ?? null) !== oldTeamId;
+      saved.isPublic !== oldIsPublic ||
+      (saved.teamId ?? null) !== oldTeamId ||
+      // 作者也属于可见性三元组（公开 / 团队 / 作者），管理员转移作者后必须同步索引，
+      // 否则新作者按 author_id 过滤仍检索不到、旧作者反而继续可见
+      (saved.authorId ?? null) !== oldAuthorId;
 
     // 已发布文档改正文后的索引同步：
     // 免审模式直接重建（整篇重建已包含最新 is_public/team_id）；
@@ -546,12 +582,23 @@ export class DocumentService implements OnModuleInit {
     this.logger.log(
       `同步可见性：documentId=${doc.id}, isPublic=${vis.isPublic}, teamId=${vis.teamId ?? '-'}`,
     );
-    // 三套索引并发刷可见性字段；任一失败由外层 catch 统一告警
-    await Promise.all([
-      this.searchIndexService.updateVisibility(doc.id, vis),
-      this.ragOrchestrator.updateVisibility(doc.id, vis),
-      this.graphBuildService.updateVisibility(doc.id, vis),
-    ]);
+    // 三套索引并发刷可见性字段；任一失败写入 outbox 后抛出，由外层统一告警
+    try {
+      await Promise.all([
+        this.searchIndexService.updateVisibility(doc.id, vis),
+        this.ragOrchestrator.updateVisibility(doc.id, vis),
+        this.graphBuildService.updateVisibility(doc.id, vis),
+      ]);
+    } catch (error) {
+      // 并发更新可能已部分成功，补偿任务会把三套一起再刷一遍（幂等）
+      await this.indexOutbox.record({
+        documentId: doc.id,
+        target: 'visibility',
+        operation: 'visibility',
+        error,
+      });
+      throw error;
+    }
   }
 
 
@@ -772,9 +819,21 @@ export class DocumentService implements OnModuleInit {
     let chunks = 0;
     let indexed = false;
     if (this.ragOrchestrator.isAvailable()) {
-      const result = await this.ragOrchestrator.indexDocument(pipelineDoc);
-      chunks = result.chunks;
-      indexed = true;
+      try {
+        const result = await this.ragOrchestrator.indexDocument(pipelineDoc);
+        chunks = result.chunks;
+        indexed = true;
+      } catch (error) {
+        // RAG 索引是发布主链路，失败仍上抛（调用方需要知道发布未完成索引），
+        // 同时落 outbox：客户端不重试时后台也会补
+        await this.indexOutbox.record({
+          documentId: doc.id,
+          target: 'rag',
+          operation: 'upsert',
+          error,
+        });
+        throw error;
+      }
     } else {
       this.logger.warn(
         `RAG 索引链路不可用，已发布但未建向量索引：documentId=${doc.id}（检查 ELASTICSEARCH_ENABLED / EMBEDDING_API_KEY）`,
@@ -809,8 +868,14 @@ export class DocumentService implements OnModuleInit {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `清理 ES 向量块失败（检索侧会兜底过滤）：documentId=${id}, ${message}`,
+        `清理 ES 向量块失败（检索侧会兜底过滤，已写入 outbox）：documentId=${id}, ${message}`,
       );
+      await this.indexOutbox.record({
+        documentId: id,
+        target: 'rag',
+        operation: 'delete',
+        error: err,
+      });
     }
 
     let searchCleaned = false;
@@ -820,8 +885,14 @@ export class DocumentService implements OnModuleInit {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `清理文档搜索索引失败（检索侧会兜底过滤）：documentId=${id}, ${message}`,
+        `清理文档搜索索引失败（检索侧会兜底过滤，已写入 outbox）：documentId=${id}, ${message}`,
       );
+      await this.indexOutbox.record({
+        documentId: id,
+        target: 'search',
+        operation: 'delete',
+        error: err,
+      });
     }
 
     let kgDeleteQueued = false;
@@ -832,8 +903,14 @@ export class DocumentService implements OnModuleInit {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.error(
-          `KG 清理任务入队失败：documentId=${id}, ${message}`,
+          `KG 清理任务入队失败（已写入 outbox）：documentId=${id}, ${message}`,
         );
+        await this.indexOutbox.record({
+          documentId: id,
+          target: 'kg',
+          operation: 'delete',
+          error: err,
+        });
       }
     }
 
@@ -853,8 +930,14 @@ export class DocumentService implements OnModuleInit {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `KG 建图任务入队失败：documentId=${id}, ${message}`,
+        `KG 建图任务入队失败（已写入 outbox 待重试）：documentId=${id}, ${message}`,
       );
+      await this.indexOutbox.record({
+        documentId: id,
+        target: 'kg',
+        operation: 'upsert',
+        error: err,
+      });
       return null;
     }
   }
@@ -876,8 +959,14 @@ export class DocumentService implements OnModuleInit {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `文档搜索索引写入失败（可用 POST /rag/reindex 重建）：documentId=${pipelineDoc.id}, ${message}`,
+        `文档搜索索引写入失败（已写入 outbox 待重试）：documentId=${pipelineDoc.id}, ${message}`,
       );
+      await this.indexOutbox.record({
+        documentId: pipelineDoc.id,
+        target: 'search',
+        operation: 'upsert',
+        error: err,
+      });
       return false;
     }
   }

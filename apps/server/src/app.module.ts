@@ -16,6 +16,7 @@ import { KgModule } from './kg/kg.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AiModule } from './ai/ai.module.js';
 import { buildTypeOrmOptions } from './database/typeorm.options.js';
+import { IndexMaintenanceModule } from './indexing/index-maintenance.module.js';
 
 @Module({
   imports: [
@@ -39,6 +40,8 @@ import { buildTypeOrmOptions } from './database/typeorm.options.js';
     TeamModule,
     // feat-v11：AI 对话（RAG 检索精排 → LLM 生成 → [n] 引用溯源）
     AiModule,
+    // 索引失败 outbox 重试与 ES/KG 可见性巡检
+    IndexMaintenanceModule,
   ],
   controllers: [AppController],
   providers: [

@@ -6,6 +6,7 @@ import { FileParserService } from './parser/file-parser.service.js';
 import { RagModule } from '../rag/rag.module.js';
 import { SearchModule } from '../search/search.module.js';
 import { KgModule } from '../kg/kg.module.js';
+import { IndexOutboxModule } from '../indexing/index-outbox.module.js';
 
 /**
  * 文档模块
@@ -24,6 +25,8 @@ import { KgModule } from '../kg/kg.module.js';
     SearchModule,
     // 发布 / 删除时投递 KG 建图 / 清理任务（BullMQ kg.graph 队列）
     KgModule,
+    // 索引失败写入 outbox，由 IndexMaintenanceModule 的 Worker 重试
+    IndexOutboxModule,
   ],
   controllers: [DocumentController],
   providers: [DocumentService, DocumentReviewService, FileParserService],

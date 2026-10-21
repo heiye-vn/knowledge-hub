@@ -130,6 +130,11 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     await this.driver?.close();
   }
 
+  /** 配置层面是否启用（与连接是否可用区分，供健康检查与巡检标记 disabled） */
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
   isAvailable(): boolean {
     return this.driver !== null;
   }
