@@ -2,12 +2,17 @@ import { Type } from 'class-transformer';
 import {
   Allow,
   IsArray,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
   Max,
   Min,
 } from 'class-validator';
+import {
+  SEARCH_MODES,
+  type SearchMode,
+} from '../../rag/types/rag.types.js';
 
 /**
  * 流式对话请求体（useChat 发送的 UI Message 数组）。
@@ -34,6 +39,11 @@ export class ChatStreamDto {
   @Min(1)
   @Max(10)
   topK?: number;
+
+  /** 检索模式；默认 hybrid */
+  @IsOptional()
+  @IsIn(SEARCH_MODES)
+  mode?: SearchMode;
 
   @IsOptional()
   @IsString()

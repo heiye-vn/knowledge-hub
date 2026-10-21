@@ -361,4 +361,16 @@ describe('AiChatService（mock 检索与 LLM）', () => {
       '结论 [1]。',
     );
   });
+
+  it('mode 透传到检索服务', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+
+    await service.chat('问题', 3, undefined, undefined, 'keyword');
+
+    expect(service.retrievalSearch).toHaveBeenCalledWith(
+      { query: '问题', topK: 3, mode: 'keyword' },
+      undefined,
+    );
+  });
 });

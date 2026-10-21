@@ -48,7 +48,13 @@ export class AiController {
   @Post('chat')
   @RequirePermission('search')
   chat(@Body() dto: ChatDto, @CurrentUser() user: AuthUser) {
-    return this.aiChat.chat(dto.content, dto.topK ?? 5, user, dto.sessionId);
+    return this.aiChat.chat(
+      dto.content,
+      dto.topK ?? 5,
+      user,
+      dto.sessionId,
+      dto.mode,
+    );
   }
 
   /**

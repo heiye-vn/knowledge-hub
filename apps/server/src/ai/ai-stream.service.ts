@@ -236,7 +236,7 @@ export class AiStreamService {
           plan.needRetrieve
             ? this.retrieval
                 .search(
-                  { query: plan.query, topK },
+                  { query: plan.query, topK, mode: dto.mode },
                   user ? accessFromUser(user) : undefined,
                 )
                 .catch((error) => {

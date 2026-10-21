@@ -58,8 +58,9 @@ export interface PipelineDocument {
   commentCount?: number;
 }
 
-/** 混合检索模式 */
-export type SearchMode = 'hybrid' | 'vector' | 'keyword';
+/** 检索模式（运行时数组与类型共用，避免 DTO 与检索实现漂移） */
+export const SEARCH_MODES = ['hybrid', 'vector', 'keyword'] as const;
+export type SearchMode = (typeof SEARCH_MODES)[number];
 
 /** 单条检索命中结果 */
 export interface SearchHit {

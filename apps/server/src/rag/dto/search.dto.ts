@@ -1,6 +1,6 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import type { SearchMode } from '../types/rag.types.js';
+import { SEARCH_MODES, type SearchMode } from '../types/rag.types.js';
 
 /** 检索请求 */
 export class SearchDto {
@@ -10,7 +10,7 @@ export class SearchDto {
 
   /** 检索模式：hybrid 混合 / vector 纯向量 / keyword 纯关键词 */
   @IsOptional()
-  @IsEnum(['hybrid', 'vector', 'keyword'])
+  @IsIn(SEARCH_MODES)
   mode?: SearchMode;
 
   /** 返回条数 */

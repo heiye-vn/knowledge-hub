@@ -7,7 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import { RetrievalService } from '../rag/retrieval.service.js';
-import type { SearchHit } from '../rag/types/rag.types.js';
+import type { SearchHit, SearchMode } from '../rag/types/rag.types.js';
 import { ChatSessionService } from './chat-session.service.js';
 import { ChatShortMemoryService } from './chat-short-memory.service.js';
 import { ChatLongMemoryService } from './chat-long-memory.service.js';
@@ -82,6 +82,7 @@ export class AiChatService {
     topK = 5,
     user?: AuthUser,
     sessionId?: string,
+    mode?: SearchMode,
   ): Promise<{
     sessionId: string | null;
     answer: string;
@@ -99,7 +100,7 @@ export class AiChatService {
     const [hits, memHits] = await Promise.all([
       plan.needRetrieve
         ? this.retrieval.search(
-            { query: plan.query, topK },
+            { query: plan.query, topK, mode },
             user ? accessFromUser(user) : undefined,
           )
         : Promise.resolve([] as SearchHit[]),
