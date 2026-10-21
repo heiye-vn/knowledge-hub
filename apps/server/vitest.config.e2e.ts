@@ -6,6 +6,9 @@ export default defineConfig({
   test: {
     globals: true,
     root: './',
-    include: ['**/*.e2e-spec.ts'],
+    // 两套命名并存：test/ 下的 *.e2e-spec.ts 与 src/ 下历史遗留的 *e2e*.spec.ts
+    include: ['**/*.e2e-spec.ts', '**/*e2e*.spec.ts'],
+    testTimeout: 300_000,
+    hookTimeout: 60_000,
   },
 });
