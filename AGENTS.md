@@ -21,11 +21,18 @@ pnpm build:server
 # 运行单元测试
 pnpm test:server
 
+# 运行前端单元测试
+pnpm test:web
+
 # 运行服务端 E2E 端到端测试
 pnpm --filter @knowledge-hub/server test:e2e
 
 # 运行代码规范检查
 pnpm --filter @knowledge-hub/server lint
+
+# 数据库迁移（表结构变更后执行 / 查看待办）
+pnpm migration:run
+pnpm migration:show
 ```
 
 ---
@@ -39,6 +46,11 @@ pnpm --filter @knowledge-hub/server lint
   实体侧不建 ORM 级 `@OneToOne`，与 `category_id` 等一样作裸列按 ID 直查。
 - **同库多表写入一律用 `em.transaction()`** 保证原子性。原「跨库双写补偿」规范随 MongoDB 下线而作废。
 - 【易错】`em.update()` 不走实体生命周期，**不会自动更新 `@UpdateDateColumn`**，需手动带 `updatedAt`。
+- **表结构变更必须新增 TypeORM migration**（`apps/server/src/database/migrations/`），并执行
+  `pnpm migration:run` 验证；`init-scripts/postgresql/01-init.sql` 是本地空卷引导快照，**已冻结，禁止再改**。
+- 运行时与迁移 CLI 共用 `src/database/typeorm.options.ts` / `entities.ts`；新增实体必须登记进 `ENTITIES`。
+- **索引写入失败不得只记日志**：调用 `IndexOutboxService.record({ documentId, target, operation, error })`
+  落库，由 Worker 退避重试；可见性同步失败同样记录。人工重建入口只作为兜底，不能替代自动补偿。
 
 ### 2.2 雪花 ID 与大整数处理
 - 所有核心业务实体的主键 ID 必须由雪花算法生成（`nextSnowflakeId()`）。

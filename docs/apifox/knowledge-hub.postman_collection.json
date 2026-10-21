@@ -67,7 +67,7 @@
       "name": "系统",
       "item": [
         {
-          "name": "健康检查",
+          "name": "存活探针",
           "request": {
             "method": "GET",
             "header": [],
@@ -80,7 +80,25 @@
                 "health"
               ]
             },
-            "description": "确认服务是否可用。返回 {\"status\":\"ok\"} 即正常。\n若连接失败：确认服务已启动（默认 3000 端口）。"
+            "description": "只证明进程存活，不探测依赖。返回 { status: \"ok\", uptime } 即正常；依赖抖动不会影响该端点。"
+          }
+        },
+        {
+          "name": "就绪探针",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            },
+            "description": "真实探测 PostgreSQL / Redis / ES / Neo4j（单项超时 HEALTH_CHECK_TIMEOUT_MS，默认 1500ms）。\nPostgreSQL 不可用 → HTTP 503 + status=error；可选依赖不可用 → HTTP 200 + status=degraded；\n配置层关闭的依赖标记 disabled。"
           }
         },
         {
@@ -2876,6 +2894,59 @@
             "description": "删除会话，消息经外键级联清理。返回 {message: '已删除'}。"
           },
           "name": "删除会话"
+        }
+      ]
+    },
+    {
+      "name": "索引运维（管理员）",
+      "item": [
+        {
+          "name": "索引补偿任务统计",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/indexing/outbox/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "indexing",
+                "outbox",
+                "stats"
+              ]
+            },
+            "description": "按状态统计 kh_index_outbox 任务数（pending / retry / succeeded / dead）。\ndead 表示重试达到上限，需要人工介入。仅管理员可访问。"
+          }
+        },
+        {
+          "name": "手动触发可见性巡检",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/indexing/patrol/run",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "indexing",
+                "patrol",
+                "run"
+              ]
+            },
+            "description": "立即执行一轮可见性校正（以写代检，幂等），返回 { scanned, synced, failed }。\n定时任务关闭（VISIBILITY_PATROL_ENABLED=false）时作为兜底入口。仅管理员可访问。"
+          }
         }
       ]
     }
