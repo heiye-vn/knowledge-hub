@@ -1,7 +1,9 @@
 import { clearAuth, getAccessToken, getRefreshToken, setAuth } from '../auth'
 import type { AuthUser } from '../types'
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const rawApiBase = import.meta.env.VITE_API_BASE || '/api'
+export const API_BASE =
+  rawApiBase === '/' ? '' : rawApiBase.replace(/\/+$/, '')
 
 export class ApiError extends Error {
   status: number
@@ -63,6 +65,33 @@ async function tryRefresh() {
     })()
   }
   return refreshing
+}
+
+/** 供自管 fetch 的调用方（如 SSE 聊天）复用同一套刷新与并发去重 */
+export function refreshAccessToken(): Promise<boolean> {
+  return tryRefresh()
+}
+
+/**
+ * 给自管 fetch 的调用方（SSE 聊天）用的 401 重试：
+ * 刷新成功后只重试一次；刷新失败清本地登录态，返回原 401 交给调用方展示。
+ */
+export async function fetchWithAuthRefresh(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const response = await fetch(input, init)
+  if (response.status !== 401) return response
+
+  if (!(await refreshAccessToken())) {
+    clearAuth()
+    return response
+  }
+
+  const headers = new Headers(init?.headers)
+  const token = getAccessToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  return fetch(input, { ...(init ?? {}), headers })
 }
 
 export async function request<T>(

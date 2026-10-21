@@ -20,13 +20,10 @@ import {
   message,
 } from 'antd'
 import { aiApi } from '../api'
-import { ApiError } from '../api/client'
+import { API_BASE, ApiError, fetchWithAuthRefresh } from '../api/client'
 import { getAccessToken } from '../auth'
-import {
-  ChatMessageParts,
-  historyToUIMessages,
-  type KhUIMessage,
-} from '../components/ChatMessageParts'
+import { ChatMessageParts } from '../components/ChatMessageParts'
+import { historyToUIMessages, type KhUIMessage } from '../chat-message-utils'
 import type { ChatMessage, ChatSession, SearchMode } from '../types'
 import { formatTime } from '../utils'
 
@@ -61,13 +58,15 @@ export default function ChatPage() {
   const transport = useMemo(
     () =>
       new DefaultChatTransport<KhUIMessage>({
-        api: '/api/ai/chat/stream',
+        api: `${API_BASE}/ai/chat/stream`,
         headers: () => {
           const token = getAccessToken()
           const headers: Record<string, string> = {}
           if (token) headers.Authorization = `Bearer ${token}`
           return headers
         },
+        // useChat 自管 fetch，不会走 request() 的 401 刷新；复用统一的刷新重试
+        fetch: fetchWithAuthRefresh,
       }),
     [],
   )
@@ -157,7 +156,7 @@ export default function ChatPage() {
     if (!text || busy) return
     setInput('')
     pinBottomRef.current = true
-    await sendMessage({ text }, { body: { sessionId, topK } })
+    await sendMessage({ text }, { body: { sessionId, topK, mode } })
   }
 
   async function sendRagOnly() {
