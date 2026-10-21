@@ -1,3 +1,9 @@
+-- 本地开发空数据卷引导快照（表结构 + 演示账号/团队）。
+-- 生产环境与已有库的结构演进一律走 TypeORM migrations：
+--   apps/server/src/database/migrations
+-- 不要在此追加新表/新列，否则迁移与快照会漂移；
+-- 本文件只应作为历史快照保持冻结（迁移基线已内嵌同一份 DDL）。
+
 -- 启用 pgvector 向量检索扩展
 CREATE EXTENSION IF NOT EXISTS vector;
 

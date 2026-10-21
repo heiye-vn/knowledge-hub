@@ -4,20 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { DocumentModule } from './document/document.module.js';
-import { DocumentEntity } from './document/entities/document.entity.js';
-import { DocumentContentEntity } from './document/entities/document-content.entity.js';
-import { DocumentReviewEntity } from './document/entities/document-review.entity.js';
-import { UserEntity } from './user/entities/user.entity.js';
-import { RoleEntity } from './user/entities/role.entity.js';
-import { UserRoleEntity } from './user/entities/user-role.entity.js';
-import { PermissionEntity } from './user/entities/permission.entity.js';
-import { RolePermissionEntity } from './user/entities/role-permission.entity.js';
-import { UserPermissionEntity } from './user/entities/user-permission.entity.js';
-import { TeamEntity } from './team/entities/team.entity.js';
-import { TeamMemberEntity } from './team/entities/team-member.entity.js';
 import { TeamModule } from './team/team.module.js';
-import { AiSessionEntity } from './ai/entities/ai-session.entity.js';
-import { AiMessageEntity } from './ai/entities/ai-message.entity.js';
 
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
@@ -28,38 +15,16 @@ import { MqModule } from './mq/mq.module.js';
 import { KgModule } from './kg/kg.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AiModule } from './ai/ai.module.js';
+import { buildTypeOrmOptions } from './database/typeorm.options.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // 🟡 单 PostgreSQL 存储（2026-09-20 起）：正文并入 kh_document_content，
-    // MongoDB/Mongoose 已整体移除（原 Mongo 侧只剩正文一个集合，得不偿失）
+    // 单 PostgreSQL 存储（2026-09-20 起）：正文并入 kh_document_content，
+    // MongoDB/Mongoose 已整体移除。连接参数与迁移 CLI 共用 typeorm.options.ts。
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres' as const,
-        host: config.get<string>('POSTGRES_HOST', 'localhost'),
-        port: config.get<number>('POSTGRES_PORT', 5432),
-        username: config.get<string>('POSTGRES_USER', 'user'),
-        password: config.get<string>('POSTGRES_PASSWORD', '123456'),
-        database: config.get<string>('POSTGRES_DB', 'knowledge_hub'),
-        entities: [
-          DocumentEntity,
-          DocumentContentEntity,
-          DocumentReviewEntity,
-          UserEntity,
-          RoleEntity,
-          UserRoleEntity,
-          PermissionEntity,
-          RolePermissionEntity,
-          UserPermissionEntity,
-          TeamEntity,
-          TeamMemberEntity,
-          AiSessionEntity,
-          AiMessageEntity,
-        ],
-        synchronize: false,
-      }),
+      useFactory: (config: ConfigService) => buildTypeOrmOptions(config),
     }),
     DocumentModule,
     StorageModule,

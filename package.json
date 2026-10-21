@@ -15,7 +15,10 @@
     "docker:down": "docker compose down",
     "docker:restart": "docker compose restart",
     "docker:logs": "docker compose logs -f",
-    "docker:ps": "docker compose ps"
+    "docker:ps": "docker compose ps",
+    "migration:run": "pnpm --filter @knowledge-hub/server migration:run",
+    "migration:revert": "pnpm --filter @knowledge-hub/server migration:revert",
+    "migration:show": "pnpm --filter @knowledge-hub/server migration:show"
   },
   "packageManager": "pnpm@10.7.0"
 }
