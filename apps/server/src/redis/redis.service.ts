@@ -74,9 +74,20 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await this.client?.quit().catch(() => undefined);
   }
 
+  /** 配置层面是否启用（与连接是否可用区分，供健康检查标记 disabled） */
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
   /** 连接是否可用（fail-open 场景由调用方据此自行决策） */
   isAvailable(): boolean {
     return this.client !== null;
+  }
+
+  /** 主动探活；连接不可用时抛错，由调用方决定超时与降级策略 */
+  async ping(): Promise<void> {
+    this.assertAvailable();
+    await this.client!.ping();
   }
 
   /** fail-closed 场景入口：验证类功能 Redis 不可用直接 503，绝不放行 */
@@ -108,5 +119,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async ttl(key: string): Promise<number> {
     this.assertAvailable();
     return this.client!.ttl(key);
+  }
+
+  /**
+   * 计数 + 首次写入设置 TTL（Lua 保证原子）。
+   * 用于限流与失败次数统计：INCR 与 EXPIRE 分开执行时，进程在两步之间退出
+   * 会留下永不过期的计数键，必须合成一次调用。
+   */
+  async incrementWithTtl(key: string, ttlSeconds: number): Promise<number> {
+    this.assertAvailable();
+    const result = await this.client!.eval(
+      "local c = redis.call('INCR', KEYS[1])\n" +
+        "if c == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end\n" +
+        'return c',
+      1,
+      key,
+      Math.max(1, Math.floor(ttlSeconds)),
+    );
+    return Number(result);
   }
 }

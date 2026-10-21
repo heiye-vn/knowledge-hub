@@ -139,6 +139,14 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     return this.driver !== null;
   }
 
+  /** 主动探活：重新校验 Bolt 连接；失败由健康检查统一降级 */
+  async ping(): Promise<void> {
+    if (!this.driver) {
+      throw new Error('Neo4j 未启用或连接不可用');
+    }
+    await this.driver.verifyConnectivity();
+  }
+
   /**
    * 为单篇文档全量重建图谱（先清后建，幂等）。
    * @returns 建图结果；全部块抽取失败时抛错（由调用方决定是否重试）

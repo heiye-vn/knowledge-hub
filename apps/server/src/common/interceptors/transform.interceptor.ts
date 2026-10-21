@@ -23,10 +23,12 @@ export class TransformInterceptor<T>
   ): Observable<ApiResponse<T>> {
     const ctx = context.switchToHttp();
     const response = ctx.getResponse();
-    const statusCode: number = response?.statusCode ?? 200;
 
     return next.handle().pipe(
       map((data: T) => {
+        // 在 handler 返回后读取，兼容健康检查等动态设置 HTTP 状态的接口
+        const statusCode: number = response?.statusCode ?? 200;
+
         // 若返回值本身已经包含 code 和 data 结构，则不再重复封装
         if (
           data !== null &&

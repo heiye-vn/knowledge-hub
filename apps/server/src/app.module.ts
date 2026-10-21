@@ -15,6 +15,7 @@ import { MqModule } from './mq/mq.module.js';
 import { KgModule } from './kg/kg.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AiModule } from './ai/ai.module.js';
+import { HealthModule } from './health/health.module.js';
 import { buildTypeOrmOptions } from './database/typeorm.options.js';
 import { IndexMaintenanceModule } from './indexing/index-maintenance.module.js';
 
@@ -42,6 +43,8 @@ import { IndexMaintenanceModule } from './indexing/index-maintenance.module.js';
     AiModule,
     // 索引失败 outbox 重试与 ES/KG 可见性巡检
     IndexMaintenanceModule,
+    // 存活 / 就绪探针（真实探测 PG、Redis、ES、Neo4j）
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [
