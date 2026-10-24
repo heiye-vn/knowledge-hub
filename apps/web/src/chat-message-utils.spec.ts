@@ -33,6 +33,32 @@ describe('聊天消息转换', () => {
     ).toEqual(sources)
   })
 
+  it('多次检索时取最后一个非空 data-sources', () => {
+    const first = [source(1)]
+    const all = [source(1), source(2)]
+    expect(
+      sourcesFromParts(
+        parts([
+          { type: 'data-sources', data: [] },
+          { type: 'data-sources', data: first },
+          { type: 'data-sources', data: all },
+        ]),
+      ),
+    ).toEqual(all)
+  })
+
+  it('最后一段为空时仍回退到最近的非空 sources', () => {
+    const sources = [source(1), source(2)]
+    expect(
+      sourcesFromParts(
+        parts([
+          { type: 'data-sources', data: sources },
+          { type: 'data-sources', data: [] },
+        ]),
+      ),
+    ).toEqual(sources)
+  })
+
   it('没有 data-sources 时返回空数组', () => {
     expect(sourcesFromParts(parts([{ type: 'text', text: '答案' }]))).toEqual(
       [],
@@ -58,6 +84,33 @@ describe('聊天消息转换', () => {
         ]),
       ),
     ).toBe('第一段第二段')
+  })
+
+  it('剔除评估/改写/路由结构化 JSON，不进入回答正文', () => {
+    const text = [
+      '{"relevant":false,"reason":"只是词沾边"}',
+      '{"query":"差旅 报销 餐补"}',
+      '{"intent":"kb","standalone_query":"报销流程"}',
+      '这是正式回答。',
+    ].join('\n')
+
+    expect(textFromParts(parts([{ type: 'text', text }]))).toBe('这是正式回答。')
+  })
+
+  it('只包含内部 JSON 的 text part 不产生正文', () => {
+    expect(
+      textFromParts(
+        parts([
+          { type: 'text', text: '{"query":"改写词"}' },
+          { type: 'text', text: '回答' },
+        ]),
+      ),
+    ).toBe('回答')
+  })
+
+  it('形似 JSON 但非内部结构的内容保留', () => {
+    const text = '{"foo":"bar"}\n正常内容'
+    expect(textFromParts(parts([{ type: 'text', text }]))).toBe(text)
   })
 
   it('历史用户消息还原为单个 text part', () => {

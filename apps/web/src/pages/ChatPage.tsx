@@ -5,11 +5,11 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { MouseEvent } from 'react'
+import type { MouseEvent, TouchEvent, WheelEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownOutlined, PlusOutlined } from '@ant-design/icons'
 import {
   Button,
   Empty,
@@ -30,15 +30,13 @@ import { formatTime } from '../utils'
 const CHAT_ID = 'kh-chat'
 
 /**
- * 知识问答（feat-v14 起流式渲染）
+ * 知识问答（流式 Agentic RAG）
  *
- * - useChat + DefaultChatTransport 对接 /ai/chat/stream（SSE），
- *   按 part 类型渲染思考 / 检索 / 联网搜索 / 正文组件
- * - URL 即会话态：/chat?session=<id>，切换会话拉取历史消息；
- *   新会话由服务端自动创建并经 data-session 事件回写 URL
- * - 「仅检索」走 /rag/search 纯检索，不落会话（本地拼装展示消息）
- * - 历史加载用 cancelled 守卫保证 effect 幂等（StrictMode 双调用安全）
- * - 流式期间锁定会话切换 / 新建 / 删除，避免中途串流
+ * - useChat + DefaultChatTransport 对接 /ai/chat/stream，按 part 渲染
+ *   意图、检索评估、改写、联网、思考与正文
+ * - URL 即会话态：/chat?session=<id>；新会话由服务端创建并经 data-session 回写
+ * - 保留 topK / 检索模式 / 「仅检索」入口；仅检索不落库
+ * - 流式输出自动钉底；用户上滑后停止抢滚动，可一键回到底部
  */
 export default function ChatPage() {
   const navigate = useNavigate()
@@ -52,7 +50,13 @@ export default function ChatPage() {
   const logRef = useRef<HTMLDivElement>(null)
   const sessionIdRef = useRef(sessionId)
   const loadedSessionRef = useRef<string | undefined>(undefined)
+  /** true 时流式输出自动滚到底；用户上滑后解开，避免抢滚动 */
   const pinBottomRef = useRef(true)
+  /** 程序滚动时忽略 onScroll，避免误判为用户离开底部 */
+  const autoScrollingRef = useRef(false)
+  const scrollRafRef = useRef<number | null>(null)
+  const touchYRef = useRef<number | null>(null)
+  const [showJump, setShowJump] = useState(false)
   sessionIdRef.current = sessionId
 
   const transport = useMemo(
@@ -78,7 +82,11 @@ export default function ChatPage() {
       onData: (part) => {
         if (part.type !== 'data-session') return
         const nextId = part.data.sessionId
-        if (!nextId || nextId === sessionIdRef.current) return
+        if (!nextId) return
+        // 服务端 touchTitle 已在流前更新标题，这里立即刷新侧栏，
+        // 避免首答期间仍显示「新对话」
+        void loadSessions()
+        if (nextId === sessionIdRef.current) return
         loadedSessionRef.current = nextId
         navigate(`/chat?session=${nextId}`, { replace: true })
       },
@@ -136,26 +144,90 @@ export default function ChatPage() {
     }
   }, [sessionId, streaming, navigate, setMessages])
 
+  function gapToBottom(el: HTMLElement) {
+    return el.scrollHeight - el.scrollTop - el.clientHeight
+  }
+
+  function syncJumpButton() {
+    const el = logRef.current
+    const overflow = !!el && el.scrollHeight - el.clientHeight > 8
+    const next = !pinBottomRef.current && overflow
+    setShowJump((prev) => (prev === next ? prev : next))
+  }
+
+  function setPinned(next: boolean) {
+    pinBottomRef.current = next
+    if (!next && scrollRafRef.current != null) {
+      cancelAnimationFrame(scrollRafRef.current)
+      scrollRafRef.current = null
+    }
+    syncJumpButton()
+  }
+
+  function scrollToBottom() {
+    const el = logRef.current
+    if (!el || !pinBottomRef.current) return
+    autoScrollingRef.current = true
+    el.scrollTop = el.scrollHeight
+    requestAnimationFrame(() => {
+      autoScrollingRef.current = false
+    })
+  }
+
   function onLogScroll() {
+    if (autoScrollingRef.current) return
     const el = logRef.current
     if (!el) return
-    // 用户主动上翻时暂停自动吸底，靠近底部时恢复
-    pinBottomRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    setPinned(gapToBottom(el) < 48)
+  }
+
+  /** 滚轮向上立刻取消钉底；向下接近底部再钉回 */
+  function onLogWheel(e: WheelEvent<HTMLDivElement>) {
+    if (e.deltaY < 0) {
+      setPinned(false)
+      return
+    }
+    const el = logRef.current
+    if (el && gapToBottom(el) - e.deltaY < 48) setPinned(true)
+  }
+
+  function onLogTouchStart(e: TouchEvent<HTMLDivElement>) {
+    touchYRef.current = e.touches[0]?.clientY ?? null
+  }
+
+  function onLogTouchMove(e: TouchEvent<HTMLDivElement>) {
+    const y = e.touches[0]?.clientY
+    if (touchYRef.current != null && y != null && y > touchYRef.current + 6) {
+      setPinned(false)
+    }
+    touchYRef.current = y ?? null
+  }
+
+  function jumpToBottom() {
+    setPinned(true)
+    scrollToBottom()
   }
 
   useEffect(() => {
     if (!pinBottomRef.current) return
-    requestAnimationFrame(() => {
-      logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
+    if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current)
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null
+      scrollToBottom()
     })
+    return () => {
+      if (scrollRafRef.current != null) {
+        cancelAnimationFrame(scrollRafRef.current)
+        scrollRafRef.current = null
+      }
+    }
   }, [messages, status])
 
   async function send() {
     const text = input.trim()
     if (!text || busy) return
     setInput('')
-    pinBottomRef.current = true
+    setPinned(true)
     await sendMessage({ text }, { body: { sessionId, topK, mode } })
   }
 
@@ -163,7 +235,7 @@ export default function ChatPage() {
     const text = input.trim()
     if (!text || busy) return
     setInput('')
-    pinBottomRef.current = true
+    setPinned(true)
     setMessages((prev) => [
       ...prev,
       {
@@ -285,36 +357,55 @@ export default function ChatPage() {
           知识问答
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          只会检索你有权限的文档（公开、所在团队、自己写的）。流式回答会展示检索、思考与联网搜索过程，并写入左侧会话；「仅检索」不落库。
+          只会检索你有权限的文档（公开、所在团队、自己写的）。先识别意图再检索；资料不切题时由助手改写问题再查，仍不足才按需联网。「仅检索」不落库。
         </Typography.Paragraph>
-        <div className="kh-chat-log" ref={logRef} onScroll={onLogScroll}>
-          {messages.length === 0 ? (
-            <div
-              style={{
-                padding: '40px 0',
-                textAlign: 'center',
-                color: '#8c8c8c',
-              }}
+        <div className="kh-chat-log-wrap">
+          <div
+            className="kh-chat-log"
+            ref={logRef}
+            onScroll={onLogScroll}
+            onWheel={onLogWheel}
+            onTouchStart={onLogTouchStart}
+            onTouchMove={onLogTouchMove}
+          >
+            {messages.length === 0 ? (
+              <div
+                style={{
+                  padding: '40px 0',
+                  textAlign: 'center',
+                  color: '#8c8c8c',
+                }}
+              >
+                输入您的问题，系统将基于企业知识库进行准确解答与引用溯源。
+              </div>
+            ) : (
+              messages.map((m, i) => {
+                const liveAssistant =
+                  streaming && m.role === 'assistant' && i === messages.length - 1
+                return (
+                  <div key={m.id} className={`kh-bubble ${m.role}`}>
+                    <ChatMessageParts
+                      messageId={m.id}
+                      parts={m.parts}
+                      role={m.role}
+                      showSources={!liveAssistant}
+                    />
+                  </div>
+                )
+              })
+            )}
+            {error ? <div className="kh-chat-error">{error.message}</div> : null}
+          </div>
+          {showJump ? (
+            <Button
+              className="kh-chat-jump"
+              size="small"
+              icon={<DownOutlined />}
+              onClick={jumpToBottom}
             >
-              输入您的问题，系统将基于企业知识库进行准确解答与引用溯源。
-            </div>
-          ) : (
-            messages.map((m, i) => {
-              const liveAssistant =
-                streaming && m.role === 'assistant' && i === messages.length - 1
-              return (
-                <div key={m.id} className={`kh-bubble ${m.role}`}>
-                  <ChatMessageParts
-                    messageId={m.id}
-                    parts={m.parts}
-                    role={m.role}
-                    showSources={!liveAssistant}
-                  />
-                </div>
-              )
-            })
-          )}
-          {error ? <div className="kh-chat-error">{error.message}</div> : null}
+              回到底部
+            </Button>
+          ) : null}
         </div>
         <Space.Compact style={{ width: '100%' }}>
           <Select

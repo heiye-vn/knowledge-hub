@@ -8,6 +8,40 @@ export type RetrieveHit = {
   heading: string | null
 }
 
+/** 与后端 ChatIntent 一致；kb = 知识库 */
+export type ChatIntent =
+  | 'chitchat' // 闲聊，不检索
+  | 'profile' // 个人偏好，不检索
+  | 'kb' // 知识库
+  | 'web' // 联网
+  | 'kb_then_web' // 先知识库，不足再联网
+
+/** data-intent：本轮路由，决定是否展示知识库/联网范围 */
+export type IntentPart = {
+  intent: ChatIntent
+  label: string
+  query: string
+  allowRetrieve: boolean
+  allowWeb: boolean
+}
+
+/** data-eval：ok 表示资料切题，不是「有召回条数」 */
+export type EvalPart = {
+  ok: boolean
+  reason:
+    | 'ok' // 首轮检索切题
+    | 'retried_ok' // 改写后再查切题
+    | 'empty' // 首轮无命中
+    | 'retried_empty' // 改写后再查仍无命中
+    | 'irrelevant' // 首轮有命中但不切题
+    | 'retried_irrelevant' // 改写后再查仍不切题
+    | 'error' // 检索接口失败
+  text: string
+  retried: boolean
+  query: string
+  retryQuery?: string
+}
+
 /** 流式消息：标准 part 之外叠加服务端自定义的 data-* 事件 */
 export type KhUIMessage = UIMessage<
   unknown,
@@ -16,17 +50,20 @@ export type KhUIMessage = UIMessage<
     think: { text: string }
     sources: ChatSource[]
     retrieve: { query: string; items: RetrieveHit[] }
+    intent: IntentPart
+    eval: EvalPart
     session: { sessionId: string }
   }
 >
 
+/** 多轮检索会写多段 data-sources，取最后一个非空段 */
 export function sourcesFromParts(parts: KhUIMessage['parts']): ChatSource[] {
+  let latest: ChatSource[] = []
   for (const part of parts) {
-    if (part.type === 'data-sources' && Array.isArray(part.data)) {
-      return part.data
-    }
+    if (part.type !== 'data-sources' || !Array.isArray(part.data)) continue
+    if (part.data.length) latest = part.data
   }
-  return []
+  return latest
 }
 
 /** 只保留回答里实际标了 [n] 的资料，避免无关召回也占引用区 */
@@ -44,8 +81,34 @@ export function citedSources(
 export function textFromParts(parts: KhUIMessage['parts']): string {
   return parts
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
-    .map((part) => part.text)
+    .map((part) => stripInternalToolJson(part.text))
+    .filter(Boolean)
     .join('')
+}
+
+/** 评估/改写/路由模型的 JSON 不应出现在回答里 */
+export function stripInternalToolJson(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !isInternalToolJson(line.trim()))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function isInternalToolJson(text: string): boolean {
+  if (!text.startsWith('{')) return false
+  try {
+    const obj = JSON.parse(text) as Record<string, unknown>
+    if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) return false
+    const keys = Object.keys(obj)
+    if (keys.includes('relevant') && keys.includes('reason')) return true
+    if (keys.length === 1 && keys[0] === 'query') return true
+    if (keys.includes('intent') && keys.includes('standalone_query')) return true
+    return false
+  } catch {
+    return false
+  }
 }
 
 /** 历史消息（行记录）还原成 UIMessage，与实时流共用同一套渲染 */

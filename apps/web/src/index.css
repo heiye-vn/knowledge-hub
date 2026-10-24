@@ -990,6 +990,403 @@ body,
   font-size: 12px;
 }
 
+/* ===== Agent 过程时间线（feat-v17） ===== */
+.kh-chat-log-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.kh-chat-log-wrap .kh-chat-log {
+  flex: 1;
+  min-width: 0;
+}
+
+.kh-chat-jump {
+  position: absolute;
+  right: 18px;
+  bottom: 12px;
+  z-index: 3;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.kh-trace {
+  position: relative;
+  margin: 2px 0 12px;
+  padding-left: 20px;
+}
+
+.kh-trace::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(#d6e4ff, #eef0f3);
+}
+
+.kh-trace-item {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.kh-trace-item:last-child {
+  margin-bottom: 0;
+}
+
+.kh-trace-node {
+  position: absolute;
+  left: -20px;
+  top: 10px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d9d9d9;
+  box-shadow: 0 0 0 2px #f5f7fa;
+}
+
+.kh-trace-intent .kh-trace-node {
+  background: #1677ff;
+}
+
+.kh-trace-kb .kh-trace-node {
+  background: #722ed1;
+}
+
+.kh-trace-eval.ok .kh-trace-node {
+  background: #52c41a;
+}
+
+.kh-trace-eval.warn .kh-trace-node {
+  background: #faad14;
+}
+
+.kh-trace-eval.failed .kh-trace-node,
+.kh-trace-kb.failed .kh-trace-node,
+.kh-trace-web.failed .kh-trace-node,
+.kh-trace-rewrite.failed .kh-trace-node {
+  background: #ff4d4f;
+}
+
+.kh-trace-web .kh-trace-node {
+  background: #13c2c2;
+}
+
+.kh-trace-rewrite .kh-trace-node {
+  background: #fa8c16;
+}
+
+.kh-trace-think .kh-trace-node {
+  background: #bfbfbf;
+}
+
+.kh-trace-item.pending .kh-trace-node,
+.kh-trace-status .kh-trace-node {
+  animation: kh-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes kh-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.kh-trace-card {
+  min-width: 0;
+}
+
+.kh-trace-status {
+  font-size: 12px;
+  color: #8c8c8c;
+  padding: 4px 0;
+}
+
+.kh-panel,
+.kh-sheet,
+.kh-links,
+.kh-note {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  color: #595959;
+}
+
+.kh-panel-head,
+.kh-sheet summary,
+.kh-links summary,
+.kh-note summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+  list-style: none;
+  user-select: none;
+}
+
+.kh-sheet summary,
+.kh-links summary,
+.kh-note summary {
+  cursor: pointer;
+}
+
+.kh-sheet summary::-webkit-details-marker,
+.kh-links summary::-webkit-details-marker,
+.kh-note summary::-webkit-details-marker {
+  display: none;
+}
+
+.kh-panel-type {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #8c8c8c;
+}
+
+.kh-trace-kb .kh-panel-type {
+  color: #722ed1;
+}
+
+.kh-trace-web .kh-panel-type {
+  color: #13c2c2;
+}
+
+.kh-trace-eval .kh-panel-type {
+  color: #389e0d;
+}
+
+.kh-trace-rewrite .kh-panel-type {
+  color: #d46b08;
+}
+
+.kh-trace-think .kh-panel-type {
+  color: #8c8c8c;
+}
+
+.kh-panel-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #262626;
+  font-weight: 500;
+}
+
+.kh-panel-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8c8c8c;
+}
+
+.kh-panel-sub::before {
+  content: '“';
+}
+
+.kh-panel-sub::after {
+  content: '”';
+}
+
+.kh-panel-n {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #f0f5ff;
+  color: #1677ff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.kh-badge {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  background: #f5f5f5;
+  color: #8c8c8c;
+}
+
+.kh-badge.ok {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.kh-badge.warn {
+  background: #fffbe6;
+  color: #d46b08;
+}
+
+.kh-badge.failed {
+  background: #fff1f0;
+  color: #cf1322;
+}
+
+.kh-meta {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+
+.kh-meta > div {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kh-meta dt {
+  flex-shrink: 0;
+  width: 68px;
+  color: #bfbfbf;
+}
+
+.kh-meta dd {
+  min-width: 0;
+  margin: 0;
+  color: #595959;
+  overflow-wrap: anywhere;
+}
+
+.kh-meta dd span {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.kh-meta dd span.on {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.kh-meta dd span.off {
+  background: #f5f5f5;
+  color: #bfbfbf;
+  text-decoration: line-through;
+}
+
+.kh-sheet-docs {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px dashed #f0f0f0;
+}
+
+.kh-sheet-docs li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed #f5f5f5;
+}
+
+.kh-sheet-docs li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.kh-sheet-docs em {
+  flex-shrink: 0;
+  font-style: normal;
+  color: #bfbfbf;
+  font-variant-numeric: tabular-nums;
+}
+
+.kh-sheet-docs span {
+  min-width: 0;
+  color: #434343;
+  overflow-wrap: anywhere;
+}
+
+.kh-sheet-docs small {
+  margin-left: 6px;
+  color: #8c8c8c;
+}
+
+.kh-links {
+  padding-bottom: 8px;
+}
+
+.kh-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.kh-link-tile {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  color: #595959;
+  background: #fafafa;
+}
+
+.kh-link-tile:hover {
+  border-color: #91caff;
+  background: #f0f7ff;
+}
+
+.kh-link-fav {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.kh-link-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #434343;
+}
+
+.kh-link-host {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: #bfbfbf;
+  font-size: 11px;
+}
+
+.kh-note-body {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  color: #595959;
+  line-height: 1.6;
+}
+
+.kh-step-err {
+  margin-top: 6px;
+  color: #ff4d4f;
+  overflow-wrap: anywhere;
+}
+
 /* ===== 权限与可见性提示条（feat-v15） ===== */
 .kh-access-hint {
   display: flex;
