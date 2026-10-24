@@ -51,6 +51,8 @@
 | [reference-project-alignment.md](./reference-project-alignment.md) | 方法论 · 与参考项目的对照策略 | 2026-09-19 | **三层判断法（模式/实现/缺陷）**：什么照搬、什么可换、什么必须改 |
 | [document-visibility.md](./document-visibility.md) | 功能模块 · 文档检索可见性控制（feat-v15） | 2026-10-11 | **存量回填防误杀**；ES 过滤必须挂 filter 上下文；Cypher 实体要沿 MENTIONS 穿透；就地更新与重建互斥 |
 | [chat-memory.md](./chat-memory.md) | 功能模块 · 对话记忆与检索改写（feat-v16） | 2026-10-19 | **短期窗口只存 user/assistant 原文**；Redis 只是热缓存、PG 才是真源；改写后的 query 必须继续带可见性 scope；Mem0 只从用户提问抽事实；摘要压缩在 Agent 中间件而非存储层 |
+| [agentic-rag.md](./agentic-rag.md) | 功能模块 · Agentic RAG（feat-v17） | 2026-10-24 | **路由 fail-closed、评估 fail-open**；不切题命中必须在数据层清空；检索上限用闭包计数；内部结构化输出必须隔离 callbacks；多段 `data-sources` 取最后一个非空 |
+| [web-search-fallback.md](./web-search-fallback.md) | 功能模块 · 联网搜索多提供商降级 | 2026-10-24 | **按配置顺序逐个尝试**；只启用有 Key 的提供商；错误才降级、空结果不降级；双失败返回合并错误；前端展示实际 provider |
 | [database-migrations.md](./database-migrations.md) | 基础设施 · TypeORM 迁移体系 | 2026-10-22 | **基线迁移要"探测已存在就只登记不执行"**；空卷快照冻结、结构演进只走 migrations；部分唯一索引承接 outbox 合并 |
 | [index-outbox.md](./index-outbox.md) | 功能模块 · 索引失败补偿与可见性巡检 | 2026-10-22 | **补偿走 PG 轮询而不是队列**（队列挂了也要能补）；部分唯一索引 + ON CONFLICT 合并待办；巡检以写代检、失败入 outbox |
 | [health-check.md](./health-check.md) | 功能模块 · 存活 / 就绪探针 | 2026-10-22 | **存活不查依赖、就绪才查**；必需/可选依赖分别对应 503 与 degraded；探测必须带超时；拦截器状态码要在 handler 之后读 |

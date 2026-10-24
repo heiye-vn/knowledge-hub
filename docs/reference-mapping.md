@@ -1,6 +1,6 @@
 # 参考项目映射对照表（knowledge-hub-backend ↔ knowledge-hub）
 
-> **文档定位**：`knowledge-hub-backend` 是**只读的参考项目**（分支 `v3`），`knowledge-hub` 是**真正在做的主项目**。
+> **文档定位**：`knowledge-hub-backend` 是**只读的参考项目**（对比分支随迭代推进，当前到 `v17`），`knowledge-hub` 是**真正在做的主项目**。
 > 本文件是两者之间的映射登记簿：记录「参考项目的哪个模块，对应主项目的哪个模块」，
 > 以及**哪里有意分叉、为什么分叉、参考项目的哪些缺陷主项目已修复**。
 >
@@ -64,11 +64,11 @@
 
 | （无，基线两条异步链路均无状态查询入口） | `mq/task-status.*` → `GET /tasks/:taskId` | 🔵 新增 | KG 建图与 RAG 全量重建共用一套任务状态查询：jobId（taskId）全局唯一，两队列各查一次先命中先用；完成任务保留 1 小时供查询（`removeOnComplete: true` 会导致查完成任务永远 404），失败任务永久保留 |
 
-| **v14** `ai/ai-stream.service.ts`（Agent 流式 + 协议转换） | 同名服务 | 🟡 分叉 | LangChain `createAgent`（web_search 工具 + `modelCallLimitMiddleware` 限 4 次）+ `createUIMessageStream` / `toUIMessageStream`（sendStart/Finish 关闭防重复）同构；分叉：Key/模型配置与 ai-chat.service 同源、检索复用 `RetrievalService`（继承 MIN_SCORE 过滤 + 死文档兜底）、传 sessionId 开场 `assertOwned` 校验 |
+| **v14** `ai/ai-stream.service.ts`（Agent 流式 + 协议转换） | 同名服务 | 🟡 分叉 | LangChain `createAgent`（web_search 工具 + `modelCallLimitMiddleware` 限 4 次）+ `createUIMessageStream` / `toUIMessageStream`（sendStart/Finish 关闭防重复）同构；分叉：Key/模型配置与 ai-chat.service 同源、检索复用 `RetrievalService`（继承 MIN_SCORE 过滤 + 死文档兜底）、传 sessionId 开场 `touchTitle`（内部 assertOwned）校验并早更新默认标题 |
 | **v14** `POST /ai/chat/stream` | 同名端点（`@Controller('ai')` 前缀） | 🟢 对齐 | `@Res()` 手写响应绕过全局信封（SSE 逐帧写出）+ search 权限码，同款 |
 | **v14** `ai/web-search.service.ts`（Bocha） | 同名服务 | 🟢 对齐 | 无 BOCHA_API_KEY / 调用失败返回 error 文案由模型转述，不阻断知识库问答 |
 | **v14** `dto/chat-stream.dto.ts` | 同名 DTO | 🟢 对齐 | `@Allow()` 放行 useChat 附加字段（id / trigger / messageId）——两边都开 forbidNonWhitelisted，不放行必 400 |
-| **v14** `chat-session.service.ts` `touchTitle` | （无对应方法） | 🔴 超越 | 新会话直接以首问标题创建、旧会话默认标题由既有 `appendTurn` 覆盖兜底，少一次查询少一个方法 |
+| **v14** `chat-session.service.ts` `touchTitle` | 同名方法（2026-10-24 补齐） | 🟢 对齐 | 仍为默认标题才用首问覆盖；流式续聊开场调用，内部 `assertOwned` 同时完成归属校验；`appendTurn` 末尾保留兜底 |
 | **v14** 前端 ChatPage 重写（useChat） | 同构重写 | 🟡 分叉 | `useChat` + `DefaultChatTransport`（Bearer 注入）+ data-session 回写 URL + 历史经 `historyToUIMessages` 回填同构；保留主项目 topK / 检索模式 / 「仅检索」能力（参考 v14 简化掉了这些输入） |
 | **v14** `ChatMessageParts.tsx`（按 part 渲染） | 同名组件 | 🟢 对齐 | ThinkBlock（reasoning）/ RetrieveCard（data-retrieve）/ WebSearchCard（web_search 工具）/ AnswerMarkdown 正文；`citedSources` 只展示回答实际标注的条目 |
 | **v14** `SourceCiteList` 卡片化 + 锚点联动 | 同款升级 | 🟢 对齐 | 横排引用卡 + `[n]` 点击 flash 定位 + react-markdown / remark-gfm；vite 代理 `timeout:0` 防 SSE 被掐 |
@@ -87,6 +87,14 @@
 | **v16** `chat-session.service.ts` `listRecentMessages` + 删除清记忆 | 同名方法 | 🟡 分叉 | 删除沿用「只删会话行 + 外键 CASCADE」，记忆清理放删除成功后（基线应用层删两张表） |
 | **v16** Agent `summarizationMiddleware`（12 条触发 / 保留 6 条） | 同款配置 | 🟢 对齐 | 独立 compactLlm 关思考；只压缩运行期上下文，不改 Redis 窗口与 PG 历史 |
 | **v16** 前端（无改动） | 前端无改动 | 🟢 对齐 | `data-status` 不是白名单，新增 `rewrite` 阶段文案可直接展示，无需前端改造 |
+| **v17** `ai/chat-query-rewrite.service.ts` | 同名服务扩展 | 🟡 分叉 | 五类意图 + 切题评估 + 不足后改写同构；分叉：无历史也走路由、失败兜底 kb、保留本项目 Key 回退链与超时配置 |
+| **v17** `ai/agentic-retrieve.ts` | 新增同名文件 | 🟡 分叉 | 「检索 + 评估 / 非流式等价环」同构；分叉：适配 `SearchHit` 与 `RetrievalService.search({query,topK,mode}, scope)`，保留三模式、MIN_SCORE、PG 兜底 |
+| **v17** `ai/ai-stream.service.ts` | 同名服务重构 | 🟡 分叉 | 每轮建 Agent、按意图挂工具、检索最多两次、`data-intent`/`data-eval` 同构；分叉：流前 `touchTitle` 校验并早更新标题、保留 `mode`/`topK`、落库尽力而为与百炼 reasoning 流转换 |
+| **v17** `ai/ai-chat.service.ts` | 同名服务扩展 | 🟡 分叉 | 非流式接入意图路由、评估重查、按需联网与纯 KB 收口；分叉：注入主项目 `WebSearchService`，保留 `persistTurn` 尽力而为语义 |
+| **v17** 前端过程时间线 | `ChatMessageParts.tsx` / `chat-message-utils.ts` / `ChatPage.tsx` / `index.css` | 🟡 分叉 | 意图/评估/改写/检索/联网卡片同构；分叉：保留 topK/模式/仅检索，修复多段 `data-sources` 取第一个导致的引用丢失 |
+| **v17** `agentic-rag.md` 自测清单 | `docs/dev-notes/agentic-rag.md` | 🟡 分叉 | 自测场景收敛到开发笔记；因测试语料只有两篇制度 PDF，六篇矩阵未完整复制 |
+| **v14** `touchTitle`（续会话首问覆盖默认标题） | `chat-session.service.ts` `appendTurn` 兜底 | 🟡 分叉 | 基线流开始时改标题；主项目在流结束 `appendTurn` 时检查 `title === DEFAULT_TITLE` 再覆盖，自定义标题不覆盖。功能等价，标题可见时机晚一轮（流中仍是「新对话」，落库后才更新） |
+| **v17+** `ai/web-search.service.ts` | 同名服务扩展 | 🔵 新增 | 基线仅 Bocha；主项目增加 `WEB_SEARCH_PROVIDERS` 顺序链、Tavily 适配与失败自动降级，空结果不降级，双失败合并错误 |
 
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
@@ -166,7 +174,8 @@
 | **2026-10-07** | **前端 StrictMode 的处理**（v13） | 为绕开 dev 环境 effect 双调用，直接删除 `StrictMode` | 保留 StrictMode，加载逻辑写成幂等 + `cancelled` 守卫 | 删除 StrictMode 等于放弃一整类问题的 dev 期暴露；双调用本来就该用取消守卫消化，代价远小于失去 StrictMode |
 | **2026-10-07** | **会话 UI 的溯源展示**（v13） | 历史消息用 antd `List` 直接拼 `[n] + 标题 + 摘录` | 复用主项目自研 `AnswerWithCitations` + `SourceCiteList` | 主项目已有带跳转到文档详情的溯源组件，历史回看与实时回答应共用同一套渲染 |
 | **2026-10-07** | **「仅检索」是否落库**（v13） | 未区分（/rag/search 与 /ai/chat 都是 AI 域下的调用） | 明确「仅检索」走 `/search` 纯检索、不落会话 | 检索调试/预览不是问答，进历史会污染会话列表 |
-| **2026-10-09** | **流式会话的标题与校验时机**（v14） | 新会话 `create` 后另有 `touchTitle` 用首问覆盖默认标题；传 sessionId 时归属校验迟到落库（onFinish 的 appendTurn 才发现越权） | 新会话以首问标题直接 `create`；传 sessionId 开场 `assertOwned`，越权当场 404 | SSE 已逐帧写出后才发现会话不合法，等于白跑一次 LLM；开场校验把失败前置到零成本时机。标题覆盖本就由 appendTurn 兜底，touchTitle 属重复防御 |
+| **2026-10-09** | **流式会话的标题与校验时机**（v14） | 新会话 `create` 后另有 `touchTitle` 用首问覆盖默认标题；传 sessionId 时归属校验迟到落库（onFinish 的 appendTurn 才发现越权） | 新会话以首问标题直接 `create`；传 sessionId 开场 `assertOwned`，越权当场 404 | SSE 已逐帧写出后才发现会话不合法，等于白跑一次 LLM；开场校验把失败前置到零成本时机。当时判断标题覆盖可由 appendTurn 兜底；2026-10-24 已补齐 touchTitle 提前更新，见下一条 |
+| **2026-10-24** | **续聊首问标题早更新**（v17 后续） | 流开始 `touchTitle` 更新默认标题，流结束 `appendTurn` 再兜底 | 新增 `touchTitle`，流式续聊开场调用（内部 `assertOwned` 保持 404）；`appendTurn` 标题兜底保留 | 首答期间数据库标题即更新，流在 onFinish 前异常时不会遗留「新对话」；appendTurn 仍覆盖非流式、新建与异常路径 |
 | **2026-10-09** | **流式问答页的输入能力**（v14） | ChatPage 重写时简化掉 topK / 检索模式 / 仅检索入口 | 保留三输入：流式走服务端混合检索管线，topK 经 body 透传；「仅检索」仍走 `/search` 本地拼装展示 | 检索调参是主项目既有能力（postman 集合 / dev-notes 已固化），砍掉属于无意功能回退；分流语义延续 v13「仅检索不落库」决策 |
 | **2026-10-09** | **流式服务的 LLM 配置来源**（v14） | `OPENAI_API_KEY / DASHSCOPE_API_KEY` + 默认 qwen-plus | 与 ai-chat.service 同源：`LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY` 回退链 + `LLM_MODEL` 统一默认 | 同一进程两个 AI 服务各挂一套配置必然漂移；无 Key 环境下回退链保证流式与非流式要么同时可用要么同时禁用 |
 | **2026-10-11** | **可见性过滤的落点**（v15） | 参考项目改写关键词/向量查询结构（引入 `wrapEsQuery` 包装原 query） | 复用主项目既有 `filterClauses` 统一过滤通道，可见性子句由 `buildFilters` 并入 | 主项目检索侧本就有 bool.must + filter / knn.filter 的过滤架构，套一层包装等于重复结构；并入 filterClauses 后 keyword / vector / hybrid 三种 mode 一条路径同时生效 |
@@ -176,6 +185,13 @@
 | 2026-10-19 | **短期记忆的连接复用**（v16） | 新建独立 Redis 连接（AI 模块自管 client） | 复用既有 `RedisService` 薄封装（get / set(ttl) / del），AiModule 显式导入 RedisModule | 连接样板只留一份，既有探测与降级逻辑直接继承；key 前缀 `kh:chat` 与 `kh_auth` 同命名空间 |
 | 2026-10-19 | **会话删除后的记忆清理**（v16） | 应用层先删消息再删会话，再清缓存与 Mem0 | 沿用「只删会话行 + 外键 CASCADE」，删除成功后清 Redis 与 Mem0 会话层 | 主项目 v13 已把级联下沉到外键，应用层重复删除是多余防御；两个 clear 内部吞错，不影响删除结果 |
 | 2026-10-19 | **记忆链路的 LLM 配置**（v16） | `OPENAI_API_KEY / DASHSCOPE_API_KEY` + `MODEL_NAME` | 与 ai-chat / ai-stream 同源回退链（`LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY`）+ `LLM_MODEL` | 同一进程三处 AI 服务各挂一套配置必然漂移；主项目无 DASHSCOPE_API_KEY 变量 |
+| 2026-10-24 | **Agentic RAG 的检索基座**（v17） | `HybridRetrievalService` 只做混合检索 | 复用 `RetrievalService`，由 `agentic-retrieve.ts` 包装，继续透传 `mode` / `topK` / `accessFromUser` | 保留三模式对比、MIN_SCORE 过滤、PG 一致性兜底与既有可见性接入；换基线服务会整体回退 v11/v15 的检索能力 |
+| 2026-10-24 | **检索上限与联网顺序**（v17） | 提示词约束「最多两次、先库后网」 | 闭包计数硬限制检索两次、工具按意图挂载；联网顺序仍由提示词约束 | 只靠提示词挡不住重复调用；联网工具无状态机，硬限制会引入额外跨工具状态，暂按有界自主处理 |
+| 2026-10-24 | **多段来源事件**（v17） | 失败检索也写空 `data-sources`，前端取第一个 | 空命中不写；前端取最后一个非空 `data-sources` | 修复参考实现缺陷：首查不足→改写→再查成功时，第一个空数组会让引用卡全部消失 |
+| 2026-10-24 | **评估标签语义**（v17） | `retried_*` 统一显示「已改写」 | 显示「再次检索」 | `retried` 只代表第二次检索，模型可能未调用 `rewrite_query`；避免错误归因 |
+| 2026-10-24 | **前端检索调参能力**（v17） | 新过程 UI 不再提供 topK / 模式 / 仅检索 | 保留三输入与「仅检索不落库」 | 主项目既有检索调试能力不能因 UI 升级回退；参考 v17 的简化不适用于本项目 |
+| 2026-10-24 | **内部模型调用隔离**（v17） | 未处理工具内结构化输出的 callbacks 继承 | `invokeIsolated` 清空 callbacks + 前端结构化 JSON 过滤 | 评估/改写 JSON 会混入正文；两层防护分别覆盖服务端流与历史回放 |
+| 2026-10-24 | **联网搜索降级**（v17+） | 仅 Bocha，额度耗尽/接口失败即联网不可用 | `WEB_SEARCH_PROVIDERS` 顺序链 + Tavily 适配；按错误降级、空结果不降级、合并失败原因 | 单点供应商额度/故障不应废掉联网能力；按空降级会造成双份计费，故只在错误时切换 |
 
 
 
