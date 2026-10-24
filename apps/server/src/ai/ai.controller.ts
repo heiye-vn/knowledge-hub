@@ -25,11 +25,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
 
 /**
- * AI 对话接口（feat-v11 对话 + feat-v13 会话持久化）
+ * AI 对话接口（v11 对话 + v13 会话持久化 + v17 Agentic RAG）
  *
- * RAG 混合检索（含 rerank 精排）→ LLM 生成回答 → [n] 引用溯源；
- * feat-v13 起每轮问答写入本人会话（kh_ai_session / kh_ai_message），
- * 支持会话列表、历史消息、重命名与删除（越权统一 404）。
+ * 意图路由 → 检索评估 → 不足时改写再查 → 按需联网 → [n] 引用溯源；
+ * 每轮问答写入本人会话（kh_ai_session / kh_ai_message），支持会话列表、
+ * 历史消息、重命名与删除（越权统一 404）。
  *
  * 鉴权：全部接口挂 search 权限码（与文档级全文搜索同码）。
  */
@@ -42,7 +42,7 @@ export class AiController {
   ) {}
 
   /**
-   * RAG 对话：检索 → 生成 → 引用溯源 → 落库本人会话。
+   * RAG 对话：Agentic RAG（意图路由 → 检索评估 → 不足改写再查 → 按需联网）。
    * 传 sessionId 续聊，不传则新建会话并在响应体回传 sessionId。
    */
   @Post('chat')
@@ -58,9 +58,8 @@ export class AiController {
   }
 
   /**
-   * 流式 RAG 对话：LangChain Agent 经 UI Message Stream 协议（SSE）写回，
-   * 前端 useChat 消费。@Res() 手写响应绕过全局信封（SSE 逐帧写出，
-   * 不能等拦截器包装），onFinish 时复用会话落库。
+   * 流式 Agentic RAG：按意图挂载 retrieve_knowledge / rewrite_query / web_search，
+   * Agent 自主循环后经 UI Message Stream 协议（SSE）写回；前端 useChat 消费。
    */
   @Post('chat/stream')
   @RequirePermission('search')

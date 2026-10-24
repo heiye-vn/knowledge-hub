@@ -6,10 +6,9 @@ import { ChatSessionService } from './chat-session.service.js';
 import { ChatShortMemoryService } from './chat-short-memory.service.js';
 import { ChatLongMemoryService } from './chat-long-memory.service.js';
 import { ChatQueryRewriteService } from './chat-query-rewrite.service.js';
+import { WebSearchService } from './web-search.service.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
 
-// ChatOpenAI 由构造函数内部创建，直接 mock 整个模块，
-// invoke 的返回值在各用例里通过 mockReturnValue 切换
 const invokeMock = vi.fn();
 vi.mock('@langchain/openai', () => ({
   ChatOpenAI: class {
@@ -35,9 +34,24 @@ function hit(id: string, score: number): SearchHit {
   };
 }
 
-const USER = { userId: '1001', username: 'user', roles: [], permissions: [], teamIds: [] };
+const USER = {
+  userId: '1001',
+  username: 'user',
+  roles: [],
+  permissions: [],
+  teamIds: [],
+};
 
-/** 会话服务 fake：appendTurn 可按用例覆盖行为 */
+function kbPlan(query: string) {
+  return {
+    intent: 'kb' as const,
+    label: '知识库',
+    query,
+    allowRetrieve: true,
+    allowWeb: false,
+  };
+}
+
 function makeSessions(
   appendTurn?: ChatSessionService['appendTurn'],
 ): { sessions: ChatSessionService; appendTurn: ReturnType<typeof vi.fn> } {
@@ -59,7 +73,6 @@ function makeSessions(
   };
 }
 
-/** 记忆与改写 fake：默认空历史、直检、无长期记忆命中 */
 function makeMemoryFakes() {
   const shortMemory = {
     windowSize: 20,
@@ -75,12 +88,34 @@ function makeMemoryFakes() {
     clearSession: vi.fn(async () => {}),
   } as unknown as ChatLongMemoryService;
   const queryRewrite = {
-    rewrite: vi.fn(async (question: string) => ({
-      query: question,
-      needRetrieve: true,
-    })),
+    classify: vi.fn(async (question: string) => kbPlan(question)),
+    gradeHits: vi.fn(async (_question: string, hits: SearchHit[]) =>
+      hits.length
+        ? { ok: true, reason: 'relevant', text: '资料切题' }
+        : { ok: false, reason: 'empty', text: '未检索到资料' },
+    ),
+    rewriteAfterRetrieve: vi.fn(
+      async (question: string, previousQuery: string) =>
+        question === previousQuery ? '' : question,
+    ),
   } as unknown as ChatQueryRewriteService;
   return { shortMemory, longMemory, queryRewrite };
+}
+
+function makeWebSearch() {
+  const webSearch = {
+    search: vi.fn(async (query: string) => ({
+      query,
+      items: [
+        {
+          title: `网页：${query}`,
+          url: 'https://example.com/doc',
+          snippet: '公开信息摘要',
+        },
+      ],
+    })),
+  } as unknown as WebSearchService;
+  return webSearch;
 }
 
 function makeService(
@@ -90,32 +125,36 @@ function makeService(
   appendTurn: ReturnType<typeof vi.fn>;
   fakes: ReturnType<typeof makeMemoryFakes>;
   retrievalSearch: ReturnType<typeof vi.fn>;
+  webSearchFake: WebSearchService;
 } {
   const retrieval = {
     search: vi.fn(searchImpl),
   } as unknown as RetrievalService;
   const { sessions, appendTurn } = makeSessions(sessionsImpl);
   const fakes = makeMemoryFakes();
+  const webSearch = makeWebSearch();
   const service = new AiChatService(
     {
-      get: (k: string, d?: string) =>
-        k === 'LLM_API_KEY' ? 'test-key' : d,
+      get: (k: string, d?: string) => (k === 'LLM_API_KEY' ? 'test-key' : d),
     } as unknown as ConfigService,
     retrieval,
     sessions,
     fakes.shortMemory,
     fakes.longMemory,
     fakes.queryRewrite,
+    webSearch,
   ) as AiChatService & {
     appendTurn: ReturnType<typeof vi.fn>;
     fakes: ReturnType<typeof makeMemoryFakes>;
     retrievalSearch: ReturnType<typeof vi.fn>;
+    webSearchFake: WebSearchService;
   };
   service.appendTurn = appendTurn;
   service.fakes = fakes;
   service.retrievalSearch = retrieval.search as unknown as ReturnType<
     typeof vi.fn
   >;
+  service.webSearchFake = webSearch;
   return service;
 }
 
@@ -137,6 +176,7 @@ describe('AiChatService（mock 检索与 LLM）', () => {
       shortMemory,
       longMemory,
       queryRewrite,
+      makeWebSearch(),
     );
 
     const res = await service.chat('   ');
@@ -146,12 +186,13 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
-  it('检索无命中返回固定话术，不调 LLM', async () => {
+  it('知识库检索无命中返回固定话术，不调 LLM', async () => {
     const service = makeService(async () => []);
     const res = await service.chat('任意问题');
     expect(res.answer).toBe('知识库里没有相关内容。');
     expect(res.sources).toEqual([]);
     expect(invokeMock).not.toHaveBeenCalled();
+    expect(service.webSearchFake.search).not.toHaveBeenCalled();
   });
 
   it('生成带 [n] 标注时只返回被引用的资料（按编号排序）', async () => {
@@ -165,11 +206,9 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     ]);
 
     const res = await service.chat('报销流程');
-    // [2] 与 [1] 被引用，[3] 未引用不返回
     expect(res.sources.map((s) => s.index)).toEqual([1, 2]);
     expect(res.sources[0].documentId).toBe('doc-a');
     expect(res.sources[1].documentId).toBe('doc-b');
-    // 溯源条目是摘录不是整块正文
     expect(res.sources[0].excerpt).toBe('内容 a');
   });
 
@@ -207,6 +246,7 @@ describe('AiChatService（mock 检索与 LLM）', () => {
       shortMemory,
       longMemory,
       queryRewrite,
+      makeWebSearch(),
     );
 
     const res = await service.chat('问题');
@@ -276,10 +316,9 @@ describe('AiChatService（mock 检索与 LLM）', () => {
   it('改写后的独立查询用于检索，而不是原问题', async () => {
     invokeMock.mockResolvedValue({ content: '结论 [1]。' });
     const service = makeService(async () => [hit('a', 0.9)]);
-    service.fakes.queryRewrite.rewrite = vi.fn(async () => ({
-      query: '差旅费超五千 加签 审批人',
-      needRetrieve: true,
-    })) as never;
+    service.fakes.queryRewrite.classify = vi.fn(async () =>
+      kbPlan('差旅费超五千 加签 审批人'),
+    ) as never;
 
     await service.chat('那这个找谁？', 5, USER, '8001');
     expect(service.retrievalSearch).toHaveBeenCalledWith(
@@ -288,18 +327,129 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     );
   });
 
-  it('寒暄 needRetrieve=false 时跳过检索，仍正常生成回答', async () => {
+  it('闲聊意图不查知识库，仍正常生成回答', async () => {
     invokeMock.mockResolvedValue({ content: '不客气。' });
     const service = makeService(async () => []);
-    service.fakes.queryRewrite.rewrite = vi.fn(async () => ({
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      intent: 'chitchat' as const,
+      label: '闲聊',
       query: '好的谢谢',
-      needRetrieve: false,
+      allowRetrieve: false,
+      allowWeb: false,
     })) as never;
 
     const res = await service.chat('好的谢谢', 5, USER, '8001');
     expect(service.retrievalSearch).not.toHaveBeenCalled();
+    expect(service.webSearchFake.search).not.toHaveBeenCalled();
     expect(res.answer).toBe('不客气。');
     expect(res.answer).not.toBe('知识库里没有相关内容。');
+  });
+
+  it('个人偏好意图不挂任何检索工具', async () => {
+    invokeMock.mockResolvedValue({ content: '你在研发中心。' });
+    const service = makeService(async () => []);
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      intent: 'profile' as const,
+      label: '个人偏好',
+      query: '我是哪个部门',
+      allowRetrieve: false,
+      allowWeb: false,
+    })) as never;
+
+    await service.chat('我是哪个部门', 5, USER, '8001');
+    expect(service.retrievalSearch).not.toHaveBeenCalled();
+    expect(service.webSearchFake.search).not.toHaveBeenCalled();
+  });
+
+  it('纯联网意图不查库，直接联网并把结果放进上下文', async () => {
+    invokeMock.mockResolvedValue({ content: '汇率 7.1 [网页]。' });
+    const service = makeService(async () => []);
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      intent: 'web' as const,
+      label: '联网搜索',
+      query: '今天人民币兑美元汇率',
+      allowRetrieve: false,
+      allowWeb: true,
+    })) as never;
+
+    await service.chat('今天人民币兑美元汇率', 5, USER, '8001');
+
+    expect(service.retrievalSearch).not.toHaveBeenCalled();
+    expect(service.webSearchFake.search).toHaveBeenCalledWith(
+      '今天人民币兑美元汇率',
+    );
+    const messages = invokeMock.mock.calls[0][0] as Array<{ content: unknown }>;
+    expect(String(messages.at(-1)?.content)).toContain('联网结果');
+    expect(String(messages.at(-1)?.content)).toContain('example.com');
+  });
+
+  it('知识库不足再联网意图：库空后走联网', async () => {
+    invokeMock.mockResolvedValue({ content: '结合网页信息回答。' });
+    const service = makeService(async () => []);
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      intent: 'kb_then_web' as const,
+      label: '知识库，不足则联网',
+      query: '请假制度 国务院放假安排',
+      allowRetrieve: true,
+      allowWeb: true,
+    })) as never;
+
+    await service.chat('请假和法定假期什么关系？', 5, USER, '8001');
+
+    expect(service.retrievalSearch).toHaveBeenCalled();
+    expect(service.webSearchFake.search).toHaveBeenCalled();
+    const messages = invokeMock.mock.calls[0][0] as Array<{ content: unknown }>;
+    expect(String(messages.at(-1)?.content)).toContain('联网结果');
+  });
+
+  it('知识库不足再联网意图：库切题时不联网', async () => {
+    invokeMock.mockResolvedValue({ content: '按考勤制度 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      intent: 'kb_then_web' as const,
+      label: '知识库，不足则联网',
+      query: '请假审批流程',
+      allowRetrieve: true,
+      allowWeb: true,
+    })) as never;
+
+    await service.chat('请假审批流程', 5, USER, '8001');
+
+    expect(service.retrievalSearch).toHaveBeenCalledTimes(1);
+    expect(service.webSearchFake.search).not.toHaveBeenCalled();
+  });
+
+  it('首轮不切题时改写并再查一次，使用同样的 mode', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const firstHit = hit('a', 0.6);
+    const secondHit = hit('b', 0.9);
+    const service = makeService(
+      vi
+        .fn()
+        .mockResolvedValueOnce([firstHit])
+        .mockResolvedValueOnce([secondHit]) as never,
+    );
+    service.fakes.queryRewrite.gradeHits = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, reason: 'irrelevant', text: '词沾边' })
+      .mockResolvedValueOnce({ ok: true, reason: 'relevant', text: '切题' }) as never;
+    service.fakes.queryRewrite.rewriteAfterRetrieve = vi.fn(
+      async () => '新检索词',
+    ) as never;
+
+    const res = await service.chat('加班餐补怎么报', 3, USER, '8001', 'keyword');
+
+    expect(service.retrievalSearch).toHaveBeenNthCalledWith(
+      1,
+      { query: '加班餐补怎么报', topK: 3, mode: 'keyword' },
+      expect.anything(),
+    );
+    expect(service.retrievalSearch).toHaveBeenNthCalledWith(
+      2,
+      { query: '新检索词', topK: 3, mode: 'keyword' },
+      expect.anything(),
+    );
+    expect(res.answer).toBe('结论 [1]。');
   });
 
   it('长期记忆命中时作为系统消息注入上下文', async () => {

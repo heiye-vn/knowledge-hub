@@ -5,16 +5,24 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
-import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
+import {
+  HumanMessage,
+  SystemMessage,
+  type BaseMessage,
+} from '@langchain/core/messages';
 import { RetrievalService } from '../rag/retrieval.service.js';
 import type { SearchHit, SearchMode } from '../rag/types/rag.types.js';
 import { ChatSessionService } from './chat-session.service.js';
 import { ChatShortMemoryService } from './chat-short-memory.service.js';
 import { ChatLongMemoryService } from './chat-long-memory.service.js';
-import { ChatQueryRewriteService } from './chat-query-rewrite.service.js';
+import {
+  ChatQueryRewriteService,
+  type ChatIntent,
+} from './chat-query-rewrite.service.js';
+import { retrieveUntilRelevant } from './agentic-retrieve.js';
+import { WebSearchService, type WebSearchResult } from './web-search.service.js';
 import { dbRowsToMessages } from './chat-memory.util.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
-import { accessFromUser } from '../document/document-access.js';
 import type { ChatSource } from './chat.types.js';
 
 export type { ChatSource } from './chat.types.js';
@@ -24,22 +32,10 @@ const CONTEXT_SNIPPET_LEN = 800;
 const CITATION_RE = /\[(\d+)\]/g;
 
 /**
- * RAG 对话服务（feat-v11）：混合检索 → LLM 作答 → 引用溯源。
+ * 非流式 Agentic RAG：意图路由 → 检索 + 切题评估 → 不足改写再查 → 按需联网 → 作答。
  *
- * 对应基线实现 v11 `ai/ai-chat.service.ts`。
- *
- * 🟡 与基线实现的分叉：
- * - **复用主项目 RetrievalService**：继承其 RAG_MIN_SCORE 低分过滤与
- *   PG 一致性兜底（基线实现无这两层，无关查询的硬凑结果会进上下文）。
- * - **Key 回退链对齐 extraction.service**：LLM_API_KEY → EMBEDDING_API_KEY
- *   → OPENAI_API_KEY（基线是 DASHSCOPE/OPENAI）。
- *
- * 引用溯源设计（与基线一致）：system prompt 强制句末标 [n] → 生成后
- * 正则抽出实际引用的编号 → sources 只返回被引用条目（未标注时回退全部），
- * 每条带 200 字 excerpt 而非整块正文。
- *
- * 降级：检索无命中直接返回固定话术，不调用 LLM；未配置 Key 时
- * 检索有结果才抛 503（无结果时无需 LLM）。
+ * 保留既有能力：检索模式透传、可见性 scope、MIN_SCORE/PG 兜底、引用溯源、
+ * 会话与双层记忆落库（尽力而为）。
  */
 @Injectable()
 export class AiChatService {
@@ -53,6 +49,7 @@ export class AiChatService {
     private readonly shortMemory: ChatShortMemoryService,
     private readonly longMemory: ChatLongMemoryService,
     private readonly queryRewrite: ChatQueryRewriteService,
+    private readonly webSearch: WebSearchService,
   ) {
     const apiKey =
       config.get<string>('LLM_API_KEY') ||
@@ -96,23 +93,49 @@ export class AiChatService {
     const history = user
       ? await this.loadWorkingHistory(user.userId, sessionId)
       : [];
-    const plan = await this.queryRewrite.rewrite(trimmed, history);
-    const [hits, memHits] = await Promise.all([
-      plan.needRetrieve
-        ? this.retrieval.search(
-            { query: plan.query, topK, mode },
-            user ? accessFromUser(user) : undefined,
-          )
-        : Promise.resolve([] as SearchHit[]),
-      user
-        ? this.longMemory.search(user.userId, sessionId, plan.query)
-        : Promise.resolve({ user: [] as string[], session: [] as string[] }),
-    ]);
+    const plan = await this.queryRewrite.classify(trimmed, history);
+    const memHitsP = user
+      ? this.longMemory.search(user.userId, sessionId, plan.query)
+      : Promise.resolve({ user: [] as string[], session: [] as string[] });
 
-    if (plan.needRetrieve && !hits.length) {
-      const empty = { answer: '知识库里没有相关内容。', sources: [] as ChatSource[] };
+    // 非流式没有 Agent 工具环，但检索仍走同一套：评估切题，不足则改写再查。
+    let hits: SearchHit[] = [];
+    let kbInsufficient = false;
+    let searchQuery = plan.query || trimmed;
+    if (plan.allowRetrieve) {
+      const retrieved = await retrieveUntilRelevant({
+        question: trimmed,
+        query: plan.query,
+        topK,
+        mode,
+        user,
+        retrieval: this.retrieval,
+        rewrite: this.queryRewrite,
+      });
+      hits = retrieved.hits;
+      kbInsufficient = !retrieved.eval.ok;
+      searchQuery = retrieved.usedQuery || searchQuery;
+    }
+
+    const web =
+      plan.allowWeb && (!plan.allowRetrieve || kbInsufficient)
+        ? await this.webSearch.search(searchQuery)
+        : undefined;
+    const memHits = await memHitsP;
+
+    if (plan.intent === 'kb' && kbInsufficient) {
+      const empty = {
+        answer: '知识库里没有相关内容。',
+        sources: [] as ChatSource[],
+      };
       const session = user
-        ? await this.persistTurn(user.userId, sessionId, trimmed, empty.answer, empty.sources)
+        ? await this.persistTurn(
+            user.userId,
+            sessionId,
+            trimmed,
+            empty.answer,
+            empty.sources,
+          )
         : null;
       if (user && session) {
         await this.shortMemory.appendTurn(
@@ -139,18 +162,14 @@ export class AiChatService {
     }
 
     const memoryMsg = this.longMemory.buildSystemMessage(memHits);
-    const userTurn = hits.length
-      ? `检索到的资料：\n${this.buildContext(hits)}\n\n用户问题：${trimmed}`
-      : `用户问题：${trimmed}`;
+    const parts: string[] = [];
+    if (hits.length) parts.push(`知识库资料：\n${this.buildContext(hits)}`);
+    if (web) parts.push(`联网结果：\n${this.buildWebContext(web)}`);
+    parts.push(`用户问题：${trimmed}`);
+    const userTurn = parts.join('\n\n');
     const response = await this.llm.invoke([
       new SystemMessage(
-        '你是企业知识库助手。有检索资料时只根据资料回答用户问题。' +
-          '结合对话历史和记忆里的用户背景，但制度/流程以本轮资料为准，不要用记忆替代文档。' +
-          '没有检索资料时，可回应寒暄或对话，不要编造制度。' +
-          '若资料不足以回答制度问题，明确说不知道，不要编造。' +
-          '凡是依据某条资料作出的陈述，必须在句末标注对应编号，如 [1]、[2]。' +
-          '编号必须与资料列表一致，不要标注未使用的编号，不要编造文档标题或链接。' +
-          '回答简洁，必要时列出条目。',
+        this.buildSystemPrompt(plan.intent, Boolean(hits.length), web),
       ),
       ...(memoryMsg ? [memoryMsg] : []),
       ...history,
@@ -164,7 +183,7 @@ export class AiChatService {
 
     const sources = this.toCitedSources(answer, hits);
     this.logger.log(
-      `RAG 对话完成：hits=${hits.length}, cited=${sources.length}, answerLength=${answer.length}`,
+      `RAG 对话完成：intent=${plan.intent}, hits=${hits.length}, cited=${sources.length}, answerLength=${answer.length}`,
     );
 
     const session = user
@@ -216,7 +235,7 @@ export class AiChatService {
 
   /**
    * 一轮问答落库（尽力而为）：回答已生成，持久化失败只记日志不抛错，
-   * 避免存储故障让用户拿不到答案（落库缺失影响的是历史回看，不是本次回答）。
+   * 避免存储故障让用户拿不到答案。
    */
   private async persistTurn(
     userId: string,
@@ -286,5 +305,38 @@ export class AiChatService {
         return `[${i + 1}] ${src.documentTitle}${heading}\n${snippet}`;
       })
       .join('\n\n');
+  }
+
+  private buildWebContext(web: WebSearchResult): string {
+    if (web.error) return web.error;
+    if (!web.items.length) return '无结果。';
+    return web.items
+      .map((hit, i) => `${i + 1}. ${hit.title}\n${hit.url}\n${hit.snippet}`)
+      .join('\n\n');
+  }
+
+  private buildSystemPrompt(
+    intent: ChatIntent,
+    hasKb: boolean,
+    web?: WebSearchResult,
+  ): string {
+    let prompt =
+      '你是企业知识库助手。结合对话历史和记忆里的用户背景回答。' +
+      '制度/流程以本轮知识库资料为准，不要用记忆替代文档。';
+    if (hasKb) {
+      prompt +=
+        '凡是依据某条资料作出的陈述，必须在句末标注对应编号，如 [1]、[2]。' +
+        '编号必须与资料列表一致，不要标注未使用的编号，不要编造文档标题或链接。';
+    } else if (intent === 'kb' || intent === 'kb_then_web') {
+      prompt += '知识库没有切题资料，不要编造内部制度。';
+    }
+    if (web?.items.length) {
+      prompt += '联网结果只作公开信息补充，用标题+链接说明，不要写成公司内部规定。';
+    }
+    if (intent === 'chitchat' || intent === 'profile') {
+      prompt += '可回应寒暄或个人偏好，不要编造制度。';
+    }
+    prompt += '若资料不足以回答，明确说不知道。回答简洁，必要时列出条目。';
+    return prompt;
   }
 }

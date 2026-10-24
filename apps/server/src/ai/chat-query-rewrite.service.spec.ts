@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { ChatQueryRewriteService } from './chat-query-rewrite.service.js';
+import type { SearchHit } from '../rag/types/rag.types.js';
 
 const invokeMock = vi.fn();
 vi.mock('@langchain/openai', () => ({
@@ -22,65 +23,275 @@ function makeConfig(withKey = true) {
   } as unknown as ConfigService;
 }
 
+function hit(id: string): SearchHit {
+  return {
+    chunkId: id,
+    documentId: `doc-${id}`,
+    documentTitle: `文档 ${id}`,
+    content: `内容 ${id}`,
+    heading: null,
+    chunkIndex: 0,
+    totalChunks: 1,
+    score: 0.9,
+    scores: { vector: null, keyword: 0.9 },
+  };
+}
+
 const HISTORY = [new HumanMessage('出差加签谁批？'), new AIMessage('总监。')];
 
-describe('ChatQueryRewriteService（mock LLM）', () => {
+describe('ChatQueryRewriteService · classify（意图路由）', () => {
   beforeEach(() => {
     invokeMock.mockReset();
   });
 
-  it('未配置 LLM Key 时回退原问题，不调用改写器', async () => {
-    const service = new ChatQueryRewriteService(makeConfig(false));
-    const plan = await service.rewrite('那这个找谁？', HISTORY);
-    expect(plan).toEqual({ query: '那这个找谁？', needRetrieve: true });
-    expect(invokeMock).not.toHaveBeenCalled();
-  });
-
-  it('无历史时回退原问题（首问不需要改写）', async () => {
-    const service = new ChatQueryRewriteService(makeConfig());
-    const plan = await service.rewrite('报销流程是什么？', []);
-    expect(plan).toEqual({ query: '报销流程是什么？', needRetrieve: true });
-    expect(invokeMock).not.toHaveBeenCalled();
-  });
-
-  it('改写成功时返回独立短查询与检索意图', async () => {
+  it('首轮无历史也调用路由，闲聊不挂检索工具', async () => {
     invokeMock.mockResolvedValue({
-      standalone_query: '出差费用超五千 加签 审批人',
-      need_retrieve: true,
+      intent: 'chitchat',
+      standalone_query: '你好',
     });
     const service = new ChatQueryRewriteService(makeConfig());
 
-    const plan = await service.rewrite('那这个找谁？', HISTORY);
+    const plan = await service.classify('你好', []);
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
     expect(plan).toEqual({
-      query: '出差费用超五千 加签 审批人',
-      needRetrieve: true,
+      intent: 'chitchat',
+      label: '闲聊',
+      query: '你好',
+      allowRetrieve: false,
+      allowWeb: false,
     });
   });
 
-  it('寒暄时 needRetrieve=false，query 仍给原问题', async () => {
+  it('知识库意图只挂检索，不挂联网', async () => {
     invokeMock.mockResolvedValue({
-      standalone_query: '好的谢谢',
-      need_retrieve: false,
+      intent: 'kb',
+      standalone_query: '出差费用超五千 加签 审批人',
     });
     const service = new ChatQueryRewriteService(makeConfig());
 
-    const plan = await service.rewrite('好的谢谢', HISTORY);
-    expect(plan).toEqual({ query: '好的谢谢', needRetrieve: false });
+    const plan = await service.classify('那这个找谁？', HISTORY);
+
+    expect(plan).toMatchObject({
+      intent: 'kb',
+      label: '知识库',
+      allowRetrieve: true,
+      allowWeb: false,
+    });
   });
 
-  it('改写抛错时回退原问题（不阻断问答）', async () => {
+  it('知识库不足再联网意图两套工具都挂', async () => {
+    invokeMock.mockResolvedValue({
+      intent: 'kb_then_web',
+      standalone_query: '请假制度 国务院放假安排',
+    });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const plan = await service.classify('请假和法定假期什么关系？', HISTORY);
+
+    expect(plan).toMatchObject({
+      intent: 'kb_then_web',
+      label: '知识库，不足则联网',
+      allowRetrieve: true,
+      allowWeb: true,
+    });
+  });
+
+  it('纯联网意图不挂知识库检索', async () => {
+    invokeMock.mockResolvedValue({
+      intent: 'web',
+      standalone_query: '今天人民币兑美元汇率',
+    });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const plan = await service.classify('今天人民币兑美元汇率', HISTORY);
+
+    expect(plan).toMatchObject({
+      intent: 'web',
+      allowRetrieve: false,
+      allowWeb: true,
+    });
+  });
+
+  it('个人偏好不挂任何检索工具', async () => {
+    invokeMock.mockResolvedValue({
+      intent: 'profile',
+      standalone_query: '我是哪个部门',
+    });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const plan = await service.classify('我是哪个部门', HISTORY);
+
+    expect(plan).toMatchObject({
+      intent: 'profile',
+      allowRetrieve: false,
+      allowWeb: false,
+    });
+  });
+
+  it('路由失败时兜底知识库，并用原问题检索', async () => {
     invokeMock.mockRejectedValue(new Error('llm timeout'));
     const service = new ChatQueryRewriteService(makeConfig());
 
-    const plan = await service.rewrite('那这个找谁？', HISTORY);
-    expect(plan).toEqual({ query: '那这个找谁？', needRetrieve: true });
+    const plan = await service.classify('预算审核员属于哪个部门', HISTORY);
+
+    expect(plan).toEqual({
+      intent: 'kb',
+      label: '知识库',
+      query: '预算审核员属于哪个部门',
+      allowRetrieve: true,
+      allowWeb: false,
+    });
   });
 
-  it('改写结果为空串时回退原问题', async () => {
-    invokeMock.mockResolvedValue({ standalone_query: '   ', need_retrieve: true });
+  it('standalone_query 为空时回退原问题', async () => {
+    invokeMock.mockResolvedValue({ intent: 'kb', standalone_query: '   ' });
     const service = new ChatQueryRewriteService(makeConfig());
 
-    const plan = await service.rewrite('原问题', HISTORY);
+    const plan = await service.classify('原问题', HISTORY);
+
     expect(plan.query).toBe('原问题');
+  });
+
+  it('未配置 LLM Key 时按知识库兜底，不调用模型', async () => {
+    const service = new ChatQueryRewriteService(makeConfig(false));
+
+    const plan = await service.classify('你好', HISTORY);
+
+    expect(plan).toMatchObject({
+      intent: 'kb',
+      allowRetrieve: true,
+      allowWeb: false,
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatQueryRewriteService · gradeHits（切题评估）', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+  });
+
+  it('空结果直接判 empty，不调用模型', async () => {
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const grade = await service.gradeHits('问题', []);
+
+    expect(grade).toEqual({
+      ok: false,
+      reason: 'empty',
+      text: '未检索到资料',
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('模型判定切题时返回 relevant', async () => {
+    invokeMock.mockResolvedValue({
+      relevant: true,
+      reason: '同一制度，可支撑作答',
+    });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const grade = await service.gradeHits('问题', [hit('a')]);
+
+    expect(grade).toEqual({
+      ok: true,
+      reason: 'relevant',
+      text: '同一制度，可支撑作答',
+    });
+  });
+
+  it('模型判定不切题时返回 irrelevant', async () => {
+    invokeMock.mockResolvedValue({
+      relevant: false,
+      reason: '只是词沾边',
+    });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const grade = await service.gradeHits('问题', [hit('a')]);
+
+    expect(grade).toEqual({
+      ok: false,
+      reason: 'irrelevant',
+      text: '只是词沾边',
+    });
+  });
+
+  it('评估调用失败时按有召回放行，避免误杀', async () => {
+    invokeMock.mockRejectedValue(new Error('timeout'));
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const grade = await service.gradeHits('问题', [hit('a')]);
+
+    expect(grade.ok).toBe(true);
+    expect(grade.reason).toBe('relevant');
+    expect(grade.text).toContain('评估失败');
+  });
+});
+
+describe('ChatQueryRewriteService · rewriteAfterRetrieve（不足后改写）', () => {
+  const GRADE = { ok: false, reason: 'irrelevant' as const, text: '只是词沾边' };
+
+  beforeEach(() => {
+    invokeMock.mockReset();
+  });
+
+  it('根据上次词与不足原因生成新检索词', async () => {
+    invokeMock.mockResolvedValue({ query: '差旅 报销 餐补 标准' });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const query = await service.rewriteAfterRetrieve(
+      '加班餐补怎么报',
+      '加班餐补',
+      GRADE,
+      [hit('a')],
+    );
+
+    expect(query).toBe('差旅 报销 餐补 标准');
+    const messages = invokeMock.mock.calls[0][0] as Array<{ content: unknown }>;
+    expect(String(messages[1].content)).toContain('只是词沾边');
+    expect(String(messages[1].content)).toContain('加班餐补');
+  });
+
+  it('改写结果与上次相同则回退原问题', async () => {
+    invokeMock.mockResolvedValue({ query: '加班餐补' });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const query = await service.rewriteAfterRetrieve(
+      '加班餐补怎么报',
+      '加班餐补',
+      GRADE,
+      [hit('a')],
+    );
+
+    expect(query).toBe('加班餐补怎么报');
+  });
+
+  it('原问题也等于上次词时返回空串，表示无法再查', async () => {
+    invokeMock.mockResolvedValue({ query: '加班餐补' });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const query = await service.rewriteAfterRetrieve(
+      '加班餐补',
+      '加班餐补',
+      GRADE,
+      [],
+    );
+
+    expect(query).toBe('');
+  });
+
+  it('改写失败时回退原问题，不阻断问答', async () => {
+    invokeMock.mockRejectedValue(new Error('timeout'));
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const query = await service.rewriteAfterRetrieve(
+      '年会抽奖规则',
+      '年会抽奖',
+      { ok: false, reason: 'empty', text: '未检索到资料' },
+      [],
+    );
+
+    expect(query).toBe('年会抽奖规则');
   });
 });

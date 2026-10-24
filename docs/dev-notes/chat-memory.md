@@ -34,14 +34,20 @@ Redis 读写失败只 warn：读路径由 PG 兜底，写路径下一轮照样�
 
 ## 三、 检索改写
 
-`{ standalone_query, need_retrieve }` 结构化输出；上下文只取最近 4 条（用户 200 字 / 助手 120 字，
-防制度原文污染）。`need_retrieve=false`（寒暄）跳过检索直接生成，不再回「知识库里没有相关内容」。
-无历史 / 无 Key / 超时 / 失败 → 回退原问题且 `needRetrieve=true`。
+v16 最初为 `{ standalone_query, need_retrieve }` 结构化输出；v17 起升级为
+`{ intent, standalone_query }` 五类意图路由（chitchat / profile / kb / web / kb_then_web），
+无历史也执行路由，失败兜底 `kb`。检索后的切题评估与不足改写见
+[agentic-rag.md](./agentic-rag.md)，本节只保留与记忆强相关的约束。
+
+- 上下文只取最近 4 条（用户 200 字 / 助手 120 字，防制度原文污染）。
+- 闲聊/偏好不挂检索工具；知识库与联网由意图决定。
+- 无 Key / 超时 / 路由失败 → 回退原问题且按 `kb` 处理，不阻断问答。
 
 ### 【易错】改写后的 query 检索必须继续带可见性 scope
 
 `retrieval.search({ query: plan.query }, accessFromUser(user))` —— 漏传 scope 会退化成全量检索（fail-open），
-见 [document-visibility.md](./document-visibility.md) §五。
+见 [document-visibility.md](./document-visibility.md) §五。v17 的二次检索同样经过
+`retrieveAndGrade`，scope 由工具闭包携带，不能只给首轮加。
 
 ## 四、 Mem0 写入边界
 
