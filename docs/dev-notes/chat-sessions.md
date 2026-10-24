@@ -41,6 +41,10 @@ kh_ai_session                    kh_ai_message
 
 - **appendTurn 内部**：传了 sessionId 先过 `getOwned(userId, sessionId)`；
   没传则新建会话（标题 = 首问压空白后截 30 字）。
+- **流式续聊开场**：`touchTitle` 在流开始前用首问覆盖默认标题，内部
+  `assertOwned` 同时完成归属校验；`appendTurn` 末尾仍保留同样的标题兜底，
+  覆盖非流式、新建会话与流式异常路径。前端收到 `data-session` 后刷新会话列表，
+  侧栏即可在首答期间显示首问标题。
 - **标题自动生成只覆盖默认名**：首轮问答时若 title 仍是「新对话」才用
   首问覆盖，用户自己命名过的会话不动。
 - **越权 = 不存在**：`getOwned` 查询条件同时带 id 与 userId，

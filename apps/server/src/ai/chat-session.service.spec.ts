@@ -57,6 +57,41 @@ describe('ChatSessionService（fake EntityManager）', () => {
     expect(em.create).toHaveBeenCalledOnce();
   });
 
+  it('touchTitle 仅在默认标题时用首问覆盖，并完成归属校验', async () => {
+    const em = makeEm();
+    const service = makeService(em);
+
+    em.findOne.mockResolvedValue({ ...SESSION, title: '新对话' });
+    const renamed = await service.touchTitle(
+      '1001',
+      '8001',
+      `${'问'.repeat(40)}`,
+    );
+    expect(renamed.title).toBe(`${'问'.repeat(30)}…`);
+    expect(em.save).toHaveBeenCalledWith(
+      expect.objectContaining({ title: `${'问'.repeat(30)}…` }),
+    );
+
+    em.save.mockClear();
+    em.findOne.mockResolvedValue({ ...SESSION, title: '自定义标题' });
+    const kept = await service.touchTitle('1001', '8001', '新问题');
+    expect(kept.title).toBe('自定义标题');
+    expect(em.save).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '自定义标题' }),
+    );
+  });
+
+  it('touchTitle 对他人会话同样 404，不泄漏会话存在性', async () => {
+    const em = makeEm();
+    em.findOne.mockResolvedValue(null);
+    const service = makeService(em);
+
+    await expect(
+      service.touchTitle('1002', '8001', '问'),
+    ).rejects.toThrow(NotFoundException);
+    expect(em.save).not.toHaveBeenCalled();
+  });
+
   it('新建会话标题超 80 字截断，首问生成标题截 30 字', async () => {
     const em = makeEm();
     const service = makeService(em);

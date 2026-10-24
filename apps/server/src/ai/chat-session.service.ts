@@ -75,6 +75,18 @@ export class ChatSessionService {
     return this.em.save(session);
   }
 
+  /**
+   * 流式续聊开场：仍为默认标题时用首问覆盖；getOwned 同时完成归属校验。
+   * appendTurn 末尾仍保留同样的兜底，覆盖非流式与流式异常路径。
+   */
+  async touchTitle(userId: string, id: string, question: string) {
+    const session = await this.assertOwned(userId, id);
+    if (session.title === DEFAULT_TITLE) {
+      session.title = titleFromQuestion(question);
+    }
+    return this.em.save(session);
+  }
+
   /** 删除会话；消息经外键级联清理，缓存与长期记忆会话层同步清掉 */
   async remove(userId: string, id: string) {
     const session = await this.getOwned(userId, id);
