@@ -29,6 +29,10 @@ import {
 } from './chat-query-rewrite.service.js';
 import { retrieveAndGrade, type RetrieveEval } from './agentic-retrieve.js';
 import { WebSearchService } from './web-search.service.js';
+import { formatGraphContext } from '../kg/chat-graph.js';
+import { GraphBuildService } from '../kg/graph-build.service.js';
+import type { GraphChatHit } from '../kg/types/kg.types.js';
+import { accessFromUser } from '../document/document-access.js';
 import { dbRowsToMessages } from './chat-memory.util.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
 import type { ChatSource } from './chat.types.js';
@@ -59,11 +63,15 @@ type KhUIMessage = UIMessage<
       intent: ChatRoutePlan['intent'];
       label: string;
       query: string;
+      graphQueries: string[];
       allowRetrieve: boolean;
+      allowGraph: boolean;
       allowWeb: boolean;
     };
     /** 检索切题评估卡 */
     eval: RetrieveEval;
+    /** 图谱实体与关系 */
+    graph: GraphChatHit;
     session: { sessionId: string };
   }
 >;
@@ -88,6 +96,7 @@ export class AiStreamService {
     private readonly shortMemory: ChatShortMemoryService,
     private readonly longMemory: ChatLongMemoryService,
     private readonly queryRewrite: ChatQueryRewriteService,
+    private readonly graph: GraphBuildService,
   ) {
     const apiKey =
       config.get<string>('LLM_API_KEY') ||
@@ -113,7 +122,10 @@ export class AiStreamService {
       useResponsesApi: false,
       streamUsage: false,
       configuration: { baseURL },
-      modelKwargs: enableThinking ? { enable_thinking: true } : undefined,
+      modelKwargs: {
+        ...(enableThinking ? { enable_thinking: true } : {}),
+        parallel_tool_calls: true,
+      },
     });
     // 摘要用独立模型实例：关思考，结构化程度更稳
     this.compactLlm = new ChatOpenAI({
@@ -128,7 +140,8 @@ export class AiStreamService {
   }
 
   /**
-   * 按本轮意图挂工具。检索、改写、再检索由 Agent 循环调度，工具本身只做一步。
+   * 按本轮意图挂工具。知识库与图谱都是 Agent tool，首次应并行调用；
+   * 改写/再检索仍由 Agent 循环调度。
    */
   private createTurnAgent(
     user: AuthUser,
@@ -143,6 +156,7 @@ export class AiStreamService {
     const retrieval = this.retrieval;
     const queryRewrite = this.queryRewrite;
     const search = this.webSearch;
+    const graph = this.graph;
     const logger = this.logger;
     const tools: StructuredToolInterface[] = [];
     let retrieveCount = 0;
@@ -204,7 +218,7 @@ export class AiStreamService {
           {
             name: 'retrieve_knowledge',
             description:
-              '检索企业知识库一次（仅当前用户可见文档）并评估是否切题。不会自动再查。eval.ok 为 false 时先 rewrite_query，再用新词再调本工具。本轮最多两次。',
+              '检索企业知识库一次（仅当前用户可见文档）并评估是否切题。不会自动再查。首次必须与 retrieve_graph 在同一次并行调用。eval.ok 为 false 时先 rewrite_query，再用新词再调本工具。本轮最多两次。',
             schema: z.object({
               query: z.string().min(1).describe('适合检索的关键词或短句'),
               topK: z
@@ -266,6 +280,59 @@ export class AiStreamService {
       );
     }
 
+    if (plan.allowGraph) {
+      tools.push(
+        tool(
+          async (input: { query: string }) => {
+            const keywords = [
+              ...plan.graphQueries,
+              ...(input.query.trim() ? [input.query.trim()] : []),
+            ];
+            let hit: GraphChatHit;
+            try {
+              hit = await graph.retrieveForChat(
+                keywords,
+                8,
+                accessFromUser(user),
+              );
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              logger.warn(`图谱检索失败：${message}`);
+              hit = {
+                query: keywords.join(' / '),
+                entities: [],
+                relations: [],
+                documents: [],
+                error: message,
+              };
+            }
+            writer.write({ type: 'data-graph', data: hit });
+            return {
+              query: hit.query,
+              entities: hit.entities,
+              relations: hit.relations,
+              documents: hit.documents,
+              context: formatGraphContext(hit),
+              insufficient: !hit.entities.length && !hit.relations.length,
+              ...(hit.error ? { error: hit.error } : {}),
+            };
+          },
+          {
+            name: 'retrieve_graph',
+            description:
+              '检索知识图谱实体与关系（仅当前用户可见文档抽取出的图）。入参必须是短实体名，多个用空格或 / 分隔，例如「发票 / 报销」，不要整句。首次检索知识库时必须与 retrieve_knowledge 在同一次并行调用。图谱只说明实体关系，不能当制度原文。仅当还要查其他实体名时再单独再调。',
+            schema: z.object({
+              query: z
+                .string()
+                .min(1)
+                .describe('短实体名，多个用空格或 / 分隔，不要整句'),
+            }),
+          },
+        ),
+      );
+    }
+
     if (plan.allowWeb) {
       tools.push(
         tool(
@@ -302,7 +369,7 @@ export class AiStreamService {
           summaryPrompt:
             '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
         }),
-        modelCallLimitMiddleware({ runLimit: 6, exitBehavior: 'end' }),
+        modelCallLimitMiddleware({ runLimit: 8, exitBehavior: 'end' }),
       ],
     });
   }
@@ -356,6 +423,12 @@ export class AiStreamService {
           type: 'data-status',
           data: { stage: 'intent', text: '正在识别意图…' },
         });
+        // 记忆检索不依赖路由结果，先启动与意图分类重叠，减少首字延迟
+        const memHitsP = this.longMemory.search(
+          user.userId,
+          sessionId,
+          question,
+        );
         // 路由在 Agent 之前完成：工具列表按 plan 挂载，前端立刻能画意图卡
         const plan = await this.queryRewrite.classify(question, history);
         writer.write({
@@ -364,16 +437,13 @@ export class AiStreamService {
             intent: plan.intent,
             label: plan.label,
             query: plan.query,
+            graphQueries: plan.graphQueries,
             allowRetrieve: plan.allowRetrieve,
+            allowGraph: plan.allowGraph,
             allowWeb: plan.allowWeb,
           },
         });
 
-        const memHitsP = this.longMemory.search(
-          user.userId,
-          sessionId,
-          plan.query,
-        );
         const memHits = await memHitsP;
 
         const agent = this.createTurnAgent(
@@ -395,22 +465,15 @@ export class AiStreamService {
         }
 
         const memoryMsg = this.longMemory.buildSystemMessage(memHits);
-        const humanParts = [
-          plan.allowRetrieve
-            ? `建议检索词（可按问题改写后再检索）：${plan.query}`
-            : '',
-          `用户问题：${question}`,
-        ].filter(Boolean);
-        const human = humanParts.join('\n\n');
         const langchainStream = await agent.stream(
           {
             messages: [
               ...(memoryMsg ? [memoryMsg] : []),
               ...history,
-              new HumanMessage(human),
+              new HumanMessage(question),
             ],
           },
-          // messages：模型 token/思考；tools：retrieve / rewrite / web_search
+          // messages：模型 token/思考；tools：retrieve / rewrite / graph / web_search
           { streamMode: ['messages', 'tools'] },
         );
 
@@ -502,7 +565,20 @@ export function systemForPlan(plan: ChatRoutePlan) {
     '你是企业知识库助手，必须按 Agentic RAG 循环作答，不要跳步。' +
     '结合对话历史和记忆里的用户背景，但制度/流程以本轮检索资料为准。' +
     `本轮意图：${plan.label}。`;
-  if (plan.allowRetrieve) {
+  if (plan.allowRetrieve && plan.allowGraph) {
+    const graphHint = plan.graphQueries.length
+      ? plan.graphQueries.join(' / ')
+      : '从问题抽出的短实体名';
+    prompt +=
+      `知识库建议检索词「${plan.query}」，图谱建议检索词「${graphHint}」。` +
+      '第一步必须在同一次回复里并行调用 retrieve_knowledge 和 retrieve_graph，两个都要调：' +
+      '不要先查库再决定是否查图，不要只调其中一个，也不要等一个返回再调另一个。' +
+      'retrieve_graph 的 query 必须是短实体名（空格或 / 分隔），不要整句。' +
+      '循环：① 并行检索；② 若知识库 eval.ok 则用文档 context 作答并标 [n]，图谱只看实体关系、不能当制度原文；' +
+      '③ 若 insufficient，先 rewrite_query，再用新词再次 retrieve_knowledge（知识库最多两次）；图谱词变了才再调 retrieve_graph；' +
+      '④ 两次后仍不足再考虑联网。eval.ok 后不要再检索、不要改写。不要第三次 retrieve_knowledge。' +
+      '图谱为空不要编造关系。不要用记忆替代文档。';
+  } else if (plan.allowRetrieve) {
     prompt +=
       `建议检索词「${plan.query}」，可改写成更准的 query。` +
       '循环：① retrieve_knowledge；② 若 eval.ok 则用 context 作答并标 [n]；' +
@@ -511,6 +587,9 @@ export function systemForPlan(plan: ChatRoutePlan) {
       '不要用记忆替代文档。';
   } else {
     prompt += '不要调用 retrieve_knowledge 或 rewrite_query。';
+  }
+  if (!plan.allowGraph) {
+    prompt += '不要调用 retrieve_graph。';
   }
   if (plan.intent === 'chitchat') {
     prompt += '这是闲聊，直接回应，不要调用任何工具。';

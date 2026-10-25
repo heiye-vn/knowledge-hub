@@ -87,13 +87,32 @@ export function neo4jAccessParams(scope?: DocumentAccessScope) {
     unrestricted: !scope || scope.unrestricted,
     accessUserId: scope?.userId ?? '',
     accessTeamIds: scope?.teamIds ?? [],
+    publishedStatus: DocumentStatus.Published,
   };
 }
 
-/** Cypher：文档节点是否对当前用户可见 */
+/** Cypher：文档节点是否对当前用户可见（图谱只存已发布文档） */
 export function neo4jDocumentAccessWhere(alias = 'd'): string {
   return (
+    `(${alias}.status = $publishedStatus AND ` +
     `($unrestricted OR ${alias}.authorId = $accessUserId ` +
-    `OR ${alias}.isPublic = true OR ${alias}.teamId IN $accessTeamIds)`
+    `OR ${alias}.isPublic = true OR ${alias}.teamId IN $accessTeamIds))`
+  );
+}
+
+/**
+ * Cypher：关系是否可对当前用户展示。
+ *
+ * 关系边写入时必须记录来源块 `sourceChunkIds`；这里只认来源块所属文档的
+ * 可见性，不再用「两端实体共现」近似。无来源的存量边任何人不可见，
+ * 需全量重建图谱补齐来源。
+ */
+export function neo4jRelationAccessWhere(relationAlias = 'r'): string {
+  return (
+    `EXISTS { ` +
+    `MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(c:DocumentChunk) ` +
+    `WHERE c.chunkId IN coalesce(${relationAlias}.sourceChunkIds, []) ` +
+    `AND ${neo4jDocumentAccessWhere('d')} ` +
+    `}`
   );
 }

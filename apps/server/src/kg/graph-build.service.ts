@@ -12,6 +12,7 @@ import type {
   ExtractionOutcome,
 } from './extraction.service.js';
 import type {
+  GraphChatHit,
   GraphEdge,
   GraphEntity,
   GraphNeighbor,
@@ -22,11 +23,13 @@ import type {
   GraphViewNode,
   KgBuildResult,
 } from './types/kg.types.js';
+import { splitGraphKeywords } from './chat-graph.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
 import type { DocumentAccessScope } from '../document/document-access.js';
 import {
   neo4jAccessParams,
   neo4jDocumentAccessWhere,
+  neo4jRelationAccessWhere,
 } from '../document/document-access.js';
 
 /** 单篇建图最多参与的块数：按实测单块 19~57s，30 块 ≈ 10~30 分钟（并发 3 后 ≈ 4~10 分钟） */
@@ -61,7 +64,7 @@ function emptyOverview(): GraphOverview {
  * 图模型：
  * ```
  * (KnowledgeDocument)-[:HAS_CHUNK]->(DocumentChunk)-[:MENTIONS]->(KnowledgeEntity)
- * (KnowledgeEntity)-[:RELATED_TO {relation, weight}]->(KnowledgeEntity)
+ * (KnowledgeEntity)-[:RELATED_TO {relation, weight, sourceChunkIds}]->(KnowledgeEntity)
  * ```
  * ⚠️ 实体间**边类型恒为 RELATED_TO**，语义在 `relation` 属性上。
  *
@@ -257,7 +260,13 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
       const mentions: Array<{ chunkId: string; name: string }> = [];
       const relations = new Map<
         string,
-        { source: string; target: string; relation: string; weight: number }
+        {
+          source: string;
+          target: string;
+          relation: string;
+          weight: number;
+          sourceChunkIds: Set<string>;
+        }
       >();
 
       for (const o of outcomes) {
@@ -272,25 +281,39 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
           mentions.push({ chunkId: o.chunkId, name: e.name });
         }
         for (const r of o.result.relations) {
-          // 去重键：source|target|relation；同一对实体同语义只保留一条，权重取较大值
-          const key = `${r.source}|${r.target}|${r.relation}`;
+          // 图存储每对实体只有一条 RELATED_TO，同对多语义时保留权重最高的一条；
+          // 来源块必须与最终保留的 relation 语义一致，避免权限过滤串语义。
+          const weight = r.weight ?? 0.5;
+          const key = `${r.source}|${r.target}`;
           const existing = relations.get(key);
-          if (existing) {
-            existing.weight = Math.max(existing.weight, r.weight ?? 0.5);
-          } else {
+          if (!existing) {
             relations.set(key, {
               source: r.source,
               target: r.target,
               relation: r.relation,
-              weight: r.weight ?? 0.5,
+              weight,
+              sourceChunkIds: new Set([o.chunkId]),
             });
+          } else if (weight > existing.weight) {
+            existing.relation = r.relation;
+            existing.weight = weight;
+            existing.sourceChunkIds = new Set([o.chunkId]);
+          } else if (existing.relation === r.relation) {
+            existing.weight = Math.max(existing.weight, weight);
+            existing.sourceChunkIds.add(o.chunkId);
           }
         }
       }
 
       await this.writeEntities(session, [...entityMap.values()]);
       await this.writeMentions(session, mentions);
-      await this.writeRelations(session, [...relations.values()]);
+      await this.writeRelations(
+        session,
+        [...relations.values()].map(({ sourceChunkIds, ...relation }) => ({
+          ...relation,
+          sourceChunkIds: [...sourceChunkIds],
+        })),
+      );
 
       const result: KgBuildResult = {
         documentId: doc.id,
@@ -343,6 +366,19 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     if (!this.isAvailable()) return;
     const session = this.driver!.session();
     try {
+      // 先剔除关系边来源中属于本文件的块；来源被清空说明这条边不再有可见依据
+      await session.run(
+        `MATCH (d:KnowledgeDocument {id: $id})-[:HAS_CHUNK]->(c:DocumentChunk)
+         WITH collect(c.chunkId) AS chunkIds
+         MATCH ()-[r:RELATED_TO]->()
+         WHERE any(cid IN coalesce(r.sourceChunkIds, []) WHERE cid IN chunkIds)
+         SET r.sourceChunkIds = [
+           cid IN coalesce(r.sourceChunkIds, []) WHERE NOT cid IN chunkIds
+         ]
+         WITH r WHERE size(r.sourceChunkIds) = 0
+         DELETE r`,
+        { id: documentId },
+      );
       // DETACH DELETE 会先拆掉节点上的所有关系边再删节点
       await session.run(
         `MATCH (d:KnowledgeDocument {id: $id})
@@ -444,18 +480,10 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     try {
       const result = await session.run(
         `MATCH (a:KnowledgeEntity {name: $name})-[r:RELATED_TO]-(b:KnowledgeEntity)
-         WHERE ($unrestricted OR (
-           EXISTS {
-             MATCH (da:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(a)
-             WHERE ${neo4jDocumentAccessWhere('da')}
-           }
-           AND EXISTS {
-             MATCH (db:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(b)
-             WHERE ${neo4jDocumentAccessWhere('db')}
-           }
-         ))
+         WHERE ${neo4jRelationAccessWhere('r')}
          RETURN b.name AS name, b.type AS type, b.description AS description,
                 r.relation AS relation, r.weight AS weight,
+                r.sourceChunkIds AS sourceChunkIds,
                 (startNode(r) = a) AS outbound
          ORDER BY r.weight DESC
          LIMIT $limit`,
@@ -470,6 +498,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         },
         relation: r.get('relation') ?? 'RELATED_TO',
         weight: r.get('weight') ?? 0.5,
+        sourceChunkIds: (r.get('sourceChunkIds') as string[] | null) ?? [],
         direction: r.get('outbound') ? 'out' : 'in',
       }));
     } finally {
@@ -500,10 +529,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
          WHERE ${neo4jDocumentAccessWhere('d3')}
          WITH documents, chunks, count(DISTINCT e) AS entities
          OPTIONAL MATCH (a:KnowledgeEntity)-[r:RELATED_TO]->(b:KnowledgeEntity)
-         WHERE ($unrestricted OR (
-           EXISTS { MATCH (da:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(a) WHERE ${neo4jDocumentAccessWhere('da')} }
-           AND EXISTS { MATCH (db:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(b) WHERE ${neo4jDocumentAccessWhere('db')} }
-         ))
+         WHERE ${neo4jRelationAccessWhere('r')}
          RETURN documents, chunks, entities, count(DISTINCT r) AS relations`,
         neo4jAccessParams(scope),
       );
@@ -582,6 +608,134 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 对话 RAG：按短实体名找可见实体，再查这些实体之间的关系与来源文档。
+   * 只做相等 / 前缀 / 后缀，避免「发票」CONTAINS 命中整篇制度标题。
+   * 关系、文档用同一 session 顺序查，避免并发共用 session 丢边。
+   */
+  async retrieveForChat(
+    keyword: string | string[],
+    limit = 8,
+    scope?: DocumentAccessScope,
+  ): Promise<GraphChatHit> {
+    const kws = splitGraphKeywords(keyword);
+    const empty: GraphChatHit = {
+      query: kws.join(' / '),
+      entities: [],
+      relations: [],
+      documents: [],
+    };
+    if (!this.isAvailable()) {
+      this.logger.warn('跳过图谱对话检索（Neo4j 不可用）');
+      return empty;
+    }
+    if (!kws.length) return empty;
+
+    const cap = Math.min(Math.max(limit, 1), 20);
+    const vis = neo4jAccessParams(scope);
+    const session = this.driver!.session();
+    try {
+      // 先找实体：短词对 name/aliases 做相等、前缀、后缀（不用 CONTAINS，避免「发票」命中长标题）
+      const entResult = await session.run(
+        `MATCH (e:KnowledgeEntity)
+         WHERE any(kw IN $kws WHERE
+           toLower(e.name) = toLower(kw)
+           OR toLower(replace(replace(e.name, '《', ''), '》', '')) STARTS WITH toLower(kw)
+           OR toLower(e.name) ENDS WITH toLower(kw)
+           OR any(a IN coalesce(e.aliases, []) WHERE
+             toLower(toString(a)) = toLower(kw)
+             OR toLower(toString(a)) STARTS WITH toLower(kw)
+             OR toLower(toString(a)) ENDS WITH toLower(kw)
+           )
+         )
+         AND (
+           $unrestricted OR EXISTS {
+             MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(e)
+             WHERE ${neo4jDocumentAccessWhere('d')}
+           }
+         )
+         RETURN e.name AS name, e.type AS type, e.description AS description
+         ORDER BY
+           CASE
+             WHEN any(kw IN $kws WHERE toLower(e.name) = toLower(kw)) THEN 0
+             WHEN any(kw IN $kws WHERE toLower(e.name) STARTS WITH toLower(kw)
+               OR toLower(e.name) ENDS WITH toLower(kw)) THEN 1
+             ELSE 2
+           END,
+           size(e.name)
+         LIMIT $limit`,
+        { kws, limit: neo4j.int(cap), ...vis },
+      );
+      const entities: GraphChatHit['entities'] = entResult.records.map((r) => ({
+        name: r.get('name') as string,
+        type: (r.get('type') as string) ?? null,
+        description: (r.get('description') as string) ?? null,
+      }));
+      const names = entities.map((entity) => entity.name);
+      if (!names.length) {
+        this.logger.log(`图谱对话检索无实体：kws=${kws.join('/')}`);
+        return empty;
+      }
+
+      // 只取本轮命中实体之间的边，不要扩到图上其它节点
+      const relResult = await session.run(
+        `MATCH (a:KnowledgeEntity)-[r:RELATED_TO]->(b:KnowledgeEntity)
+         WHERE a.name IN $names AND b.name IN $names
+           AND ${neo4jRelationAccessWhere('r')}
+         RETURN a.name AS source,
+                CASE
+                  WHEN r.relation IS NULL OR r.relation = ''
+                    OR r.relation = 'RELATED_TO' THEN '关联'
+                  ELSE r.relation
+                END AS relation,
+                b.name AS target,
+                r.sourceChunkIds AS sourceChunkIds`,
+        { names, ...vis },
+      );
+      const seen = new Set<string>();
+      const relations: GraphChatHit['relations'] = [];
+      for (const record of relResult.records) {
+        const source = record.get('source') as string;
+        const relation = record.get('relation') as string;
+        const target = record.get('target') as string;
+        const key = `${source}\t${relation}\t${target}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        relations.push({
+          source,
+          relation,
+          target,
+          sourceChunkIds: (record.get('sourceChunkIds') as string[] | null) ?? [],
+        });
+      }
+
+      // 这些实体来自哪些当前用户可见的文档（给前端/模型当来源，不当制度原文）
+      const docResult = await session.run(
+        `MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(e:KnowledgeEntity)
+         WHERE e.name IN $names
+           AND ${neo4jDocumentAccessWhere('d')}
+         RETURN DISTINCT d.id AS documentId, d.title AS title
+         LIMIT $limit`,
+        { names, limit: neo4j.int(cap), ...vis },
+      );
+      const documents: GraphChatHit['documents'] = docResult.records.map((r) => ({
+        documentId: r.get('documentId') as string,
+        title: (r.get('title') as string) ?? '',
+      }));
+
+      this.logger.log(
+        `图谱对话检索：kws=${kws.join('/')} entities=${entities.length} rels=${relations.length}`,
+      );
+      return { query: kws.join(' / '), entities, relations, documents };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`图谱对话检索失败：${message}`);
+      return { ...empty, error: message };
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
    * 图谱可视化（feat-v10）：实体节点全量列表，按提及次数倒序。
    * `listEntities` 的可视化版——不返回 mentions 计数、上限放宽到 500。
    */
@@ -622,18 +776,10 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     try {
       const result = await session.run(
         `MATCH (a:KnowledgeEntity)-[r:RELATED_TO]->(b:KnowledgeEntity)
-         WHERE ($unrestricted OR (
-           EXISTS {
-             MATCH (da:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(a)
-             WHERE ${neo4jDocumentAccessWhere('da')}
-           }
-           AND EXISTS {
-             MATCH (db:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(b)
-             WHERE ${neo4jDocumentAccessWhere('db')}
-           }
-         ))
+         WHERE ${neo4jRelationAccessWhere('r')}
          RETURN a.name AS source, b.name AS target,
-                r.relation AS relation, r.weight AS weight
+                r.relation AS relation, r.weight AS weight,
+                r.sourceChunkIds AS sourceChunkIds
          ORDER BY r.weight DESC
          LIMIT $limit`,
         { limit: neo4j.int(cap), ...neo4jAccessParams(scope) },
@@ -643,6 +789,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         target: r.get('target'),
         relation: r.get('relation') ?? 'RELATED_TO',
         weight: toNum(r.get('weight')) || 0.5,
+        sourceChunkIds: (r.get('sourceChunkIds') as string[] | null) ?? [],
       }));
     } finally {
       await session.close();
@@ -688,10 +835,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         WHERE ${neo4jDocumentAccessWhere('d2')}
         WITH documentCount, count(DISTINCT e) AS entityCount
         OPTIONAL MATCH (a:KnowledgeEntity)-[rel:RELATED_TO]->(b:KnowledgeEntity)
-        WHERE ($unrestricted OR (
-          EXISTS { MATCH (da:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(a) WHERE ${neo4jDocumentAccessWhere('da')} }
-          AND EXISTS { MATCH (db:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(b) WHERE ${neo4jDocumentAccessWhere('db')} }
-        ))
+        WHERE ${neo4jRelationAccessWhere('rel')}
         WITH documentCount, entityCount, count(DISTINCT rel) AS relatedCount
         OPTIONAL MATCH (d3:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[m:MENTIONS]->(e0:KnowledgeEntity)
         WHERE ${neo4jDocumentAccessWhere('d3')}
@@ -897,11 +1041,12 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
           `
           MATCH (a:KnowledgeEntity)-[r:RELATED_TO]->(b:KnowledgeEntity)
           WHERE a.name IN $names AND b.name IN $names
+            AND ${neo4jRelationAccessWhere('r')}
           RETURN a.name AS source, b.name AS target,
                  r.relation AS relation, r.weight AS weight
           LIMIT 400
           `,
-          { names: [...entityNames] },
+          { names: [...entityNames], ...neo4jAccessParams(scope) },
         );
         for (const record of relatedRows.records) {
           const source = `entity:${record.get('source') as string}`;
@@ -1012,6 +1157,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
       target: string;
       relation: string;
       weight: number;
+      sourceChunkIds: string[];
     }>,
   ): Promise<void> {
     if (!relations.length) return;
@@ -1020,9 +1166,21 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
        MATCH (a:KnowledgeEntity {name: r.source})
        MATCH (b:KnowledgeEntity {name: r.target})
        MERGE (a)-[e:RELATED_TO]->(b)
-       ON CREATE SET e.relation = r.relation, e.weight = r.weight,
-                     e.createdAt = datetime()
-       ON MATCH SET e.weight = CASE WHEN r.weight > e.weight THEN r.weight ELSE e.weight END`,
+       WITH e, r, (e.relation IS NULL OR e.relation = r.relation) AS compatible
+       SET e.relation = coalesce(e.relation, r.relation),
+           e.weight = CASE
+             WHEN compatible AND (e.weight IS NULL OR r.weight > e.weight)
+             THEN r.weight ELSE e.weight
+           END,
+           e.sourceChunkIds = CASE
+             WHEN compatible THEN reduce(
+               acc = [],
+               cid IN coalesce(e.sourceChunkIds, []) + r.sourceChunkIds |
+               CASE WHEN cid IN acc THEN acc ELSE acc + cid END
+             )
+             ELSE coalesce(e.sourceChunkIds, [])
+           END,
+           e.createdAt = coalesce(e.createdAt, datetime())`,
       { rels: relations },
     );
   }

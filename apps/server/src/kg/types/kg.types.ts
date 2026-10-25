@@ -58,11 +58,13 @@ export interface GraphEntity {
   mentions: number;
 }
 
-/** 图查询返回的邻居（实体 + 关系 + 关联实体） */
+/** 图谱查询返回的邻居（实体 + 关系 + 关联实体） */
 export interface GraphNeighbor {
   entity: GraphEntity;
   relation: string;
   weight: number;
+  /** 关系来源块；严格可见性按这些块所属文档判定 */
+  sourceChunkIds: string[];
   /** 关系方向：out = 本实体指向邻居，in = 邻居指向本实体 */
   direction: 'out' | 'in';
 }
@@ -93,6 +95,39 @@ export interface GraphSearchHit {
   snippet: string | null;
 }
 
+/**
+ * 对话 RAG 的图谱命中（Agent retrieve_graph 工具 / 非流式问答）。
+ *
+ * 与 GraphSearchHit 的区别：这里不是跨节点全文搜索，而是
+ * 「短实体名 → 实体 → 实体间关系 → 来源文档」这一条对话检索链。
+ * 图谱只提供关系线索，不能当制度原文，因此不返回 chunk 正文。
+ */
+export interface GraphChatHit {
+  /** 归一化后的检索词，多个用 ` / ` 拼接 */
+  query: string;
+  entities: Array<{
+    name: string;
+    type: string | null;
+    description: string | null;
+  }>;
+  relations: Array<{
+    source: string;
+    relation: string;
+    target: string;
+    /** 关系来源块；用于严格权限过滤与溯源 */
+    sourceChunkIds?: string[];
+  }>;
+  documents: Array<{
+    documentId: string;
+    title: string;
+  }>;
+  /**
+   * Neo4j 已连接但查询失败时的原因。
+   * 未启用 / 未连接不写 error，按「没有匹配实体」处理。
+   */
+  error?: string;
+}
+
 /** 图谱可视化：实体节点（GET /kg/nodes） */
 export interface GraphNode {
   id: string;
@@ -108,6 +143,8 @@ export interface GraphEdge {
   /** 关系语义（边类型恒为 RELATED_TO，语义在属性上） */
   relation: string;
   weight: number;
+  /** 关系来源块；无来源的存量边仅管理员可读 */
+  sourceChunkIds: string[];
 }
 
 /** 全景图谱可视化节点 */

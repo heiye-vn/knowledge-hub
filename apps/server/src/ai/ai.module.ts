@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { RagModule } from '../rag/rag.module.js';
 import { RedisModule } from '../redis/redis.module.js';
+import { KgModule } from '../kg/kg.module.js';
 import { AiChatService } from './ai-chat.service.js';
 import { AiStreamService } from './ai-stream.service.js';
 import { ChatSessionService } from './chat-session.service.js';
@@ -21,7 +22,7 @@ import { AiController } from './ai.controller.js';
  * 短期记忆复用全局薄封装的 RedisService（RedisModule 非全局，需显式导入）。
  */
 @Module({
-  imports: [RagModule, RedisModule],
+  imports: [RagModule, KgModule, RedisModule],
   controllers: [AiController],
   providers: [
     AiChatService,
