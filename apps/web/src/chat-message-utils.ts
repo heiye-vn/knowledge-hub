@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai'
-import type { ChatSource } from './types'
+import type { ChatSource, GraphViewEdge, GraphViewNode } from './types'
 
 export type RetrieveHit = {
   index: number
@@ -16,13 +16,36 @@ export type ChatIntent =
   | 'web' // 联网
   | 'kb_then_web' // 先知识库，不足再联网
 
-/** data-intent：本轮路由，决定是否展示知识库/联网范围 */
+/** data-intent：本轮路由，决定是否展示知识库/图谱/联网范围 */
 export type IntentPart = {
   intent: ChatIntent
   label: string
   query: string
+  graphQueries?: string[]
   allowRetrieve: boolean
+  allowGraph?: boolean
   allowWeb: boolean
+}
+
+/**
+ * data-graph / retrieve_graph 的对话图谱命中。
+ * 注意与 types.ts 的 GraphHit 区分：后者是 /kg/search 的节点行。
+ */
+export type ChatGraphHit = {
+  query?: string
+  entities?: Array<{
+    name: string
+    type?: string | null
+    description?: string | null
+  }>
+  relations?: Array<{
+    source: string
+    relation: string
+    target: string
+    sourceChunkIds?: string[]
+  }>
+  documents?: Array<{ documentId: string; title: string }>
+  error?: string
 }
 
 /** data-eval：ok 表示资料切题，不是「有召回条数」 */
@@ -52,6 +75,7 @@ export type KhUIMessage = UIMessage<
     retrieve: { query: string; items: RetrieveHit[] }
     intent: IntentPart
     eval: EvalPart
+    graph: ChatGraphHit
     session: { sessionId: string }
   }
 >
@@ -76,6 +100,73 @@ export function citedSources(
   )
   if (!used.size) return []
   return sources.filter((s) => used.has(s.index))
+}
+
+/** 对话图谱命中 → 力导向图节点/边；文档到实体按密度补合成提及边。 */
+export function graphHitToView(data: ChatGraphHit): {
+  nodes: GraphViewNode[]
+  edges: GraphViewEdge[]
+} {
+  const nodes: GraphViewNode[] = []
+  const seen = new Set<string>()
+  for (const entity of data.entities ?? []) {
+    const id = `entity:${entity.name}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    nodes.push({
+      id,
+      name: entity.name,
+      kind: 'entity',
+      type: entity.type,
+      description: entity.description,
+    })
+  }
+  for (const doc of data.documents ?? []) {
+    const id = `doc:${doc.documentId}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    nodes.push({
+      id,
+      name: doc.title || doc.documentId,
+      kind: 'document',
+      documentId: doc.documentId,
+    })
+  }
+
+  const edges: GraphViewEdge[] = []
+  const edgeKeys = new Set<string>()
+  const pushEdge = (edge: GraphViewEdge) => {
+    if (!seen.has(edge.source) || !seen.has(edge.target)) return
+    const key = `${edge.kind}\t${edge.source}\t${edge.relation}\t${edge.target}`
+    if (edgeKeys.has(key)) return
+    edgeKeys.add(key)
+    edges.push(edge)
+  }
+
+  for (const rel of data.relations ?? []) {
+    pushEdge({
+      source: `entity:${rel.source}`,
+      target: `entity:${rel.target}`,
+      relation: rel.relation,
+      kind: 'related',
+    })
+  }
+
+  const entityIds = nodes.filter((n) => n.kind === 'entity').map((n) => n.id)
+  const docIds = nodes.filter((n) => n.kind === 'document').map((n) => n.id)
+  const mentionAll = docIds.length * entityIds.length <= 16
+  for (const docId of docIds) {
+    const targets = mentionAll ? entityIds : entityIds.slice(0, 1)
+    for (const entityId of targets) {
+      pushEdge({
+        source: docId,
+        target: entityId,
+        relation: '提及',
+        kind: 'mentions',
+      })
+    }
+  }
+  return { nodes, edges }
 }
 
 export function textFromParts(parts: KhUIMessage['parts']): string {

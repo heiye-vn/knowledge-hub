@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import * as echarts from 'echarts'
 import type { GraphViewEdge, GraphViewNode } from '../types'
+import { escapeHtml } from '../utils'
 
 export interface ForceGraphRef {
   zoomIn: () => void
@@ -14,6 +15,8 @@ interface ForceGraphProps {
   edges: GraphViewEdge[]
   onNodeClick?: (node: GraphViewNode) => void
   loading?: boolean
+  /** 对话框内的小画布：放大节点、显示全部标签、加大斥力 */
+  compact?: boolean
 }
 
 /** 节点配色规范 */
@@ -34,7 +37,7 @@ function getNodeColor(node: GraphViewNode): string {
 }
 
 export const ForceGraph = forwardRef<ForceGraphRef, ForceGraphProps>(
-  ({ nodes, edges, onNodeClick, loading }, ref) => {
+  ({ nodes, edges, onNodeClick, loading, compact = false }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
     const chartRef = useRef<echarts.ECharts | null>(null)
 
@@ -144,8 +147,9 @@ export const ForceGraph = forwardRef<ForceGraphRef, ForceGraphProps>(
       const chartNodes = nodes.map((n) => {
         const degree = degreeMap.get(n.id) || 0
         const isDoc = n.kind === 'document'
-        const baseSize = isDoc ? 26 : n.kind === 'tag' ? 18 : 22
-        const size = Math.min(baseSize + degree * 2, 50)
+        const baseSize = (isDoc ? 26 : n.kind === 'tag' ? 18 : 22) *
+          (compact ? 1.15 : 1)
+        const size = Math.min(baseSize + degree * 2, compact ? 56 : 50)
         const color = getNodeColor(n)
 
         return {
@@ -160,11 +164,14 @@ export const ForceGraph = forwardRef<ForceGraphRef, ForceGraphProps>(
             shadowBlur: 6,
           },
           label: {
-            show: degree >= 2 || isDoc,
+            show: compact || degree >= 2 || isDoc,
             position: 'bottom' as const,
             formatter: '{b}',
-            fontSize: isDoc ? 12 : 11,
+            fontSize: compact ? (isDoc ? 13 : 12) : isDoc ? 12 : 11,
             color: '#262626',
+            width: compact ? 96 : 140,
+            overflow: 'truncate' as const,
+            ellipsis: '…',
           },
           rawNode: n,
         }
@@ -206,6 +213,7 @@ export const ForceGraph = forwardRef<ForceGraphRef, ForceGraphProps>(
       const option: echarts.EChartsOption = {
         tooltip: {
           trigger: 'item',
+          confine: true,
           formatter: (params: unknown) => {
             const p = params as
               | {
@@ -234,13 +242,13 @@ export const ForceGraph = forwardRef<ForceGraphRef, ForceGraphProps>(
                     ? '标签'
                     : `实体 (${node.type || '通用'})`
               return `<div style="font-size:12px;max-width:280px;">
-                <div style="font-weight:600;margin-bottom:4px;">${node.name}</div>
-                <div style="color:#8c8c8c;">类型：${kindLabel}</div>
-                ${node.description ? `<div style="margin-top:4px;color:#595959;">${node.description}</div>` : ''}
+                <div style="font-weight:600;margin-bottom:4px;">${escapeHtml(node.name)}</div>
+                <div style="color:#8c8c8c;">类型：${escapeHtml(kindLabel)}</div>
+                ${node.description ? `<div style="margin-top:4px;color:#595959;">${escapeHtml(node.description)}</div>` : ''}
               </div>`
             }
             if (p.dataType === 'edge' && p.data) {
-              return `<div style="font-size:12px;">关系：<b>${p.data.rawRelation || '关联'}</b></div>`
+              return `<div style="font-size:12px;">关系：<b>${escapeHtml(p.data.rawRelation || '关联')}</b></div>`
             }
             return ''
           },
@@ -254,7 +262,9 @@ export const ForceGraph = forwardRef<ForceGraphRef, ForceGraphProps>(
             links: chartLinks,
             roam: true,
             draggable: true,
-            edgeSymbol: ['none', 'none'],
+            scaleLimit: { min: 0.25, max: 4 },
+            edgeSymbol: ['none', 'arrow'],
+            edgeSymbolSize: [0, 7],
             emphasis: {
               focus: 'adjacency',
               lineStyle: {
@@ -262,10 +272,12 @@ export const ForceGraph = forwardRef<ForceGraphRef, ForceGraphProps>(
               },
             },
             force: {
-              repulsion: 220,
-              edgeLength: [60, 140],
-              gravity: 0.12,
-              friction: 0.6,
+              repulsion: compact ? 240 : 220,
+              edgeLength: compact ? [80, 140] : [60, 140],
+              gravity: compact ? 0.08 : 0.12,
+              friction: compact ? 0.7 : 0.6,
+              // 关掉后节点会叠在原点；对话框内尤其明显
+              layoutAnimation: true,
             },
             labelLayout: {
               hideOverlap: true,
@@ -275,7 +287,7 @@ export const ForceGraph = forwardRef<ForceGraphRef, ForceGraphProps>(
       }
 
       chart.setOption(option, true)
-    }, [nodes, edges, loading])
+    }, [nodes, edges, loading, compact])
 
     return (
       <div

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   citedSources,
+  graphHitToView,
   historyToUIMessages,
   sourcesFromParts,
   textFromParts,
+  type ChatGraphHit,
   type KhUIMessage,
 } from './chat-message-utils'
 import type { ChatSource } from './types'
@@ -136,5 +138,110 @@ describe('聊天消息转换', () => {
       { type: 'text', text: '回答' },
     ])
     expect(withoutSources.parts).toEqual([{ type: 'text', text: '无引用回答' }])
+  })
+})
+
+function graphHit(overrides: Partial<ChatGraphHit> = {}): ChatGraphHit {
+  return {
+    query: '发票 / 报销',
+    entities: [
+      { name: '发票', type: 'CONCEPT', description: null },
+      { name: '报销', type: 'PROCESS', description: '报销流程' },
+    ],
+    relations: [{ source: '发票', relation: 'REQUIRES', target: '报销' }],
+    documents: [
+      { documentId: 'd1', title: '差旅报销办法' },
+      { documentId: 'd2', title: '发票指引' },
+    ],
+    ...overrides,
+  }
+}
+
+describe('graphHitToView', () => {
+  it('实体与文档转节点，关系转 related 边', () => {
+    const view = graphHitToView(graphHit())
+
+    expect(view.nodes.map((n) => n.id)).toEqual([
+      'entity:发票',
+      'entity:报销',
+      'doc:d1',
+      'doc:d2',
+    ])
+    expect(view.edges).toContainEqual({
+      source: 'entity:发票',
+      target: 'entity:报销',
+      relation: 'REQUIRES',
+      kind: 'related',
+    })
+  })
+
+  it('稀疏图补全文档到实体的提及边', () => {
+    const view = graphHitToView(graphHit())
+    const mentions = view.edges.filter((e) => e.kind === 'mentions')
+
+    expect(mentions).toHaveLength(4)
+    expect(mentions).toContainEqual({
+      source: 'doc:d1',
+      target: 'entity:发票',
+      relation: '提及',
+      kind: 'mentions',
+    })
+  })
+
+  it('文档与实体组合过多时每篇文档只连第一个实体', () => {
+    const entities = ['a', 'b', 'c', 'd'].map((name) => ({
+      name,
+      type: 'CONCEPT',
+      description: null,
+    }))
+    const documents = Array.from({ length: 5 }, (_, i) => ({
+      documentId: `d${i}`,
+      title: `文档 ${i}`,
+    }))
+    const view = graphHitToView(
+      graphHit({ entities, relations: [], documents }),
+    )
+
+    const mentions = view.edges.filter((e) => e.kind === 'mentions')
+    expect(mentions).toHaveLength(5)
+    expect(mentions.every((e) => e.target === 'entity:a')).toBe(true)
+  })
+
+  it('关系端点不在节点集合时丢弃该边', () => {
+    const view = graphHitToView(
+      graphHit({
+        relations: [
+          { source: '发票', relation: 'REQUIRES', target: '不存在' },
+        ],
+      }),
+    )
+
+    expect(view.edges.some((e) => e.kind === 'related')).toBe(false)
+  })
+
+  it('重复实体与文档去重', () => {
+    const view = graphHitToView(
+      graphHit({
+        entities: [
+          { name: '发票', type: 'CONCEPT', description: null },
+          { name: '发票', type: 'CONCEPT', description: null },
+        ],
+        relations: [],
+        documents: [
+          { documentId: 'd1', title: '办法' },
+          { documentId: 'd1', title: '办法' },
+        ],
+      }),
+    )
+
+    expect(view.nodes.map((n) => n.id)).toEqual(['entity:发票', 'doc:d1'])
+  })
+
+  it('空图谱返回空节点与空边', () => {
+    expect(
+      graphHitToView(
+        graphHit({ entities: [], relations: [], documents: [] }),
+      ),
+    ).toEqual({ nodes: [], edges: [] })
   })
 })

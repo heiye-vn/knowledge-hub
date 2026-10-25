@@ -47,6 +47,16 @@ export function safeHighlight(html?: string) {
     .replace(/&lt;\/em&gt;/g, '</em>')
 }
 
+/** 通用 HTML 转义：拼入 tooltip 等 HTML 字符串前必须处理用户/模型可控文本 */
+export function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 /** 写权限守卫：系统管理员或作者本人可编辑/删除/发布 */
 export function canWriteDocument(
   doc: { authorId?: string | null },

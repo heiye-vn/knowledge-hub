@@ -1,11 +1,14 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { getToolName, isToolUIPart } from 'ai'
 import { AnswerMarkdown, SourceCiteList } from './SourceCiteList'
+import { ForceGraph } from './ForceGraph'
 import {
   citedSources,
+  graphHitToView,
   sourcesFromParts,
   stripInternalToolJson,
   textFromParts,
+  type ChatGraphHit,
   type EvalPart,
   type IntentPart,
   type KhUIMessage,
@@ -78,10 +81,15 @@ export function ChatMessageParts({
   const hasRewrite = parts.some(
     (part) => isToolUIPart(part) && getToolName(part) === 'rewrite_query',
   )
+  const hasGraph = parts.some(
+    (part) =>
+      part.type === 'data-graph' ||
+      (isToolUIPart(part) && getToolName(part) === 'retrieve_graph'),
+  )
 
   return (
     <>
-      {renderProcessParts(parts, hasRetrieve, hasIntent, hasRewrite)}
+      {renderProcessParts(parts, hasRetrieve, hasIntent, hasRewrite, hasGraph)}
       {texts.map((part, i) =>
         part.type === 'text' ? (
           <div key={`text-${i}`} className="kh-bubble-md">
@@ -112,6 +120,7 @@ function renderProcessParts(
   hasRetrieve: boolean,
   hasIntent: boolean,
   hasRewrite: boolean,
+  hasGraph: boolean,
 ) {
   const nodes: ReactNode[] = []
   let reasoningBuf: string[] = []
@@ -158,6 +167,7 @@ function renderProcessParts(
       if (part.data.stage === 'retrieve' && hasRetrieve) return
       if (part.data.stage === 'intent' && hasIntent) return
       if (part.data.stage === 'rewrite' && hasRewrite) return
+      if (part.data.stage === 'graph' && hasGraph) return
       nodes.push(
         <TraceItem key={i} kind="status" tone="pending">
           <div className="kh-trace-status">{part.data.text}</div>
@@ -176,6 +186,19 @@ function renderProcessParts(
       return
     }
 
+    if (part.type === 'data-graph') {
+      // Agent 的 retrieve_graph 工具卡已含力导向图，避免与 data-graph 双卡
+      if (
+        parts.some(
+          (p) => isToolUIPart(p) && getToolName(p) === 'retrieve_graph',
+        )
+      ) {
+        return
+      }
+      nodes.push(<GraphCard key={i} data={part.data} />)
+      return
+    }
+
     if (part.type === 'data-retrieve') {
       nodes.push(
         <RetrieveCard key={i} query={part.data.query} items={part.data.items} />,
@@ -186,6 +209,13 @@ function renderProcessParts(
     if (isToolUIPart(part) && getToolName(part) === 'retrieve_knowledge') {
       nodes.push(
         <RetrieveToolCard key={i} part={part as unknown as ToolPartLike} />,
+      )
+      return
+    }
+
+    if (isToolUIPart(part) && getToolName(part) === 'retrieve_graph') {
+      nodes.push(
+        <GraphToolCard key={i} part={part as unknown as ToolPartLike} />,
       )
       return
     }
@@ -256,10 +286,17 @@ function IntentCard({ data }: { data: IntentPart }) {
               <dd>{data.query}</dd>
             </div>
           ) : null}
+          {data.graphQueries?.length ? (
+            <div>
+              <dt>图谱词</dt>
+              <dd>{data.graphQueries.join(' / ')}</dd>
+            </div>
+          ) : null}
           <div>
             <dt>范围</dt>
             <dd>
               <span className={data.allowRetrieve ? 'on' : 'off'}>知识库</span>
+              <span className={data.allowGraph ? 'on' : 'off'}>图谱</span>
               <span className={data.allowWeb ? 'on' : 'off'}>联网</span>
             </dd>
           </div>
@@ -383,6 +420,79 @@ function KbPanel({
       </details>
     </TraceItem>
   )
+}
+
+function GraphCard({
+  data,
+  pending,
+}: {
+  data: ChatGraphHit
+  pending?: boolean
+}) {
+  const entities = data.entities ?? []
+  const relations = data.relations ?? []
+  const empty = !entities.length && !relations.length
+  const failed = Boolean(data.error) || (!pending && empty)
+  const tone = pending ? 'pending' : failed ? 'failed' : 'ok'
+  const label = pending
+    ? '正在检索知识图谱'
+    : data.error
+      ? '图谱检索失败'
+      : empty
+        ? '图谱中没有匹配实体'
+        : '已检索实体关系'
+  const view = useMemo(() => graphHitToView(data), [data])
+
+  return (
+    <TraceItem kind="graph" tone={tone}>
+      <details className="kh-sheet" open>
+        <summary className="kh-panel-head">
+          <span className="kh-panel-type">图谱</span>
+          <span className="kh-panel-title">{label}</span>
+          {data.query ? <span className="kh-panel-sub">{data.query}</span> : null}
+          {!pending && entities.length ? (
+            <b className="kh-panel-n">{entities.length}</b>
+          ) : null}
+        </summary>
+        {data.error ? (
+          <div className="kh-step-err">{data.error}</div>
+        ) : !pending && !empty ? (
+          <div className="kh-trace-graph-canvas">
+            <ForceGraph nodes={view.nodes} edges={view.edges} compact />
+          </div>
+        ) : null}
+      </details>
+    </TraceItem>
+  )
+}
+
+function GraphToolCard({ part }: { part: ToolPartLike }) {
+  const input = asRecord(part.input)
+  const pending =
+    part.state === 'input-streaming' || part.state === 'input-available'
+  const rec = parseToolPayload(part.output)
+  const hit: ChatGraphHit = {
+    query:
+      (typeof rec?.query === 'string' && rec.query) ||
+      (typeof input.query === 'string' ? input.query : ''),
+    entities: Array.isArray(rec?.entities)
+      ? (rec.entities as ChatGraphHit['entities'])
+      : [],
+    relations: Array.isArray(rec?.relations)
+      ? (rec.relations as ChatGraphHit['relations'])
+      : [],
+    documents: Array.isArray(rec?.documents)
+      ? (rec.documents as ChatGraphHit['documents'])
+      : [],
+    error:
+      typeof rec?.error === 'string'
+        ? rec.error
+        : part.state === 'output-error'
+          ? part.errorText || '图谱检索失败'
+          : undefined,
+  }
+
+  return <GraphCard data={hit} pending={pending} />
 }
 
 function RetrieveToolCard({ part }: { part: ToolPartLike }) {

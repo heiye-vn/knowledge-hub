@@ -174,6 +174,7 @@ export interface GraphEdge {
   target: string
   relation: string
   weight: number
+  sourceChunkIds?: string[]
 }
 
 export interface UserVO {

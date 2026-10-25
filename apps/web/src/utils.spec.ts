@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   can,
   canWriteDocument,
+  escapeHtml,
   getVisibilityMeta,
   isAdmin,
   isReviewer,
@@ -64,5 +65,12 @@ describe('权限工具', () => {
       'team',
     )
     expect(getVisibilityMeta({}).scope).toBe('private')
+  })
+
+  it('HTML 转义覆盖标签、属性与引号', () => {
+    expect(escapeHtml(`<img src=x onerror="alert('x')">`)).toBe(
+      '&lt;img src=x onerror=&quot;alert(&#39;x&#39;)&quot;&gt;',
+    )
+    expect(escapeHtml('财务部 & 差旅')).toBe('财务部 &amp; 差旅')
   })
 })
