@@ -7,6 +7,7 @@ import {
   wrapEsQuery,
   neo4jAccessParams,
   neo4jDocumentAccessWhere,
+  neo4jRelationAccessWhere,
   ES_VISIBILITY_FIELDS,
 } from './document-access.js';
 import { DocumentStatus } from './document-status.js';
@@ -234,20 +235,30 @@ describe('document-access', () => {
         unrestricted: false,
         accessUserId: '100',
         accessTeamIds: ['team-1', 'team-2'],
+        publishedStatus: DocumentStatus.Published,
       });
       expect(neo4jAccessParams(undefined)).toEqual({
         unrestricted: true,
         accessUserId: '',
         accessTeamIds: [],
+        publishedStatus: DocumentStatus.Published,
       });
     });
 
-    it('生成正确的 Cypher 过滤子句', () => {
+    it('生成带发布状态与可见性的 Cypher 过滤子句', () => {
       expect(neo4jDocumentAccessWhere('d')).toBe(
-        '($unrestricted OR d.authorId = $accessUserId OR d.isPublic = true OR d.teamId IN $accessTeamIds)',
+        '(d.status = $publishedStatus AND ($unrestricted OR d.authorId = $accessUserId OR d.isPublic = true OR d.teamId IN $accessTeamIds))',
       );
       expect(neo4jDocumentAccessWhere('n')).toBe(
-        '($unrestricted OR n.authorId = $accessUserId OR n.isPublic = true OR n.teamId IN $accessTeamIds)',
+        '(n.status = $publishedStatus AND ($unrestricted OR n.authorId = $accessUserId OR n.isPublic = true OR n.teamId IN $accessTeamIds))',
+      );
+    });
+
+    it('关系可见性严格沿 sourceChunkIds 回查来源文档', () => {
+      expect(neo4jRelationAccessWhere('r')).toBe(
+        'EXISTS { MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(c:DocumentChunk) ' +
+          'WHERE c.chunkId IN coalesce(r.sourceChunkIds, []) ' +
+          'AND (d.status = $publishedStatus AND ($unrestricted OR d.authorId = $accessUserId OR d.isPublic = true OR d.teamId IN $accessTeamIds)) }',
       );
     });
   });

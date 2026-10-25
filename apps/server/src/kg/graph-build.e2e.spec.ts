@@ -135,6 +135,50 @@ describe.skipIf(!neo4jUp)('GraphBuildService 集成（需要 Neo4j + LLM Key）'
       expect(Array.isArray(nodes)).toBe(true);
       const edges = await service.listEdges(100);
       expect(Array.isArray(edges)).toBe(true);
+
+      // 全景查询与对话检索共用关系可见性片段，这里确认 Cypher 可执行
+      const overview = await service.getOverview({});
+      expect(overview.nodes.some((node) => node.kind === 'document')).toBe(true);
+      expect(overview.stats.documentCount).toBeGreaterThan(0);
+    },
+  );
+
+  it(
+    '对话检索：短实体名能命中实体、来源文档，未知实体返回空',
+    { timeout: 120_000 },
+    async () => {
+      const hit = await service.retrieveForChat(['财务部', '差旅'], 8);
+
+      expect(hit.error).toBeUndefined();
+      expect(hit.entities.some((e) => e.name.includes('财务部'))).toBe(true);
+      expect(hit.documents.some((d) => d.documentId === DOC_ID)).toBe(true);
+      expect(hit.relations.length).toBeGreaterThan(0);
+      expect(
+        hit.relations.every((rel) => (rel.sourceChunkIds?.length ?? 0) > 0),
+      ).toBe(true);
+
+      // 普通用户路径：关系必须沿 sourceChunkIds 指向公开来源块，不能被私有边带出
+      const restricted = await service.retrieveForChat(['财务部', '差旅'], 8, {
+        unrestricted: false,
+        userId: 'outsider',
+        teamIds: [],
+      });
+      expect(restricted.error).toBeUndefined();
+      expect(restricted.entities.length).toBeGreaterThan(0);
+      expect(restricted.relations.length).toBeGreaterThan(0);
+      expect(
+        restricted.relations.every(
+          (rel) =>
+            (rel.sourceChunkIds?.length ?? 0) > 0 &&
+            restricted.entities.some((entity) => entity.name === rel.source) &&
+            restricted.entities.some((entity) => entity.name === rel.target),
+        ),
+      ).toBe(true);
+
+      const none = await service.retrieveForChat(['不存在的实体xyz'], 8);
+      expect(none.entities).toEqual([]);
+      expect(none.relations).toEqual([]);
+      expect(none.documents).toEqual([]);
     },
   );
 

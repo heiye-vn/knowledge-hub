@@ -58,7 +58,9 @@ describe('ChatQueryRewriteService · classify（意图路由）', () => {
       intent: 'chitchat',
       label: '闲聊',
       query: '你好',
+      graphQueries: [],
       allowRetrieve: false,
+      allowGraph: false,
       allowWeb: false,
     });
   });
@@ -139,7 +141,9 @@ describe('ChatQueryRewriteService · classify（意图路由）', () => {
       intent: 'kb',
       label: '知识库',
       query: '预算审核员属于哪个部门',
+      graphQueries: [],
       allowRetrieve: true,
+      allowGraph: true,
       allowWeb: false,
     });
   });
@@ -164,6 +168,63 @@ describe('ChatQueryRewriteService · classify（意图路由）', () => {
       allowWeb: false,
     });
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('知识库意图保留去空白后的图谱短词', async () => {
+    invokeMock.mockResolvedValue({
+      intent: 'kb',
+      standalone_query: '发票报销流程',
+      graph_queries: [' 发票 ', '', '报销'],
+    });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const plan = await service.classify('发票怎么报销', HISTORY);
+
+    expect(plan.graphQueries).toEqual(['发票', '报销']);
+    expect(plan.allowGraph).toBe(true);
+  });
+
+  it('知识库意图未给图谱词时为空数组，但保留图谱工具开关', async () => {
+    invokeMock.mockResolvedValue({
+      intent: 'kb',
+      standalone_query: '发票报销流程',
+    });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const plan = await service.classify('发票怎么报销', HISTORY);
+
+    expect(plan.graphQueries).toEqual([]);
+    expect(plan.allowGraph).toBe(true);
+  });
+
+  it('kb_then_web 同时允许知识库、图谱与联网', async () => {
+    invokeMock.mockResolvedValue({
+      intent: 'kb_then_web',
+      standalone_query: '差旅报销 政策',
+      graph_queries: ['差旅', '报销'],
+    });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const plan = await service.classify('差旅报销有什么新政策', HISTORY);
+
+    expect(plan.allowRetrieve).toBe(true);
+    expect(plan.allowGraph).toBe(true);
+    expect(plan.allowWeb).toBe(true);
+    expect(plan.graphQueries).toEqual(['差旅', '报销']);
+  });
+
+  it('非知识库意图即使模型给了图谱词也强制清空', async () => {
+    invokeMock.mockResolvedValue({
+      intent: 'web',
+      standalone_query: '今天汇率',
+      graph_queries: ['汇率'],
+    });
+    const service = new ChatQueryRewriteService(makeConfig());
+
+    const plan = await service.classify('今天汇率', HISTORY);
+
+    expect(plan.allowGraph).toBe(false);
+    expect(plan.graphQueries).toEqual([]);
   });
 });
 

@@ -7,6 +7,8 @@ import { ChatShortMemoryService } from './chat-short-memory.service.js';
 import { ChatLongMemoryService } from './chat-long-memory.service.js';
 import { ChatQueryRewriteService } from './chat-query-rewrite.service.js';
 import { WebSearchService } from './web-search.service.js';
+import type { GraphBuildService } from '../kg/graph-build.service.js';
+import type { GraphChatHit } from '../kg/types/kg.types.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
 
 const invokeMock = vi.fn();
@@ -47,7 +49,9 @@ function kbPlan(query: string) {
     intent: 'kb' as const,
     label: '知识库',
     query,
+    graphQueries: [] as string[],
     allowRetrieve: true,
+    allowGraph: true,
     allowWeb: false,
   };
 }
@@ -118,6 +122,19 @@ function makeWebSearch() {
   return webSearch;
 }
 
+function emptyGraphHit(query = ''): GraphChatHit {
+  return { query, entities: [], relations: [], documents: [] };
+}
+
+function makeGraph() {
+  return {
+    retrieveForChat: vi.fn(async (keyword: string | string[]) => {
+      const query = Array.isArray(keyword) ? keyword.join(' / ') : keyword;
+      return emptyGraphHit(query);
+    }),
+  } as unknown as GraphBuildService;
+}
+
 function makeService(
   searchImpl: (params: { query: string; topK?: number }) => Promise<SearchHit[]>,
   sessionsImpl?: Parameters<typeof makeSessions>[0],
@@ -126,6 +143,7 @@ function makeService(
   fakes: ReturnType<typeof makeMemoryFakes>;
   retrievalSearch: ReturnType<typeof vi.fn>;
   webSearchFake: WebSearchService;
+  graphFake: GraphBuildService;
 } {
   const retrieval = {
     search: vi.fn(searchImpl),
@@ -133,6 +151,7 @@ function makeService(
   const { sessions, appendTurn } = makeSessions(sessionsImpl);
   const fakes = makeMemoryFakes();
   const webSearch = makeWebSearch();
+  const graph = makeGraph();
   const service = new AiChatService(
     {
       get: (k: string, d?: string) => (k === 'LLM_API_KEY' ? 'test-key' : d),
@@ -143,11 +162,13 @@ function makeService(
     fakes.longMemory,
     fakes.queryRewrite,
     webSearch,
+    graph,
   ) as AiChatService & {
     appendTurn: ReturnType<typeof vi.fn>;
     fakes: ReturnType<typeof makeMemoryFakes>;
     retrievalSearch: ReturnType<typeof vi.fn>;
     webSearchFake: WebSearchService;
+    graphFake: GraphBuildService;
   };
   service.appendTurn = appendTurn;
   service.fakes = fakes;
@@ -155,6 +176,7 @@ function makeService(
     typeof vi.fn
   >;
   service.webSearchFake = webSearch;
+  service.graphFake = graph;
   return service;
 }
 
@@ -177,6 +199,7 @@ describe('AiChatService（mock 检索与 LLM）', () => {
       longMemory,
       queryRewrite,
       makeWebSearch(),
+      makeGraph(),
     );
 
     const res = await service.chat('   ');
@@ -193,6 +216,118 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     expect(res.sources).toEqual([]);
     expect(invokeMock).not.toHaveBeenCalled();
     expect(service.webSearchFake.search).not.toHaveBeenCalled();
+  });
+
+  it('知识库与图谱并行检索，图谱上下文进入 system 消息', async () => {
+    invokeMock.mockResolvedValue({ content: '按报销流程 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      ...kbPlan('发票报销流程'),
+      graphQueries: ['发票', '报销'],
+    })) as never;
+    (
+      service.graphFake.retrieveForChat as unknown as {
+        mockResolvedValueOnce: (value: GraphChatHit) => void;
+      }
+    ).mockResolvedValueOnce({
+      query: '发票 / 报销',
+      entities: [
+        { name: '发票', type: 'CONCEPT', description: null },
+        { name: '报销', type: 'PROCESS', description: null },
+      ],
+      relations: [{ source: '发票', relation: 'REQUIRES', target: '报销' }],
+      documents: [{ documentId: 'doc-1', title: '差旅报销办法' }],
+    });
+
+    const res = await service.chat('发票怎么报销', 5, USER, '8001');
+
+    expect(service.graphFake.retrieveForChat).toHaveBeenCalledWith(
+      ['发票', '报销'],
+      8,
+      { unrestricted: false, userId: '1001', teamIds: [] },
+    );
+    const messages = invokeMock.mock.calls[0][0] as Array<{ content: unknown }>;
+    expect(
+      messages.some((m) => String(m.content).includes('【本轮知识图谱】')),
+    ).toBe(true);
+    expect(res.answer).toBe('按报销流程 [1]。');
+  });
+
+  it('知识库不切题但图谱有命中时继续生成，不返回固定空话术', async () => {
+    invokeMock.mockResolvedValue({ content: '图谱显示发票与报销相关。' });
+    const service = makeService(async () => []);
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      ...kbPlan('发票报销'),
+      graphQueries: ['发票', '报销'],
+    })) as never;
+    (
+      service.graphFake.retrieveForChat as unknown as {
+        mockResolvedValueOnce: (value: GraphChatHit) => void;
+      }
+    ).mockResolvedValueOnce({
+      query: '发票 / 报销',
+      entities: [{ name: '发票', type: 'CONCEPT', description: null }],
+      relations: [],
+      documents: [],
+    });
+
+    const res = await service.chat('发票怎么报销', 5, USER, '8001');
+
+    expect(res.answer).not.toBe('知识库里没有相关内容。');
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('知识库不切题且图谱为空时仍返回固定空话术', async () => {
+    const service = makeService(async () => []);
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      ...kbPlan('发票报销'),
+      graphQueries: ['发票', '报销'],
+    })) as never;
+
+    const res = await service.chat('发票怎么报销', 5, USER, '8001');
+
+    expect(res.answer).toBe('知识库里没有相关内容。');
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('图谱查询失败不阻断非流式回答', async () => {
+    invokeMock.mockResolvedValue({ content: '按知识库回答 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      ...kbPlan('发票报销'),
+      graphQueries: ['发票', '报销'],
+    })) as never;
+    (
+      service.graphFake.retrieveForChat as unknown as {
+        mockRejectedValueOnce: (error: Error) => void;
+      }
+    ).mockRejectedValueOnce(new Error('neo4j down'));
+
+    const res = await service.chat('发票怎么报销', 5, USER, '8001');
+
+    expect(res.answer).toBe('按知识库回答 [1]。');
+    const messages = invokeMock.mock.calls[0][0] as Array<{ content: unknown }>;
+    expect(
+      messages.some((m) => String(m.content).includes('【本轮知识图谱】')),
+    ).toBe(false);
+  });
+
+  it('纯联网意图不查图谱', async () => {
+    invokeMock.mockResolvedValue({ content: '汇率 7.1。' });
+    const service = makeService(async () => []);
+    service.fakes.queryRewrite.classify = vi.fn(async () => ({
+      intent: 'web' as const,
+      label: '联网搜索',
+      query: '今天人民币兑美元汇率',
+      graphQueries: ['汇率'],
+      allowRetrieve: false,
+      allowGraph: false,
+      allowWeb: true,
+    })) as never;
+
+    await service.chat('今天人民币兑美元汇率', 5, USER, '8001');
+
+    expect(service.graphFake.retrieveForChat).not.toHaveBeenCalled();
   });
 
   it('生成带 [n] 标注时只返回被引用的资料（按编号排序）', async () => {
@@ -247,6 +382,7 @@ describe('AiChatService（mock 检索与 LLM）', () => {
       longMemory,
       queryRewrite,
       makeWebSearch(),
+      makeGraph(),
     );
 
     const res = await service.chat('问题');

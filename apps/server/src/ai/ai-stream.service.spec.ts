@@ -12,6 +12,8 @@ import type { WebSearchService } from './web-search.service.js';
 import type { ChatSessionService } from './chat-session.service.js';
 import type { ChatShortMemoryService } from './chat-short-memory.service.js';
 import type { ChatLongMemoryService } from './chat-long-memory.service.js';
+import type { GraphBuildService } from '../kg/graph-build.service.js';
+import type { GraphChatHit } from '../kg/types/kg.types.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
 import type { ChatSource } from './chat.types.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
@@ -67,14 +69,21 @@ const GRADE_IRRELEVANT = {
 };
 
 function plan(overrides: Partial<ChatRoutePlan>): ChatRoutePlan {
+  const allowRetrieve = overrides.allowRetrieve ?? true;
   return {
     intent: 'kb',
     label: '知识库',
     query: '问题',
-    allowRetrieve: true,
+    graphQueries: [],
+    allowRetrieve,
+    allowGraph: allowRetrieve,
     allowWeb: false,
     ...overrides,
   };
+}
+
+function emptyGraphHit(query = ''): GraphChatHit {
+  return { query, entities: [], relations: [], documents: [] };
 }
 
 function makeService(options?: {
@@ -106,6 +115,17 @@ function makeService(options?: {
       ],
     })),
   } as unknown as WebSearchService;
+  const graph = {
+    retrieveForChat: vi.fn(async (keyword: string | string[]) => ({
+      query: Array.isArray(keyword) ? keyword.join(' / ') : keyword,
+      entities: [
+        { name: '发票', type: 'CONCEPT', description: null },
+        { name: '报销', type: 'PROCESS', description: null },
+      ],
+      relations: [{ source: '发票', relation: 'REQUIRES', target: '报销' }],
+      documents: [{ documentId: 'doc-1', title: '差旅报销办法' }],
+    })),
+  } as unknown as GraphBuildService;
   const service = new AiStreamService(
     {
       get: (k: string, d?: string) => (k === 'LLM_API_KEY' ? 'test-key' : d),
@@ -116,9 +136,10 @@ function makeService(options?: {
     {} as ChatShortMemoryService,
     {} as ChatLongMemoryService,
     queryRewrite,
+    graph,
   );
 
-  return { service, retrieval, queryRewrite, webSearch };
+  return { service, retrieval, queryRewrite, webSearch, graph };
 }
 
 function makeAgent(
@@ -194,16 +215,17 @@ describe('AiStreamService · 按意图挂载工具', () => {
     expect(agent.opts.tools.map((t) => t.name)).toEqual(['web_search']);
   });
 
-  it('知识库只挂检索与改写，不挂联网', () => {
+  it('知识库只挂检索、改写与图谱，不挂联网', () => {
     const { service } = makeService();
     const { agent } = makeAgent(service, plan({}));
     expect(agent.opts.tools.map((t) => t.name)).toEqual([
       'retrieve_knowledge',
       'rewrite_query',
+      'retrieve_graph',
     ]);
   });
 
-  it('知识库不足再联网挂三套工具', () => {
+  it('知识库不足再联网挂四套工具', () => {
     const { service } = makeService();
     const { agent } = makeAgent(
       service,
@@ -216,7 +238,110 @@ describe('AiStreamService · 按意图挂载工具', () => {
     expect(agent.opts.tools.map((t) => t.name)).toEqual([
       'retrieve_knowledge',
       'rewrite_query',
+      'retrieve_graph',
       'web_search',
+    ]);
+  });
+});
+
+describe('AiStreamService · retrieve_graph', () => {
+  beforeEach(() => {
+    langchainMocks.tool.mockClear();
+    langchainMocks.createAgent.mockClear();
+    vi.clearAllMocks();
+  });
+
+  it('合并路由图谱词与工具入参，带当前用户范围检索并写 data-graph', async () => {
+    const { service, graph } = makeService();
+    const { agent, writer } = makeAgent(
+      service,
+      plan({ graphQueries: ['发票', '报销'] }),
+    );
+    const graphTool = toolNamed(agent.opts.tools, 'retrieve_graph');
+
+    const result = (await graphTool.handler({
+      query: '差旅 / 住宿',
+    })) as {
+      context: string;
+      insufficient: boolean;
+    };
+
+    expect(graph.retrieveForChat).toHaveBeenCalledWith(
+      ['发票', '报销', '差旅 / 住宿'],
+      8,
+      { unrestricted: false, userId: '1001', teamIds: ['team-1'] },
+    );
+    expect(writer.write).toHaveBeenCalledWith({
+      type: 'data-graph',
+      data: expect.objectContaining({
+        query: '发票 / 报销 / 差旅 / 住宿',
+      }),
+    });
+    expect(result.context).toContain('关系：');
+    expect(result.insufficient).toBe(false);
+  });
+
+  it('图谱无命中时返回 insufficient，并仍写空 data-graph 供前端提示', async () => {
+    const { service, graph } = makeService();
+    const empty = emptyGraphHit('发票 / 报销');
+    (
+      graph.retrieveForChat as unknown as {
+        mockResolvedValueOnce: (value: GraphChatHit) => void;
+      }
+    ).mockResolvedValueOnce(empty);
+    const { agent, writer } = makeAgent(
+      service,
+      plan({ graphQueries: ['发票', '报销'] }),
+    );
+    const graphTool = toolNamed(agent.opts.tools, 'retrieve_graph');
+
+    const result = (await graphTool.handler({ query: '发票' })) as {
+      insufficient: boolean;
+    };
+
+    expect(result.insufficient).toBe(true);
+    expect(writer.write).toHaveBeenCalledWith({
+      type: 'data-graph',
+      data: empty,
+    });
+  });
+
+  it('图谱查询失败时不中断 Agent，返回 error 与 insufficient', async () => {
+    const { service, graph } = makeService();
+    (
+      graph.retrieveForChat as unknown as {
+        mockRejectedValueOnce: (error: Error) => void;
+      }
+    ).mockRejectedValueOnce(new Error('neo4j down'));
+    const { agent, writer } = makeAgent(
+      service,
+      plan({ graphQueries: ['发票'] }),
+    );
+    const graphTool = toolNamed(agent.opts.tools, 'retrieve_graph');
+
+    const result = (await graphTool.handler({ query: '发票' })) as {
+      error: string;
+      insufficient: boolean;
+    };
+
+    expect(result.error).toBe('neo4j down');
+    expect(result.insufficient).toBe(true);
+    expect(writer.write).toHaveBeenCalledWith({
+      type: 'data-graph',
+      data: expect.objectContaining({ error: 'neo4j down' }),
+    });
+  });
+
+  it('allowGraph=false 时不挂图谱工具', () => {
+    const { service } = makeService();
+    const { agent } = makeAgent(
+      service,
+      plan({ allowRetrieve: true, allowGraph: false }),
+    );
+
+    expect(agent.opts.tools.map((t) => t.name)).toEqual([
+      'retrieve_knowledge',
+      'rewrite_query',
     ]);
   });
 });
@@ -421,6 +546,33 @@ describe('systemForPlan', () => {
         }),
       ),
     ).toContain('不要检索知识库');
+  });
+
+  it('知识库提示词要求首轮并行调用两个检索工具，并限定图谱边界', () => {
+    const prompt = systemForPlan(
+      plan({
+        graphQueries: ['发票', '报销'],
+      }),
+    );
+
+    expect(prompt).toContain('并行调用 retrieve_knowledge 和 retrieve_graph');
+    expect(prompt).toContain('图谱建议检索词「发票 / 报销」');
+    expect(prompt).toContain('不能当制度原文');
+    expect(prompt).toContain('图谱为空不要编造关系');
+  });
+
+  it('非知识库意图明确禁止调用图谱工具', () => {
+    const prompt = systemForPlan(
+      plan({
+        intent: 'web',
+        label: '联网搜索',
+        allowRetrieve: false,
+        allowGraph: false,
+        allowWeb: true,
+      }),
+    );
+
+    expect(prompt).toContain('不要调用 retrieve_graph');
   });
 });
 
