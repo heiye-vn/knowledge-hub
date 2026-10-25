@@ -49,7 +49,20 @@
 EXISTS { MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(e) WHERE <可见性> }
 ```
 
-关系边要**双端实体**都落在可见文档内。`getStats` 的统计数字同样只计可见范围，否则数字本身构成侧信道泄露。
+关系边在建图时写入 `sourceChunkIds`，可见性严格沿来源块回查所属文档：
+
+```
+EXISTS {
+  MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(c:DocumentChunk)
+  WHERE c.chunkId IN coalesce(r.sourceChunkIds, []) AND <可见性>
+}
+```
+
+不能只判两端实体各自可见，也不能用「同一篇文档共现」近似——那会放行仅由私有块抽取、但两端实体恰好都公开的关系。无 `sourceChunkIds` 的存量边不会返回，部署后需全量重建图谱补齐。
+
+所有 Cypher 文档过滤都要同时带 `status = Published`。图谱正常情况下只收录已发布文档，但撤稿 / 归档清理失败时，残留节点仍可能带着旧的 `isPublic` / `teamId` 通过可见性判断。
+
+`getStats` 的统计数字同样只计可见范围，否则数字本身构成侧信道泄露。
 
 > ⚠️ `EXISTS { ... }` 子查询需 **Neo4j 5+**；低版本需改用 `size([...]) > 0` 写法。
 
@@ -81,6 +94,8 @@ EXISTS { MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]-
 - **统一 snake_case 单套字段映射**：参考项目因 `kh_chunk`(snake) 与 `kh_document`(camel) 命名不一致而维护两套映射；本项目两索引同为 snake_case，只保留一套
 - **`teamIds` 每请求重算**：沿项目既有的权限码即时生效策略，成员变动无需重新登录
 - **kg 扩展接口的可见性覆盖**：`stats` / `entities` / `neighbors` 是主项目相对参考的扩展接口，本轮同步补上 scope 过滤
+- **关系级可见性强化**：`RELATED_TO` 写入 `sourceChunkIds`，查询严格沿来源块回查文档可见性，不再只校验两端实体各自可见
+- **图谱发布状态兜底**：Cypher 文档过滤统一附加 `status = Published`，与 ES / PG 口径一致
 
 ---
 
@@ -89,3 +104,4 @@ EXISTS { MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]-
 - 回填目前为启动幂等执行的一次性逻辑，未做成可重试的管理端点；数据量大时建议改为分页 + 进度记录
 - 可见性变更的就地更新失败仅记 warn 日志，缺少自动补偿；可考虑把失败文档投递到重建索引队列
 - 团队负责人若不在成员表中，依赖 `kh_team.leader_id` 单独查询，后续若引入「团队继承 / 父团队可见」需一并扩展 `listAccessibleTeamIds`
+- 关系已记录 `sourceChunkIds` 并严格过滤，但存量边在升级前没有来源；上线后必须执行一次全量图谱重建（`POST /kg/build`）补齐，否则旧边不会返回

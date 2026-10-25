@@ -24,6 +24,7 @@
 → 按意图挂工具建 Agent
 → Agent 循环
    ├─ retrieve_knowledge：检索 + 切题评估（最多 2 次）
+   ├─ retrieve_graph：图谱检索（v18 起，首次与 retrieve_knowledge 并行调用）
    ├─ rewrite_query：不足后改写（必须有上一次检索）
    └─ web_search：仅 web / kb_then_web 挂载
 → 正文与工具事件流
@@ -31,7 +32,9 @@
 ```
 
 流式 `data-*` 事件顺序：`data-session` → `data-status(intent)` → `data-intent` →
-`data-eval` / 工具输入输出 / `data-sources` / `source-document` → 正文。
+`data-eval` / `data-graph` / 工具输入输出 / `data-sources` / `source-document` → 正文。
+图谱分支的细节（三段 Cypher、并行工具、前端图谱卡）单记在
+[graph-rag.md](./graph-rag.md)。
 
 ## 二、 关键决策
 
@@ -60,7 +63,8 @@
 
 `retrieve_knowledge` 闭包持有 `retrieveCount`，第三次直接返回 `insufficient + error`；
 `rewrite_query` 先检查 `lastRetrieve`，未检索或已切题都拒绝改写。
-`modelCallLimitMiddleware` 从 4 提到 6，为「检索 → 改写 → 再检索 → 联网 → 作答」留出空间。
+`modelCallLimitMiddleware` 从 4 提到 6，为「检索 → 改写 → 再检索 → 联网 → 作答」留出空间；
+feat-v18 增加图谱并行工具后再提到 8（见 [graph-rag.md](./graph-rag.md)）。
 
 【易错】仅靠 system prompt 写「最多两次」挡不住模型重复调用；必须用闭包计数。
 联网顺序（先库后网）目前仍只靠提示词约束，工具本身没有状态机，属于已知边界。
@@ -147,10 +151,9 @@ LangChain 的 callbacks 存在 `AsyncLocalStorage` 中，内部结构化输出�
 
 ## 六、 已知局限与后续待办
 
-1. `web_search` 没有硬性次数上限，靠 `modelCallLimit(6)` 收口；「先库后网」靠提示词。
+1. `web_search` 没有硬性次数上限，靠 `modelCallLimit(8)` 收口；「先库后网」靠提示词。
 2. 评估 fail-open 时会把宽松命中的原文交给模型，可能多给来源；回答质量依赖提示词。
 3. 非流式 `kb` 检索异常会折叠成「知识库里没有相关内容」，不区分接口故障。
 4. 过程卡是流式事件，不落库；历史会话只能回放正文与引用，不能回放意图/评估轨迹。
 5. 完整六篇制度 PDF 的验收矩阵尚未补齐；当前 `test/fixtures` 只有差旅与发布 SOP 两篇。
-6. 会话长期记忆检索词在流式/非流式仍分别使用 `plan.query`，与基线 v17 的
-   `question` 选择不完全一致，属低风险差异。
+6. 长期记忆检索词：流式已改为在 `classify` 前用原问题启动（与 v18 一致，可与意图分类并行）；非流式仍在分类后用 `plan.query`，属低风险差异。

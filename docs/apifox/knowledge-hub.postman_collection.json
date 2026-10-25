@@ -1113,9 +1113,9 @@
                 }
               ]
             },
-            "description": "某实体的全部 RELATED_TO 关联（不分方向，按权重倒序）。\n\n返回 [{ entity, relation, weight, direction: out|in }]。\n⚠️ 关系语义在 relation 属性上（边类型恒为 RELATED_TO），按属性读语义。"
+            "description": "某实体的全部 RELATED_TO 关联（不分方向，按权重倒序）。\n\n返回 [{ entity, relation, weight, sourceChunkIds, direction: out|in }]。\nsourceChunkIds 是关系来源块；没有来源块的存量边不会返回。\n⚠️ 关系语义在 relation 属性上（边类型恒为 RELATED_TO），按属性读语义。"
           },
-          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
+          "description": "\n【可见性过滤（feat-v15/v18）】关系严格沿 sourceChunkIds 回查来源块所属文档，仅返回 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。无来源块的存量边需全量重建图谱补齐。"
         },
         {
           "name": "图谱关键词检索（feat-v10）",
@@ -1192,9 +1192,9 @@
                 }
               ]
             },
-            "description": "实体间 RELATED_TO 边全量列表，按权重倒序。\n\n返回 [{ source, target, relation, weight }]，\nrelation 是关系语义（如「属于」「负责」），边类型恒为 RELATED_TO。"
+            "description": "实体间 RELATED_TO 边全量列表，按权重倒序。\n\n返回 [{ source, target, relation, weight, sourceChunkIds }]，\nrelation 是关系语义（如「属于」「负责」），边类型恒为 RELATED_TO；\nsourceChunkIds 为关系来源块，用于严格可见性过滤与溯源。"
           },
-          "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
+          "description": "\n【可见性过滤（feat-v15/v18）】关系严格沿 sourceChunkIds 回查来源块所属文档；无来源块的存量边不会返回，需全量重建图谱补齐。"
         },
         {
           "name": "全景图谱数据（feat-v12）",

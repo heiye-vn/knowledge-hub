@@ -1,6 +1,6 @@
 # 参考项目映射对照表（knowledge-hub-backend ↔ knowledge-hub）
 
-> **文档定位**：`knowledge-hub-backend` 是**只读的参考项目**（对比分支随迭代推进，当前到 `v17`），`knowledge-hub` 是**真正在做的主项目**。
+> **文档定位**：`knowledge-hub-backend` 是**只读的参考项目**（对比分支随迭代推进，当前到 `v18`），`knowledge-hub` 是**真正在做的主项目**。
 > 本文件是两者之间的映射登记簿：记录「参考项目的哪个模块，对应主项目的哪个模块」，
 > 以及**哪里有意分叉、为什么分叉、参考项目的哪些缺陷主项目已修复**。
 >
@@ -95,6 +95,12 @@
 | **v17** `agentic-rag.md` 自测清单 | `docs/dev-notes/agentic-rag.md` | 🟡 分叉 | 自测场景收敛到开发笔记；因测试语料只有两篇制度 PDF，六篇矩阵未完整复制 |
 | **v14** `touchTitle`（续会话首问覆盖默认标题） | `chat-session.service.ts` `appendTurn` 兜底 | 🟡 分叉 | 基线流开始时改标题；主项目在流结束 `appendTurn` 时检查 `title === DEFAULT_TITLE` 再覆盖，自定义标题不覆盖。功能等价，标题可见时机晚一轮（流中仍是「新对话」，落库后才更新） |
 | **v17+** `ai/web-search.service.ts` | 同名服务扩展 | 🔵 新增 | 基线仅 Bocha；主项目增加 `WEB_SEARCH_PROVIDERS` 顺序链、Tavily 适配与失败自动降级，空结果不降级，双失败合并错误 |
+| **v18** `graph-build.service.ts` `retrieveForChat` | 同名方法（`kg/graph-build.service.ts`） | 🟡 分叉 | 三段 Cypher（实体相等/前缀/后缀 + 关系 + 来源文档）同构；分叉：关系边写入 `sourceChunkIds` 并严格溯源、命中类型与纯函数独立到 `kg/types` / `kg/chat-graph.ts`、`error` 字段可观测、中文标点分词增强（见分叉登记 2026-10-25） |
+| **v18** `chat-query-rewrite.service.ts` `graph_queries` | 同名路由扩展 | 🟢 对齐 | `graph_queries`（2~4 字短实体名）+ `allowGraph` 与 kb / kb_then_web 的挂载规则同构 |
+| **v18** `retrieve_graph` 工具 + 并行调用 | `ai-stream.service.ts` 扩展 | 🟢 对齐 | 图谱作为 Agent 工具、`parallel_tool_calls: true`、首次与 `retrieve_knowledge` 并行、runLimit 8 同构；分叉：沿用主项目工具描述与 Key 回退链风格 |
+| **v18** 非流式图谱并行检索 | `ai-chat.service.ts` 扩展 | 🟡 分叉 | 基线在意图确定后并行检索图谱与知识库同构；主项目把「库里没有」收口收紧为 kb 不足且图谱无命中，且图谱 catch 不带 error 进回答 |
+| **v18** 前端 GraphCard 图谱卡 | `ChatMessageParts.tsx` / `chat-message-utils.ts` / `ForceGraph.tsx` | 🟡 分叉 | data-graph / 工具 part 双通道渲染与去重同构；分叉：复用主项目 `ForceGraph` 组件加 `compact` 模式，mention 边按 16 阈值防画布爆炸 |
+| **v18** Neo4j 镜像版本 | `docker-compose.yml` | 🟢 对齐 | 从 `latest` 固定到 `neo4j:2026.04.0`，避免环境漂移 |
 
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
@@ -192,6 +198,12 @@
 | 2026-10-24 | **前端检索调参能力**（v17） | 新过程 UI 不再提供 topK / 模式 / 仅检索 | 保留三输入与「仅检索不落库」 | 主项目既有检索调试能力不能因 UI 升级回退；参考 v17 的简化不适用于本项目 |
 | 2026-10-24 | **内部模型调用隔离**（v17） | 未处理工具内结构化输出的 callbacks 继承 | `invokeIsolated` 清空 callbacks + 前端结构化 JSON 过滤 | 评估/改写 JSON 会混入正文；两层防护分别覆盖服务端流与历史回放 |
 | 2026-10-24 | **联网搜索降级**（v17+） | 仅 Bocha，额度耗尽/接口失败即联网不可用 | `WEB_SEARCH_PROVIDERS` 顺序链 + Tavily 适配；按错误降级、空结果不降级、合并失败原因 | 单点供应商额度/故障不应废掉联网能力；按空降级会造成双份计费，故只在错误时切换 |
+| 2026-10-25 | **图谱命中类型与纯函数归属**（v18） | `GraphChatHit`、分词/格式化函数全部内联在 `graph-build.service.ts`（该文件已 1000+ 行） | `GraphChatHit` 放 `kg/types/kg.types.ts`（主项目 `GraphHit` 已被 `/kg/search` 契约占用）；纯函数抽到 `kg/chat-graph.ts` 独立单测 | 同名类型撞既有契约；巨型 service 内联纯函数无法单独测分词与上下文格式化 |
+| 2026-10-25 | **图谱关键词分词**（v18） | 仅按 `[\s/]+` 拆 | 额外接受 `／、，,；;` 中文标点 | 路由模型常产出「发票、报销」这类顿号串，只按空格/斜杠拆会对不上实体节点 |
+| 2026-10-25 | **图谱检索失败的可观测性**（v18） | catch 返回无标记的空 hit（没建图与查挂了不可区分） | `GraphChatHit.error` 字段携带失败原因，流式工具层与非流式各自 catch 不阻断回答 | 增强通道失败不该废掉整轮对话，但静默吞错会让排障白烧一轮 LLM；前端失败态卡片也能给出原因 |
+| 2026-10-25 | **`mergeGraphHits`**（v18） | 导出但全项目无调用点（死代码） | 不引入 | 每轮图谱检索只调一次、命中在 `retrieveForChat` 内已聚合，合并函数没有消费者 |
+| 2026-10-25 | **图谱关系可见性**（v18） | 只校验关系两端实体各自可见，关系可能来自另一篇不可见文档 | 建图时给 `RELATED_TO` 写 `sourceChunkIds`，查询严格沿来源块所属文档过滤；无来源存量边不返回 | 修复参考实现的关系级权限缺口；从「两端共现」近似升级为块级精确溯源，需全量重建补齐存量边 |
+| 2026-10-25 | **图谱发布状态过滤**（v18） | 文档过滤只看 `isPublic / authorId / teamId`，不校验 `status` | `neo4jDocumentAccessWhere` 统一附加 `status = Published`，对所有 KG 查询生效 | 与 ES/PG 的可见性口径一致，防撤稿 / 归档清理失败时残留节点泄露 |
 
 
 

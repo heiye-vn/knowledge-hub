@@ -79,8 +79,9 @@ remove ────  双清 ES + 投递 KG 删除任务
   将来「向量召回 → 反查图谱」能直接对上。
 - **图模型**（与参考项目一致）：
   `(KnowledgeDocument)-[:HAS_CHUNK]->(DocumentChunk)-[:MENTIONS]->(KnowledgeEntity)`，
-  实体间 `(e)-[:RELATED_TO {relation, weight}]->(e)`。
-  ⚠️ **边类型恒为 RELATED_TO**，语义在 `relation` 属性上，查询按属性过滤。
+  实体间 `(e)-[:RELATED_TO {relation, weight, sourceChunkIds}]->(e)`。
+  ⚠️ **边类型恒为 RELATED_TO**，语义在 `relation` 属性上，查询按属性过滤；
+  `sourceChunkIds` 记录抽取该关系的块，供严格可见性回查与溯源。
 
 ---
 
@@ -125,6 +126,9 @@ curl -s "localhost:3000/kg/neighbors?name=财务部"
 > 本节是**本模块**的局限清单；正式登记的待实施改进项在
 > [../TODO.md §4](../TODO.md#4-kgfeat-v5遗留项)（含触发条件与候选方案）。
 > 注意：**下列都不是参考项目 v5 的功能缺口**，v5 对齐本身已完成。
+
+图谱的**对话检索**（`retrieveForChat`，feat-v18 Graph RAG）单记在
+[graph-rag.md](./graph-rag.md)。
 
 1. **无任务状态查询接口**：BullMQ 有 jobId 但没有 `GET /kg/tasks/:id`，前端只能看日志。
    已登记到 TODO.md；与 `rag.reindex` 共用一套状态查询更划算，别做两份。
