@@ -134,9 +134,9 @@ services:
 
   # Neo4j（KG 知识图谱存储）— feat-v5：实体关系建图
   # 不是发布链路的强依赖：NEO4J_ENABLED=false 时应用照常启动，仅图谱不可用
-  # 配置与参考项目 knowledge-hub-backend v5 保持一致（neo4j:latest + apoc 插件）
+  # 固定 Neo4j 版本，避免 latest 漂移导致 APOC / Cypher 行为变化
   neo4j:
-    image: neo4j:latest
+    image: neo4j:2026.04.0
     container_name: knowledge_hub_neo4j
     restart: unless-stopped
     ports:
