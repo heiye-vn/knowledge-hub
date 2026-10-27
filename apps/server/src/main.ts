@@ -1,6 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import {
+  shutdownLangfuseTracing,
+  startLangfuseTracing,
+} from './observability/langfuse.js';
 
 /** 与 AuthService / JwtStrategy 中的 fallback 保持一致 */
 const DEV_JWT_DEFAULTS: Record<string, string> = {
@@ -40,6 +44,7 @@ function assertJwtSecrets(logger: Logger): void {
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   assertJwtSecrets(logger);
+  startLangfuseTracing();
 
   const app = await NestFactory.create(AppModule);
 
@@ -65,5 +70,31 @@ async function bootstrap() {
   );
 
   await app.listen(process.env.PORT ?? 3000);
+
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.log(`收到 ${signal}，正在关闭应用并刷新观测数据`);
+    try {
+      await app.close();
+    } finally {
+      await shutdownLangfuseTracing();
+    }
+    process.exit(0);
+  };
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => {
+      void shutdown(signal);
+    });
+  }
 }
-await bootstrap();
+
+await bootstrap().catch(async (error: unknown) => {
+  Logger.error(
+    error instanceof Error ? error.stack : String(error),
+    'Bootstrap',
+  );
+  await shutdownLangfuseTracing();
+  process.exitCode = 1;
+});

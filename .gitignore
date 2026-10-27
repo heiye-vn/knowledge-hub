@@ -25,6 +25,7 @@ pnpm-debug.log*
 # 测试产物
 coverage/
 .nyc_output/
+eval-reports/
 
 # 本地测试夹具（真实个人文件，不进版本库：简历/考勤表等，体积大且含隐私）
 apps/server/test/fixtures/
