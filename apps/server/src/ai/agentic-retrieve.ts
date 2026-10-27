@@ -6,6 +6,7 @@ import type {
   ChatQueryRewriteService,
   HitGrade,
 } from './chat-query-rewrite.service.js';
+import { withObservation } from '../observability/langfuse.js';
 
 /** 推给前端 data-eval；ok 表示资料切题，不是「有条数」。 */
 export type RetrieveEvalReason =
@@ -48,6 +49,17 @@ export type GradedRetrieve = {
   usedQuery: string;
 };
 
+/** 检索环完整结果：保留每一轮 attempt，供评测区分首轮与改写后效果。 */
+export type RetrieveLoopResult = {
+  hits: SearchHit[];
+  /** 末轮原始命中，兼容既有调用方 */
+  rawHits: SearchHit[];
+  eval: RetrieveEval;
+  usedQuery: string;
+  retrieveCount: number;
+  attempts: GradedRetrieve[];
+};
+
 /** 单次检索 + 切题评估。Agent loop 每次工具调用走这里。 */
 export async function retrieveAndGrade(opts: {
   question: string;
@@ -65,41 +77,61 @@ export async function retrieveAndGrade(opts: {
   const displayQuery = retried ? opts.previousQuery || usedQuery : usedQuery;
   const retryQuery = retried ? usedQuery : undefined;
 
-  try {
-    const rawHits = await opts.retrieval.search(
-      { query: usedQuery, topK: opts.topK, mode: opts.mode },
-      opts.user ? accessFromUser(opts.user) : undefined,
-    );
-    const grade = await opts.rewrite.gradeHits(opts.question, rawHits);
-    return {
-      rawHits,
-      hits: grade.ok ? rawHits : [],
-      grade,
-      eval: toEval(grade, displayQuery, retried, retryQuery),
-      usedQuery,
-    };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return {
-      rawHits: [],
-      hits: [],
-      grade: { ok: false, reason: 'empty', text: `检索失败：${detail}` },
-      eval: {
-        ok: false,
-        reason: 'error',
-        text: retried ? `改写后再次检索失败：${detail}` : `检索失败：${detail}`,
-        retried,
-        query: displayQuery,
-        retryQuery,
-      },
-      usedQuery,
-    };
-  }
+  return withObservation('retrieve-and-grade', async (update) => {
+    try {
+      const rawHits = await opts.retrieval.search(
+        { query: usedQuery, topK: opts.topK, mode: opts.mode },
+        opts.user ? accessFromUser(opts.user) : undefined,
+      );
+      const grade = await opts.rewrite.gradeHits(opts.question, rawHits);
+      const result = {
+        rawHits,
+        hits: grade.ok ? rawHits : [],
+        grade,
+        eval: toEval(grade, displayQuery, retried, retryQuery),
+        usedQuery,
+      };
+      update({
+        input: { query: usedQuery, retried },
+        output: {
+          n: rawHits.length,
+          ok: result.eval.ok,
+          reason: result.eval.reason,
+        },
+        metadata: {
+          retrieveCount: 1,
+          error: result.eval.reason === 'error',
+        },
+      });
+      return result;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const failed = {
+        rawHits: [] as SearchHit[],
+        hits: [] as SearchHit[],
+        grade: { ok: false, reason: 'empty' as const, text: `检索失败：${detail}` },
+        eval: {
+          ok: false,
+          reason: 'error' as const,
+          text: retried ? `改写后再次检索失败：${detail}` : `检索失败：${detail}`,
+          retried,
+          query: displayQuery,
+          retryQuery,
+        },
+        usedQuery,
+      };
+      update({
+        input: { query: usedQuery, retried },
+        metadata: { error: true, retrieveCount: 1 },
+      });
+      return failed;
+    }
+  });
 }
 
 /**
  * 无 Agent 时的等价环：查一次 → 评估 → 不足则改写再查一次。
- * 给非流式 /ai/chat 用。
+ * 给非流式 /ai/chat 用。每轮结果都进 attempts，评测不再只看末轮。
  */
 export async function retrieveUntilRelevant(opts: {
   question: string;
@@ -111,7 +143,7 @@ export async function retrieveUntilRelevant(opts: {
   rewrite: ChatQueryRewriteService;
   onEval?: (data: RetrieveEval) => void;
   onRewrite?: (retryQuery: string) => void;
-}): Promise<{ hits: SearchHit[]; eval: RetrieveEval; usedQuery: string }> {
+}): Promise<RetrieveLoopResult> {
   const first = await retrieveAndGrade({
     question: opts.question,
     query: opts.query,
@@ -123,7 +155,14 @@ export async function retrieveUntilRelevant(opts: {
   });
   opts.onEval?.(first.eval);
   if (first.eval.ok || first.eval.reason === 'error') {
-    return { hits: first.hits, eval: first.eval, usedQuery: first.usedQuery };
+    return {
+      hits: first.hits,
+      rawHits: first.rawHits,
+      eval: first.eval,
+      usedQuery: first.usedQuery,
+      retrieveCount: 1,
+      attempts: [first],
+    };
   }
 
   const retryQuery = await opts.rewrite.rewriteAfterRetrieve(
@@ -133,7 +172,14 @@ export async function retrieveUntilRelevant(opts: {
     first.rawHits,
   );
   if (!retryQuery) {
-    return { hits: [], eval: first.eval, usedQuery: first.usedQuery };
+    return {
+      hits: [],
+      rawHits: first.rawHits,
+      eval: first.eval,
+      usedQuery: first.usedQuery,
+      retrieveCount: 1,
+      attempts: [first],
+    };
   }
 
   opts.onRewrite?.(retryQuery);
@@ -151,8 +197,11 @@ export async function retrieveUntilRelevant(opts: {
   opts.onEval?.(second.eval);
   return {
     hits: second.hits,
+    rawHits: second.rawHits,
     eval: second.eval,
     usedQuery: second.usedQuery,
+    retrieveCount: 2,
+    attempts: [first, second],
   };
 }
 

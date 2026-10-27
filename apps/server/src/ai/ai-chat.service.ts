@@ -28,8 +28,33 @@ import { accessFromUser } from '../document/document-access.js';
 import { dbRowsToMessages } from './chat-memory.util.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
 import type { ChatSource } from './chat.types.js';
+import type {
+  ChatEvalSnapshot,
+  ToolRun,
+  WebToolRun,
+} from './eval/eval.types.js';
+import { toEvalHit } from './eval/eval.types.js';
+import {
+  createLangfuseCallbackHandler,
+  withObservation,
+  withTraceAttrs,
+} from '../observability/langfuse.js';
 
 export type { ChatSource } from './chat.types.js';
+
+export type ChatOptions = {
+  /** 默认 true：写入会话与双层记忆；评测脚本必须显式关闭。 */
+  persist?: boolean;
+  /** 仅进程内评测使用；HTTP 响应默认不暴露内部召回与评估细节。 */
+  includeEval?: boolean;
+};
+
+export type ChatResult = {
+  sessionId: string | null;
+  answer: string;
+  sources: ChatSource[];
+  eval?: ChatEvalSnapshot;
+};
 
 const EXCERPT_LEN = 200;
 const CONTEXT_SNIPPET_LEN = 800;
@@ -39,7 +64,7 @@ const CITATION_RE = /\[(\d+)\]/g;
  * 非流式 Agentic RAG：意图路由 → 检索 + 切题评估 → 不足改写再查 → 按需联网 → 作答。
  *
  * 保留既有能力：检索模式透传、可见性 scope、MIN_SCORE/PG 兜底、引用溯源、
- * 会话与双层记忆落库（尽力而为）。
+ * 会话与双层记忆落库（尽力而为）。评测快照保存全轮次检索与真实工具执行结果。
  */
 @Injectable()
 export class AiChatService {
@@ -85,16 +110,51 @@ export class AiChatService {
     user?: AuthUser,
     sessionId?: string,
     mode?: SearchMode,
-  ): Promise<{
-    sessionId: string | null;
-    answer: string;
-    sources: ChatSource[];
-  }> {
+    options?: ChatOptions,
+  ): Promise<ChatResult> {
     const trimmed = question.trim();
     if (!trimmed) {
       return { sessionId: sessionId ?? null, answer: '请输入问题。', sources: [] };
     }
 
+    return withTraceAttrs(
+      {
+        userId: user?.userId,
+        sessionId,
+        tags: ['ai-chat', 'agentic-rag'],
+      },
+      () =>
+        withObservation('ai-chat', (update) =>
+          this.runChatTurn({
+            trimmed,
+            topK,
+            user,
+            sessionId,
+            mode,
+            persist: options?.persist !== false,
+            includeEval: Boolean(options?.includeEval),
+            update,
+          }),
+        ),
+    );
+  }
+
+  private async runChatTurn(opts: {
+    trimmed: string;
+    topK: number;
+    user?: AuthUser;
+    sessionId?: string;
+    mode?: SearchMode;
+    persist: boolean;
+    includeEval: boolean;
+    update: (fields: {
+      input?: unknown;
+      output?: unknown;
+      metadata?: Record<string, unknown>;
+    }) => void;
+  }): Promise<ChatResult> {
+    const { trimmed, topK, user, sessionId, mode, persist, includeEval, update } =
+      opts;
     const history = user
       ? await this.loadWorkingHistory(user.userId, sessionId)
       : [];
@@ -116,14 +176,24 @@ export class AiChatService {
           rewrite: this.queryRewrite,
         })
       : Promise.resolve(undefined);
+    let graphRun: ToolRun | undefined;
     const graphP: Promise<GraphChatHit | undefined> =
       plan.allowGraph && user && access && plan.graphQueries.length
-        ? this.graph.retrieveForChat(plan.graphQueries, 8, access).catch((error) => {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            this.logger.warn(`图谱检索失败，按无图谱继续：${message}`);
-            return undefined;
-          })
+        ? this.graph.retrieveForChat(plan.graphQueries, 8, access)
+            .then((hit) => {
+              graphRun = {
+                success: true,
+                useful: Boolean(hit.entities.length || hit.relations.length),
+              };
+              return hit;
+            })
+            .catch((error) => {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              this.logger.warn(`图谱检索失败，按无图谱继续：${message}`);
+              graphRun = { success: false, useful: false, error: message };
+              return undefined;
+            })
         : Promise.resolve(undefined);
     const [retrieved, graphHit] = await Promise.all([kbP, graphP]);
     let hits: SearchHit[] = [];
@@ -138,27 +208,94 @@ export class AiChatService {
       graphHit?.entities.length || graphHit?.relations.length,
     );
 
-    const web =
+    const rawWeb =
       plan.allowWeb && (!plan.allowRetrieve || kbInsufficient)
-        ? await this.webSearch.search(searchQuery)
+        ? await this.webSearch.search(searchQuery).catch((error) => {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            return { query: searchQuery, items: [], error: message };
+          })
         : undefined;
+    const web: WebSearchResult | undefined = rawWeb;
+    const webRun: WebToolRun | undefined = web
+      ? {
+          success: !web.error,
+          useful: Boolean(web.items.length),
+          ...(web.error ? { error: web.error } : {}),
+          snippet: formatWebSnippet(web),
+        }
+      : undefined;
     const memHits = await memHitsP;
+
+    const snapshot = (answer: string): ChatEvalSnapshot => ({
+      question: trimmed,
+      answer,
+      intent: plan.intent,
+      allowRetrieve: plan.allowRetrieve,
+      allowGraph: plan.allowGraph,
+      allowWeb: plan.allowWeb,
+      graphQueries: plan.graphQueries,
+      attempts: (retrieved?.attempts ?? []).map((attempt) => ({
+        query: attempt.usedQuery,
+        rawHits: attempt.rawHits.map(toEvalHit),
+        gradedHits: attempt.hits.map(toEvalHit),
+        eval: attempt.eval,
+      })),
+      retrieveCount: retrieved?.retrieveCount ?? 0,
+      rewrites:
+        retrieved && retrieved.attempts.length > 1
+          ? [
+              {
+                previousQuery: retrieved.attempts[0].usedQuery,
+                query: retrieved.attempts[1].usedQuery,
+              },
+            ]
+          : [],
+      graphRuns: graphRun ? [graphRun] : [],
+      webRuns: webRun ? [webRun] : [],
+      retrieveEval: retrieved?.eval,
+    });
+
+    const finish = (
+      answer: string,
+      sources: ChatSource[],
+      sid: string | null,
+    ): ChatResult => {
+      const evalSnapshot = snapshot(answer);
+      update({
+        input: { question: trimmed },
+        output: { answer, intent: plan.intent },
+        metadata: {
+          intent: plan.intent,
+          retrieveCount: evalSnapshot.retrieveCount,
+          graphUsed: Boolean(evalSnapshot.graphRuns.length),
+          webUsed: Boolean(evalSnapshot.webRuns.length),
+        },
+      });
+      return {
+        sessionId: sid,
+        answer,
+        sources,
+        ...(includeEval ? { eval: evalSnapshot } : {}),
+      };
+    };
 
     if (plan.intent === 'kb' && kbInsufficient && !hasGraph) {
       const empty = {
         answer: '知识库里没有相关内容。',
         sources: [] as ChatSource[],
       };
-      const session = user
-        ? await this.persistTurn(
-            user.userId,
-            sessionId,
-            trimmed,
-            empty.answer,
-            empty.sources,
-          )
-        : null;
-      if (user && session) {
+      const session =
+        persist && user
+          ? await this.persistTurn(
+              user.userId,
+              sessionId,
+              trimmed,
+              empty.answer,
+              empty.sources,
+            )
+          : null;
+      if (persist && user && session) {
         await this.shortMemory.appendTurn(
           user.userId,
           session.id,
@@ -173,7 +310,11 @@ export class AiChatService {
           empty.answer,
         );
       }
-      return { sessionId: session?.id ?? sessionId ?? null, ...empty };
+      return finish(
+        empty.answer,
+        empty.sources,
+        session?.id ?? sessionId ?? null,
+      );
     }
 
     if (!this.llm) {
@@ -189,15 +330,23 @@ export class AiChatService {
     if (web) parts.push(`联网结果：\n${this.buildWebContext(web)}`);
     parts.push(`用户问题：${trimmed}`);
     const userTurn = parts.join('\n\n');
-    const response = await this.llm.invoke([
-      new SystemMessage(
-        this.buildSystemPrompt(plan.intent, Boolean(hits.length), web),
-      ),
-      ...(memoryMsg ? [memoryMsg] : []),
-      ...(graphMsg ? [new SystemMessage(graphMsg)] : []),
-      ...history,
-      new HumanMessage(userTurn),
-    ]);
+    const langfuseHandler = createLangfuseCallbackHandler({
+      userId: user?.userId,
+      sessionId,
+      tags: ['agentic-rag', 'nonstream', plan.intent],
+    });
+    const response = await this.llm.invoke(
+      [
+        new SystemMessage(
+          this.buildSystemPrompt(plan.intent, Boolean(hits.length), web),
+        ),
+        ...(memoryMsg ? [memoryMsg] : []),
+        ...(graphMsg ? [new SystemMessage(graphMsg)] : []),
+        ...history,
+        new HumanMessage(userTurn),
+      ],
+      langfuseHandler ? { callbacks: [langfuseHandler] } : undefined,
+    );
 
     const answer =
       typeof response.content === 'string'
@@ -209,10 +358,11 @@ export class AiChatService {
       `RAG 对话完成：intent=${plan.intent}, hits=${hits.length}, cited=${sources.length}, answerLength=${answer.length}`,
     );
 
-    const session = user
-      ? await this.persistTurn(user.userId, sessionId, trimmed, answer, sources)
-      : null;
-    if (user && session) {
+    const session =
+      persist && user
+        ? await this.persistTurn(user.userId, sessionId, trimmed, answer, sources)
+        : null;
+    if (persist && user && session) {
       await this.shortMemory.appendTurn(
         user.userId,
         session.id,
@@ -227,7 +377,7 @@ export class AiChatService {
         answer,
       );
     }
-    return { sessionId: session?.id ?? sessionId ?? null, answer, sources };
+    return finish(answer, sources, session?.id ?? sessionId ?? null);
   }
 
   /**
@@ -362,4 +512,12 @@ export class AiChatService {
     prompt += '若资料不足以回答，明确说不知道。回答简洁，必要时列出条目。';
     return prompt;
   }
+}
+
+function formatWebSnippet(web: WebSearchResult): string {
+  if (web.error) return web.error;
+  if (!web.items.length) return '无结果。';
+  return web.items
+    .map((hit) => `${hit.title}\n${hit.url}\n${hit.snippet}`)
+    .join('\n\n');
 }

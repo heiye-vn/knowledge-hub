@@ -27,8 +27,15 @@ import {
   ChatQueryRewriteService,
   type ChatRoutePlan,
 } from './chat-query-rewrite.service.js';
-import { retrieveAndGrade, type RetrieveEval } from './agentic-retrieve.js';
-import { WebSearchService } from './web-search.service.js';
+import {
+  retrieveAndGrade,
+  type GradedRetrieve,
+  type RetrieveEval,
+} from './agentic-retrieve.js';
+import {
+  WebSearchService,
+  type WebSearchResult,
+} from './web-search.service.js';
 import { formatGraphContext } from '../kg/chat-graph.js';
 import { GraphBuildService } from '../kg/graph-build.service.js';
 import type { GraphChatHit } from '../kg/types/kg.types.js';
@@ -37,6 +44,18 @@ import { dbRowsToMessages } from './chat-memory.util.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
 import type { ChatSource } from './chat.types.js';
 import type { ChatStreamDto } from './dto/chat-stream.dto.js';
+import type {
+  ChatEvalSnapshot,
+  RewriteRun,
+  ToolRun,
+  WebToolRun,
+} from './eval/eval.types.js';
+import { toEvalHit } from './eval/eval.types.js';
+import {
+  createLangfuseCallbackHandler,
+  withTraceAttrs,
+  withObservation,
+} from '../observability/langfuse.js';
 
 const EXCERPT_LEN = 200;
 const CONTEXT_SNIPPET_LEN = 800;
@@ -75,6 +94,14 @@ type KhUIMessage = UIMessage<
     session: { sessionId: string };
   }
 >;
+
+/** 评测用真实工具痕迹。线上 streamChat 不传，行为不变。 */
+type AgentEvalTrace = {
+  retrieves: GradedRetrieve[];
+  rewrites: RewriteRun[];
+  graphRuns: ToolRun[];
+  webRuns: WebToolRun[];
+};
 
 /**
  * 流式 Agentic RAG：每轮按意图挂工具，由模型调度检索、评估、改写与联网。
@@ -141,7 +168,7 @@ export class AiStreamService {
 
   /**
    * 按本轮意图挂工具。知识库与图谱都是 Agent tool，首次应并行调用；
-   * 改写/再检索仍由 Agent 循环调度。
+   * 改写/再检索仍由 Agent 循环调度。trace 只在评测执行时收集。
    */
   private createTurnAgent(
     user: AuthUser,
@@ -151,6 +178,7 @@ export class AiStreamService {
     writer: UIMessageStreamWriter<KhUIMessage>,
     plan: ChatRoutePlan,
     question: string,
+    trace?: AgentEvalTrace,
   ) {
     if (!this.llm || !this.compactLlm) return undefined;
     const retrieval = this.retrieval;
@@ -187,6 +215,7 @@ export class AiStreamService {
               previousQuery: lastRetrieve?.usedQuery,
             });
             lastRetrieve = result;
+            trace?.retrieves.push(result);
             writer.write({ type: 'data-eval', data: result.eval });
             if (result.eval.reason === 'error') {
               logger.warn(`RAG 检索失败：${result.eval.text}`);
@@ -261,6 +290,10 @@ export class AiStreamService {
                 reason: lastRetrieve.eval.text,
               };
             }
+            trace?.rewrites.push({
+              previousQuery: lastRetrieve.usedQuery,
+              query: retryQuery,
+            });
             return {
               query: retryQuery,
               previousQuery: lastRetrieve.usedQuery,
@@ -283,41 +316,56 @@ export class AiStreamService {
     if (plan.allowGraph) {
       tools.push(
         tool(
-          async (input: { query: string }) => {
-            const keywords = [
-              ...plan.graphQueries,
-              ...(input.query.trim() ? [input.query.trim()] : []),
-            ];
-            let hit: GraphChatHit;
-            try {
-              hit = await graph.retrieveForChat(
-                keywords,
-                8,
-                accessFromUser(user),
-              );
-            } catch (error) {
-              const message =
-                error instanceof Error ? error.message : String(error);
-              logger.warn(`图谱检索失败：${message}`);
-              hit = {
-                query: keywords.join(' / '),
-                entities: [],
-                relations: [],
-                documents: [],
-                error: message,
+          async (input: { query: string }) =>
+            withObservation('retrieve-graph', async (update) => {
+              const keywords = [
+                ...plan.graphQueries,
+                ...(input.query.trim() ? [input.query.trim()] : []),
+              ];
+              let hit: GraphChatHit;
+              try {
+                hit = await graph.retrieveForChat(
+                  keywords,
+                  8,
+                  accessFromUser(user),
+                );
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : String(error);
+                logger.warn(`图谱检索失败：${message}`);
+                hit = {
+                  query: keywords.join(' / '),
+                  entities: [],
+                  relations: [],
+                  documents: [],
+                  error: message,
+                };
+              }
+              const run: ToolRun = {
+                success: !hit.error,
+                useful: Boolean(hit.entities.length || hit.relations.length),
+                ...(hit.error ? { error: hit.error } : {}),
               };
-            }
-            writer.write({ type: 'data-graph', data: hit });
-            return {
-              query: hit.query,
-              entities: hit.entities,
-              relations: hit.relations,
-              documents: hit.documents,
-              context: formatGraphContext(hit),
-              insufficient: !hit.entities.length && !hit.relations.length,
-              ...(hit.error ? { error: hit.error } : {}),
-            };
-          },
+              trace?.graphRuns.push(run);
+              update({
+                metadata: {
+                  success: run.success,
+                  useful: run.useful,
+                  error: Boolean(hit.error),
+                  n: hit.entities.length + hit.relations.length,
+                },
+              });
+              writer.write({ type: 'data-graph', data: hit });
+              return {
+                query: hit.query,
+                entities: hit.entities,
+                relations: hit.relations,
+                documents: hit.documents,
+                context: formatGraphContext(hit),
+                insufficient: !hit.entities.length && !hit.relations.length,
+                ...(hit.error ? { error: hit.error } : {}),
+              };
+            }),
           {
             name: 'retrieve_graph',
             description:
@@ -337,7 +385,25 @@ export class AiStreamService {
       tools.push(
         tool(
           async (input: { query: string; count?: number }) =>
-            search.search(input.query, input.count ?? 5),
+            withObservation('web-search', async (update) => {
+              const web = await search.search(input.query, input.count ?? 5);
+              const run: WebToolRun = {
+                success: !web.error,
+                useful: Boolean(web.items.length),
+                ...(web.error ? { error: web.error } : {}),
+                snippet: formatWebSnippet(web),
+              };
+              trace?.webRuns.push(run);
+              update({
+                metadata: {
+                  success: run.success,
+                  useful: run.useful,
+                  error: Boolean(web.error),
+                  n: web.items.length,
+                },
+              });
+              return web;
+            }),
           {
             name: 'web_search',
             description:
@@ -374,6 +440,102 @@ export class AiStreamService {
     });
   }
 
+  /**
+   * 离线评测入口：复用线上同一个 Agent 与工具决策，不建会话、
+   * 不读写任何用户记忆，避免真实用户画像污染实验结果。
+   */
+  async runForEval(
+    question: string,
+    topK: number,
+    user: AuthUser,
+    mode: SearchMode = 'hybrid',
+  ): Promise<ChatEvalSnapshot> {
+    const trimmed = question.trim();
+    return withTraceAttrs(
+      { userId: user.userId, tags: ['agentic-rag', 'eval'] },
+      () =>
+        withObservation('agent-eval', async (update) => {
+          const plan = await this.queryRewrite.classify(trimmed, []);
+          const trace: AgentEvalTrace = {
+            retrieves: [],
+            rewrites: [],
+            graphRuns: [],
+            webRuns: [],
+          };
+          const base = {
+            question: trimmed,
+            intent: plan.intent,
+            allowRetrieve: plan.allowRetrieve,
+            allowGraph: plan.allowGraph,
+            allowWeb: plan.allowWeb,
+            graphQueries: plan.graphQueries,
+          };
+          const agent = this.createTurnAgent(
+            user,
+            topK,
+            mode,
+            [],
+            silentWriter(),
+            plan,
+            trimmed,
+            trace,
+          );
+          if (!agent) {
+            update({
+              output: { answer: '未配置 LLM Key，无法生成回答' },
+              metadata: { error: true },
+            });
+            return {
+              ...base,
+              answer: '未配置 LLM Key，无法生成回答',
+              attempts: [],
+              retrieveCount: 0,
+              rewrites: [],
+              graphRuns: [],
+              webRuns: [],
+            };
+          }
+
+          const langfuseHandler = createLangfuseCallbackHandler({
+            userId: user.userId,
+            tags: ['agentic-rag', 'eval', plan.intent],
+          });
+          const result = await agent.invoke(
+            { messages: [new HumanMessage(trimmed)] },
+            langfuseHandler ? { callbacks: [langfuseHandler] } : undefined,
+          );
+          const answer =
+            lastAssistantText(result.messages as BaseMessage[]) ||
+            '未能生成回答。';
+          const lastEval = trace.retrieves.at(-1)?.eval;
+          update({
+            output: { answer, intent: plan.intent },
+            metadata: {
+              intent: plan.intent,
+              retrieveCount: trace.retrieves.length,
+              graphUsed: Boolean(trace.graphRuns.length),
+              webUsed: Boolean(trace.webRuns.length),
+            },
+          });
+          return {
+            ...base,
+            answer,
+            attempts: trace.retrieves.map((attempt) => ({
+              query: attempt.usedQuery,
+              rawHits: attempt.rawHits.map(toEvalHit),
+              gradedHits: attempt.hits.map(toEvalHit),
+              eval: attempt.eval,
+            })),
+            retrieveCount: trace.retrieves.length,
+            rewrites: trace.rewrites,
+            graphRuns: trace.graphRuns,
+            webRuns: trace.webRuns,
+            ...(lastEval ? { retrieveEval: lastEval } : {}),
+          };
+        }),
+    );
+  }
+
   async streamChat(dto: ChatStreamDto, user: AuthUser, res: Response) {
     const question = lastUserText(dto.messages);
     const topK = dto.topK ?? 5;
@@ -403,88 +565,105 @@ export class AiStreamService {
           return;
         }
 
-        const sessionId = dto.sessionId
-          ? dto.sessionId
-          : (
-              await this.sessions.create(user.userId, {
-                title: titleFromQuestion(question),
-              })
-            ).id;
-        persistSessionId = sessionId;
-        writer.write({
-          type: 'data-session',
-          data: { sessionId },
-        });
-
-        const history = await this.loadWorkingHistory(user.userId, sessionId);
-        persistHistory = history;
-
-        writer.write({
-          type: 'data-status',
-          data: { stage: 'intent', text: '正在识别意图…' },
-        });
-        // 记忆检索不依赖路由结果，先启动与意图分类重叠，减少首字延迟
-        const memHitsP = this.longMemory.search(
-          user.userId,
-          sessionId,
-          question,
-        );
-        // 路由在 Agent 之前完成：工具列表按 plan 挂载，前端立刻能画意图卡
-        const plan = await this.queryRewrite.classify(question, history);
-        writer.write({
-          type: 'data-intent',
-          data: {
-            intent: plan.intent,
-            label: plan.label,
-            query: plan.query,
-            graphQueries: plan.graphQueries,
-            allowRetrieve: plan.allowRetrieve,
-            allowGraph: plan.allowGraph,
-            allowWeb: plan.allowWeb,
-          },
-        });
-
-        const memHits = await memHitsP;
-
-        const agent = this.createTurnAgent(
-          user,
-          topK,
-          dto.mode,
-          persistSources,
-          writer,
-          plan,
-          question,
-        );
-        if (!agent) {
-          writer.write({
-            type: 'error',
-            errorText: '未配置 LLM Key，无法生成回答',
-          });
-          writer.write({ type: 'finish' });
-          return;
-        }
-
-        const memoryMsg = this.longMemory.buildSystemMessage(memHits);
-        const langchainStream = await agent.stream(
+        await withTraceAttrs(
           {
-            messages: [
-              ...(memoryMsg ? [memoryMsg] : []),
-              ...history,
-              new HumanMessage(question),
-            ],
+            userId: user.userId,
+            sessionId: dto.sessionId,
+            tags: ['agentic-rag'],
           },
-          // messages：模型 token/思考；tools：retrieve / rewrite / graph / web_search
-          { streamMode: ['messages', 'tools'] },
-        );
+          async () => {
+            const sessionId = dto.sessionId
+              ? dto.sessionId
+              : (
+                  await this.sessions.create(user.userId, {
+                    title: titleFromQuestion(question),
+                  })
+                ).id;
+            persistSessionId = sessionId;
+            writer.write({
+              type: 'data-session',
+              data: { sessionId },
+            });
 
-        writer.merge(
-          toUIMessageStream(mapReasoningStream(langchainStream) as never, {
-            sendStart: false,
-            sendFinish: false,
-            onError: (error) => {
-              this.logger.warn(`LangChain 流失败：${error.message}`);
-            },
-          }) as never,
+            const history = await this.loadWorkingHistory(user.userId, sessionId);
+            persistHistory = history;
+
+            writer.write({
+              type: 'data-status',
+              data: { stage: 'intent', text: '正在识别意图…' },
+            });
+            // 记忆检索不依赖路由结果，先启动与意图分类重叠，减少首字延迟
+            const memHitsP = this.longMemory.search(
+              user.userId,
+              sessionId,
+              question,
+            );
+            // 路由在 Agent 之前完成：工具列表按 plan 挂载，前端立刻能画意图卡
+            const plan = await this.queryRewrite.classify(question, history);
+            writer.write({
+              type: 'data-intent',
+              data: {
+                intent: plan.intent,
+                label: plan.label,
+                query: plan.query,
+                graphQueries: plan.graphQueries,
+                allowRetrieve: plan.allowRetrieve,
+                allowGraph: plan.allowGraph,
+                allowWeb: plan.allowWeb,
+              },
+            });
+
+            const memHits = await memHitsP;
+
+            const agent = this.createTurnAgent(
+              user,
+              topK,
+              dto.mode,
+              persistSources,
+              writer,
+              plan,
+              question,
+            );
+            if (!agent) {
+              writer.write({
+                type: 'error',
+                errorText: '未配置 LLM Key，无法生成回答',
+              });
+              writer.write({ type: 'finish' });
+              return;
+            }
+
+            const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+            const langfuseHandler = createLangfuseCallbackHandler({
+              userId: user.userId,
+              sessionId,
+              tags: ['agentic-rag', plan.intent],
+            });
+            const langchainStream = await agent.stream(
+              {
+                messages: [
+                  ...(memoryMsg ? [memoryMsg] : []),
+                  ...history,
+                  new HumanMessage(question),
+                ],
+              },
+              // messages：模型 token/思考；tools：retrieve / rewrite / graph / web_search
+              {
+                streamMode: ['messages', 'tools'],
+                ...(langfuseHandler ? { callbacks: [langfuseHandler] } : {}),
+              },
+            );
+
+            writer.merge(
+              toUIMessageStream(mapReasoningStream(langchainStream) as never, {
+                sendStart: false,
+                sendFinish: false,
+                onError: (error) => {
+                  this.logger.warn(`LangChain 流失败：${error.message}`);
+                },
+              }) as never,
+            );
+          },
         );
       },
       onFinish: async ({ responseMessage }) => {
@@ -670,6 +849,48 @@ export function packRetrieveResult(
       .join('\n\n'),
     ...extra,
   };
+}
+
+/** 评测执行时丢弃所有 SSE 事件，但保留工具内部逻辑。 */
+function silentWriter(): UIMessageStreamWriter<KhUIMessage> {
+  return {
+    write() {
+      return undefined;
+    },
+    merge() {
+      return undefined;
+    },
+  } as unknown as UIMessageStreamWriter<KhUIMessage>;
+}
+
+function formatWebSnippet(web: WebSearchResult): string {
+  if (web.error) return web.error;
+  if (!web.items.length) return '无结果。';
+  return web.items
+    .map((hit) => `${hit.title}\n${hit.url}\n${hit.snippet}`)
+    .join('\n\n');
+}
+
+function lastAssistantText(messages: BaseMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.type !== 'ai') continue;
+    const text = messageText(message.content).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function messageText(content: BaseMessage['content']): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (part.type === 'text') return part.text;
+      return '';
+    })
+    .join('');
 }
 
 /**

@@ -659,4 +659,85 @@ describe('AiChatService（mock 检索与 LLM）', () => {
       undefined,
     );
   });
+
+  it('includeEval 保留全轮次检索与改写痕迹，且不写任何持久化', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const firstHit = hit('a', 0.6);
+    const secondHit = hit('b', 0.9);
+    const service = makeService(
+      vi
+        .fn()
+        .mockResolvedValueOnce([firstHit])
+        .mockResolvedValueOnce([secondHit]) as never,
+    );
+    service.fakes.queryRewrite.gradeHits = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, reason: 'irrelevant', text: '词沾边' })
+      .mockResolvedValueOnce({ ok: true, reason: 'relevant', text: '切题' }) as never;
+    service.fakes.queryRewrite.rewriteAfterRetrieve = vi.fn(
+      async () => '新检索词',
+    ) as never;
+
+    const res = await service.chat(
+      '加班餐补怎么报',
+      3,
+      USER,
+      '8001',
+      'keyword',
+      { persist: false, includeEval: true },
+    );
+
+    expect(service.retrievalSearch).toHaveBeenNthCalledWith(
+      1,
+      { query: '加班餐补怎么报', topK: 3, mode: 'keyword' },
+      expect.anything(),
+    );
+    expect(service.retrievalSearch).toHaveBeenNthCalledWith(
+      2,
+      { query: '新检索词', topK: 3, mode: 'keyword' },
+      expect.anything(),
+    );
+    expect(res.eval?.attempts).toHaveLength(2);
+    expect(res.eval?.attempts[0].rawHits.map((item) => item.documentId)).toEqual([
+      'doc-a',
+    ]);
+    expect(res.eval?.attempts[1].rawHits.map((item) => item.documentId)).toEqual([
+      'doc-b',
+    ]);
+    expect(res.eval?.attempts[1].gradedHits).toHaveLength(1);
+    expect(res.eval?.rewrites).toEqual([
+      { previousQuery: '加班餐补怎么报', query: '新检索词' },
+    ]);
+    expect(service.appendTurn).not.toHaveBeenCalled();
+    expect(service.fakes.shortMemory.appendTurn).not.toHaveBeenCalled();
+    expect(service.fakes.longMemory.rememberTurn).not.toHaveBeenCalled();
+  });
+
+  it('库空路径在 persist=false 时同样不写会话与记忆', async () => {
+    const service = makeService(async () => []);
+
+    const res = await service.chat(
+      '任意问题',
+      5,
+      USER,
+      undefined,
+      undefined,
+      { persist: false, includeEval: true },
+    );
+
+    expect(res.answer).toBe('知识库里没有相关内容。');
+    expect(res.eval?.attempts).toHaveLength(1);
+    expect(res.eval?.attempts[0].rawHits).toEqual([]);
+    expect(service.appendTurn).not.toHaveBeenCalled();
+    expect(service.fakes.shortMemory.appendTurn).not.toHaveBeenCalled();
+    expect(service.fakes.longMemory.rememberTurn).not.toHaveBeenCalled();
+  });
+
+  it('默认响应不暴露 eval 快照', async () => {
+    invokeMock.mockResolvedValue({ content: '结论 [1]。' });
+    const service = makeService(async () => [hit('a', 0.9)]);
+
+    const res = await service.chat('问题');
+    expect(res.eval).toBeUndefined();
+  });
 });

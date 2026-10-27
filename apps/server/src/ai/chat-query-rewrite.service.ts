@@ -10,6 +10,7 @@ import { AsyncLocalStorageProviderSingleton } from '@langchain/core/singletons';
 import { z } from 'zod';
 import { compactRewriteContext } from './chat-memory.util.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
+import { withObservation } from '../observability/langfuse.js';
 
 /**
  * 评估/改写模型在 Agent 工具内部被调用时会继承外层 LangChain callbacks，
@@ -215,33 +216,45 @@ export class ChatQueryRewriteService {
     question: string,
     history: BaseMessage[],
   ): Promise<ChatRoutePlan> {
-    const fallback = this.toPlan('kb', question);
-    if (!this.router) return fallback;
+    return withObservation('intent-classify', async (update) => {
+      const fallback = this.toPlan('kb', question);
+      if (!this.router) {
+        update({ metadata: { intent: fallback.intent } });
+        return fallback;
+      }
 
-    const context = compactRewriteContext(history);
-    try {
-      const result = await invokeIsolated(() =>
-        this.router!.invoke([
-          new SystemMessage(ROUTE_PROMPT),
-          new HumanMessage(
-            context
-              ? `对话：\n${context}\n\n当前问题：${question}`
-              : `当前问题：${question}`,
-          ),
-        ]),
-      );
-      const query = result.standalone_query.trim() || question;
-      const plan = this.toPlan(result.intent, query, result.graph_queries);
-      this.logger.log(
-        `意图：${plan.intent} query=${plan.query.slice(0, 80)} graph=${plan.graphQueries.join('/') || '-'}`,
-      );
-      return plan;
-    } catch (error) {
-      this.logger.warn(
-        `意图识别失败，按知识库处理：${error instanceof Error ? error.message : error}`,
-      );
-      return fallback;
-    }
+      const context = compactRewriteContext(history);
+      try {
+        const result = await invokeIsolated(() =>
+          this.router!.invoke([
+            new SystemMessage(ROUTE_PROMPT),
+            new HumanMessage(
+              context
+                ? `对话：\n${context}\n\n当前问题：${question}`
+                : `当前问题：${question}`,
+            ),
+          ]),
+        );
+        const query = result.standalone_query.trim() || question;
+        const plan = this.toPlan(result.intent, query, result.graph_queries);
+        this.logger.log(
+          `意图：${plan.intent} query=${plan.query.slice(0, 80)} graph=${plan.graphQueries.join('/') || '-'}`,
+        );
+        update({
+          output: { intent: plan.intent, queryLength: plan.query.length },
+          metadata: { intent: plan.intent },
+        });
+        return plan;
+      } catch (error) {
+        this.logger.warn(
+          `意图识别失败，按知识库处理：${error instanceof Error ? error.message : String(error)}`,
+        );
+        update({
+          metadata: { intent: fallback.intent, error: true },
+        });
+        return fallback;
+      }
+    });
   }
 
   /** 兼容旧调用：只关心要不要查知识库 */
@@ -255,33 +268,71 @@ export class ChatQueryRewriteService {
 
   /** 有命中再判切题；空结果不调模型。评估失败时有召回则放行，避免误杀。 */
   async gradeHits(question: string, hits: SearchHit[]): Promise<HitGrade> {
-    if (!hits.length) {
-      return { ok: false, reason: 'empty', text: '未检索到资料' };
-    }
-    if (!this.grader) {
-      return { ok: true, reason: 'relevant', text: '有召回（未配置评估模型）' };
-    }
-    try {
-      const result = await invokeIsolated(() =>
-        this.grader!.invoke([
-          new SystemMessage(GRADE_PROMPT),
-          new HumanMessage(
-            `用户问题：${question}\n\n命中资料：\n${summarizeHits(hits)}`,
-          ),
-        ]),
-      );
-      const ok = result.relevant;
-      const text = result.reason.trim() || (ok ? '资料切题' : '资料不切题');
-      this.logger.log(
-        `检索评估：${ok ? '切题' : '不切题'} ${text.slice(0, 80)}`,
-      );
-      return { ok, reason: ok ? 'relevant' : 'irrelevant', text };
-    } catch (error) {
-      this.logger.warn(
-        `检索评估失败，按有召回放行：${error instanceof Error ? error.message : error}`,
-      );
-      return { ok: true, reason: 'relevant', text: '评估失败，按有召回处理' };
-    }
+    return withObservation('retrieve-grade', async (update) => {
+      if (!hits.length) {
+        const empty: HitGrade = {
+          ok: false,
+          reason: 'empty',
+          text: '未检索到资料',
+        };
+        update({
+          output: { ok: false, reason: 'empty' },
+          metadata: { n: 0, error: false },
+        });
+        return empty;
+      }
+      if (!this.grader) {
+        const pass: HitGrade = {
+          ok: true,
+          reason: 'relevant',
+          text: '有召回（未配置评估模型）',
+        };
+        update({
+          output: { ok: true, reason: 'relevant' },
+          metadata: { n: hits.length, success: true, useful: true },
+        });
+        return pass;
+      }
+      try {
+        const result = await invokeIsolated(() =>
+          this.grader!.invoke([
+            new SystemMessage(GRADE_PROMPT),
+            new HumanMessage(
+              `用户问题：${question}\n\n命中资料：\n${summarizeHits(hits)}`,
+            ),
+          ]),
+        );
+        const ok = result.relevant;
+        const text = result.reason.trim() || (ok ? '资料切题' : '资料不切题');
+        this.logger.log(
+          `检索评估：${ok ? '切题' : '不切题'} ${text.slice(0, 80)}`,
+        );
+        const grade: HitGrade = {
+          ok,
+          reason: ok ? 'relevant' : 'irrelevant',
+          text,
+        };
+        update({
+          output: { ok, reason: grade.reason },
+          metadata: { n: hits.length, useful: ok },
+        });
+        return grade;
+      } catch (error) {
+        this.logger.warn(
+          `检索评估失败，按有召回放行：${error instanceof Error ? error.message : String(error)}`,
+        );
+        const fallback: HitGrade = {
+          ok: true,
+          reason: 'relevant',
+          text: '评估失败，按有召回处理',
+        };
+        update({
+          output: { ok: true, reason: 'relevant' },
+          metadata: { n: hits.length, success: true, useful: true, error: true },
+        });
+        return fallback;
+      }
+    });
   }
 
   /**
@@ -294,35 +345,46 @@ export class ChatQueryRewriteService {
     grade: HitGrade,
     hits: SearchHit[],
   ): Promise<string> {
-    const fallback = distinctQuery(question, previousQuery);
-    if (!this.retryWriter) return fallback;
-
-    try {
-      const hitBlock = hits.length
-        ? `\n上次命中（不切题）：\n${summarizeHits(hits, 3)}`
-        : '\n上次无命中。';
-      const result = await invokeIsolated(() =>
-        this.retryWriter!.invoke([
-          new SystemMessage(RETRY_REWRITE_PROMPT),
-          new HumanMessage(
-            `用户问题：${question}\n上次检索词：${previousQuery}\n不足原因：${grade.text}${hitBlock}`,
-          ),
-        ]),
-      );
-      const query = distinctQuery(result.query.trim(), previousQuery);
-      if (query) {
-        this.logger.log(
-          `检索改写：${previousQuery.slice(0, 40)} → ${query.slice(0, 40)}`,
-        );
-        return query;
+    return withObservation('rewrite-query', async (update) => {
+      const fallback = distinctQuery(question, previousQuery);
+      if (!this.retryWriter) {
+        update({ metadata: { success: Boolean(fallback), useful: false } });
+        return fallback;
       }
-      return fallback;
-    } catch (error) {
-      this.logger.warn(
-        `检索改写失败，回退原问题：${error instanceof Error ? error.message : error}`,
-      );
-      return fallback;
-    }
+
+      try {
+        const hitBlock = hits.length
+          ? `\n上次命中（不切题）：\n${summarizeHits(hits, 3)}`
+          : '\n上次无命中。';
+        const result = await invokeIsolated(() =>
+          this.retryWriter!.invoke([
+            new SystemMessage(RETRY_REWRITE_PROMPT),
+            new HumanMessage(
+              `用户问题：${question}\n上次检索词：${previousQuery}\n不足原因：${grade.text}${hitBlock}`,
+            ),
+          ]),
+        );
+        const query = distinctQuery(result.query.trim(), previousQuery);
+        const finalQuery = query || fallback;
+        this.logger.log(
+          `检索改写：${previousQuery.slice(0, 40)} → ${finalQuery.slice(0, 40)}`,
+        );
+        update({
+          output: { rewritten: Boolean(query) },
+          metadata: { success: true, useful: Boolean(query), rewritten: Boolean(query) },
+        });
+        return finalQuery;
+      } catch (error) {
+        this.logger.warn(
+          `检索改写失败，回退原问题：${error instanceof Error ? error.message : String(error)}`,
+        );
+        update({
+          output: { rewritten: Boolean(fallback) },
+          metadata: { success: Boolean(fallback), useful: false, error: true },
+        });
+        return fallback;
+      }
+    });
   }
 
   /** 意图 → 工具开关。识别失败时 classify 会落到 kb，避免内部问题漏检。 */

@@ -1,0 +1,488 @@
+{
+  "version": "kb-40-v1",
+  "description": "基于当前知识库两篇已发布文档的 40 条基线评测集；文档标题变化后需同步校准。",
+  "items": [
+    {
+      "input": { "question": "你好" },
+      "expectedOutput": {
+        "intent": "chitchat",
+        "forbidRetrieve": true,
+        "forbidGraph": true,
+        "forbidWeb": true,
+        "judgeGroundedness": false
+      },
+      "metadata": { "id": "routing-hello", "suite": "routing", "access": "admin" }
+    },
+    {
+      "input": { "question": "我在外地突然生病，医药费能和差旅费一起报吗？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "expectRewrite": true,
+        "expectRefusal": true,
+        "relevantDocTitles": [],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "empty-medical-with-travel", "suite": "kb-empty", "access": "admin" }
+    },
+    {
+      "input": { "question": "我是哪个部门的" },
+      "expectedOutput": {
+        "intent": "profile",
+        "forbidRetrieve": true,
+        "forbidGraph": true,
+        "forbidWeb": true,
+        "judgeGroundedness": false
+      },
+      "metadata": { "id": "routing-profile", "suite": "routing", "access": "admin" }
+    },
+    {
+      "input": { "question": "今天人民币兑美元汇率是多少" },
+      "expectedOutput": {
+        "intent": "web",
+        "requireWeb": true,
+        "forbidRetrieve": true,
+        "forbidGraph": true,
+        "judgeGroundedness": false
+      },
+      "metadata": { "id": "routing-web-fx", "suite": "routing", "access": "admin" }
+    },
+    {
+      "input": { "question": "成都明天会下雨吗" },
+      "expectedOutput": {
+        "intent": "web",
+        "requireWeb": true,
+        "forbidRetrieve": true,
+        "forbidGraph": true,
+        "judgeGroundedness": false
+      },
+      "metadata": { "id": "routing-web-weather", "suite": "routing", "access": "admin" }
+    },
+    {
+      "input": { "question": "公司年会抽奖规则是什么？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "expectRefusal": true,
+        "relevantDocTitles": [],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "empty-annual-party", "suite": "kb-empty", "access": "admin" }
+    },
+    {
+      "input": { "question": "实习生转正答辩要交哪些材料？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "expectRefusal": true,
+        "relevantDocTitles": [],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "empty-intern-defense", "suite": "kb-empty", "access": "admin" }
+    },
+    {
+      "input": { "question": "加班餐补怎么报、标准是多少？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "expectRefusal": true,
+        "relevantDocTitles": [],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "empty-overtime-meal", "suite": "kb-empty", "access": "admin" }
+    },
+    {
+      "input": { "question": "预算审核员属于哪个部门" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "expectRefusal": true,
+        "relevantDocTitles": [],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "empty-budget-role", "suite": "kb-empty", "access": "admin" }
+    },
+    {
+      "input": { "question": "出差预估费用超过五千谁还要加签？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "requireGraph": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["部门总监", "加签"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-signoff", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "跨城出差的机票是谁负责预订？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["行政部"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-booking", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "上海、成都的同事去北京出差，机票要提前多久申请？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["3 个工作日"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-advance", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "出差目的地或者日期改了，还需要重新审批吗？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["重新走审批"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-change", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "M3 及以上职级出差坐高铁可以坐什么座位？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["一等座"],
+        "mustNotContain": ["二等座"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-m3-train", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "M2 及以下出差市内交通每天最多报多少？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["200 元/天"],
+        "mustNotContain": ["300 元/天"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-m2-city", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "去北京出差住宿每晚最多能报多少？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["600 元/晚"],
+        "mustNotContain": ["550 元/晚"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-hotel-beijing", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "上海出差住宿标准是多少？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["550 元/晚"],
+        "mustNotContain": ["600 元/晚"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-hotel-shanghai", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "成都出差住宿每晚的上限是多少？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["450 元/晚"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-hotel-chengdu", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "出差期间吃饭一天补多少钱，需要发票吗？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["100 元/天", "无需发票"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-meal", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "当天出差当天回来，还有餐补吗？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["不计补贴"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-same-day", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "出差回来以后多久内要发起报销单？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["10 个工作日"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-submit-window", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "报销发票的抬头应该写什么？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["某某科技有限公司"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-invoice-title", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "财务审核通过后几天能拿到报销款？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["5 个工作日", "工资卡"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-payment", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "报销发票丢失了还能补报吗，最长多久？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["替代凭证", "30 天"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-lost-invoice", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "报销有疑问找财务谁，分机是多少？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["01-travel-expense-policy"],
+        "keyPoints": ["张敏", "8801"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "travel-contact", "suite": "kb-travel", "access": "admin" }
+    },
+    {
+      "input": { "question": "入职当天要在前台领取哪些东西？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["工牌", "门禁卡", "电脑"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-day0-items", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "入职当天需要签署哪些文件？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["保密协议", "员工手册"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-sign", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "新员工入职要申请哪些基础系统权限？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["GitLab", "知识库", "VPN"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-permissions", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "入职时的 Buddy 主要负责什么？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["日常答疑", "熟悉流程"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-buddy", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "第一周搭建本地环境需要安装哪些工具？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["Node.js 20 LTS", "pnpm", "Docker Desktop"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-env", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "环境搭建到什么程度算通过？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["登录本地后台", "创建测试文档"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-env-check", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "第一周要求完成的代码相关任务是什么？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["小改动", "PR"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-first-pr", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "信息安全培训测验至少多少分算通过？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["80"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-security-score", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "研发中心每天几点开站会，大概开多久？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["10:00", "15 分钟"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-standup", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "研发周会是每周几几点？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["周一", "14:00"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-weekly", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "工作日提交的代码评审一般多久内要响应？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["12 小时"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-review-sla", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "值班时收到告警要在多久内确认？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["15 分钟"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-alert-sla", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "常规系统权限申请一般多久能下来？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["1 个工作日"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-normal-permission", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "生产只读权限需要谁审批，大概多久？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["Leader", "1～2 个工作日"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-prod-permission", "suite": "kb-onboarding", "access": "admin" }
+    },
+    {
+      "input": { "question": "本地连不上内网服务应该先检查什么？" },
+      "expectedOutput": {
+        "intent": "kb",
+        "requireRetrieve": true,
+        "forbidWeb": true,
+        "relevantDocTitles": ["新员工入职指南"],
+        "keyPoints": ["VPN", "hosts"],
+        "judgeGroundedness": true
+      },
+      "metadata": { "id": "onboarding-vpn", "suite": "kb-onboarding", "access": "admin" }
+    }
+  ]
+}
