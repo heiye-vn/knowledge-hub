@@ -274,3 +274,19 @@ S3 风格 XML 错误 `AccessDenied`。该问题与上面第 1 项联动：**决�
 | **@langchain/core 升级** | langchain 1.5.16 的 peer 要求 ^1.2.17、实装 1.2.11；createAgent / tool / middleware 已冒烟验证兼容 | 下次依赖变更时顺手 `pnpm --filter @knowledge-hub/server add @langchain/core@^1.2.17`（沙箱装依赖有删除配额，单独升级一次不划算） |
 | **web_search 可观测** | Bocha 失败仅 warn 日志；前端 WebSearchCard 有失败态展示，服务端无结构化统计 | 需要工具调用监控 / 成本统计时 |
 | **web 单 chunk 体积** | 单 bundle 2.8MB（echarts + ai SDK 全量入口打包），构建有 >500kB 警告 | 首屏性能有硬要求时做路由级 code-splitting |
+
+## 12. LangFuse 观测与 Agent 评测（feat-v19）遗留项
+
+> 记录时间：2026-10-26
+> 实现笔记见 `dev-notes/langfuse-agent-eval.md`
+
+| 项 | 说明 | 触发条件 |
+| :--- | :--- | :--- |
+| **在线基线实验未跑** | 代码与编译产物已验证，但本环境未配置真实 LangFuse Key 与业务语料，尚无基线指标 | 部署环境配好 Key 后执行 `pnpm eval:rag`，把报告作为首版基线 |
+| **数据集与语料对齐** | 基础 9 条用例的文档标题是通用制度子串，换环境需按真实文档调整 `relevantDocTitles` / `keyPoints` | 首次基线实验后，按空召回与误命中结果校准 |
+| **默认模式无 token span** | 为防止自动 callback 上传正文，`LANGFUSE_TRACE_CONTENT=false` 时不挂 CallbackHandler，因此没有逐次 LLM token/耗时；图谱/联网/检索已有自定义 tool span | 需要成本分析且确认数据边界后，显式开启正文采集；或实现带字段脱敏的自定义 CallbackHandler |
+| **流式 trace 根跨度生命周期** | 流式链路只有 `withTraceAttrs` 传播属性，没有贯穿整条 SSE 的 active root span；默认无 callback 时，意图/检索/tool span 可能各自成 trace，需要实机 LangFuse 验证并在 `writer.merge` 生命周期内补根 span | 首次线上 tracing 验收时确认；若 trace 分散，改为手动 OTel span + `context.with` 管理 |
+| **本地报告隐私** | SQLite/JSON 报告只承诺不存回答正文，但会存问题、命中标题和 Judge comment；文件已被 `.gitignore` 忽略 | 需要把报告外发时，增加去问题/去 comment 的报告模式 |
+| **单题评测超时** | 单题受 Agent 8 次模型调用上限约束，但没有独立 wall-clock 超时；模型持续慢响应会拖长实验 | 评测经常卡住或需要夜间批跑时，为 task 增加 timeout |
+| **CI 质量门禁** | 当前 `eval:rag` 为手动命令，无阈值阻断；确定性指标已有单测，但真实 LLM 评测成本高且会波动 | 建立稳定基线后，按发布前 / 夜间任务分层接入 |
+| **前端评测视图** | 目前依赖 LangFuse 平台与本地 JSON 报告，无自研评测后台 | 需要业务同学自助看趋势时 |

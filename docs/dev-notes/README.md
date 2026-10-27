@@ -54,6 +54,7 @@
 | [agentic-rag.md](./agentic-rag.md) | 功能模块 · Agentic RAG（feat-v17） | 2026-10-24 | **路由 fail-closed、评估 fail-open**；不切题命中必须在数据层清空；检索上限用闭包计数；内部结构化输出必须隔离 callbacks；多段 `data-sources` 取最后一个非空 |
 | [web-search-fallback.md](./web-search-fallback.md) | 功能模块 · 联网搜索多提供商降级 | 2026-10-24 | **按配置顺序逐个尝试**；只启用有 Key 的提供商；错误才降级、空结果不降级；双失败返回合并错误；前端展示实际 provider |
 | [graph-rag.md](./graph-rag.md) | 功能模块 · Graph RAG（图谱进对话，feat-v18） | 2026-10-25 | **实体匹配禁 CONTAINS**（短词必命中长标题）；Neo4j session 非并发安全；`parallel_tool_calls` 要显式开；图谱空命中不等于库里没有；关系必须写 `sourceChunkIds` 严格溯源；mention 边超阈值降级；力导图 layoutAnimation 不能关 |
+| [langfuse-agent-eval.md](./langfuse-agent-eval.md) | 功能模块 · LangFuse 观测与 Agent 评测（feat-v19） | 2026-10-26 | **自动 callback 无法脱敏**，默认关闭正文时不挂；全轮次 attempts 才能区分首轮与改写效果；工具指标要 success/useful 分开；评测不读记忆；权限结论不能用管理员 |
 | [database-migrations.md](./database-migrations.md) | 基础设施 · TypeORM 迁移体系 | 2026-10-22 | **基线迁移要"探测已存在就只登记不执行"**；空卷快照冻结、结构演进只走 migrations；部分唯一索引承接 outbox 合并 |
 | [index-outbox.md](./index-outbox.md) | 功能模块 · 索引失败补偿与可见性巡检 | 2026-10-22 | **补偿走 PG 轮询而不是队列**（队列挂了也要能补）；部分唯一索引 + ON CONFLICT 合并待办；巡检以写代检、失败入 outbox |
 | [health-check.md](./health-check.md) | 功能模块 · 存活 / 就绪探针 | 2026-10-22 | **存活不查依赖、就绪才查**；必需/可选依赖分别对应 503 与 degraded；探测必须带超时；拦截器状态码要在 handler 之后读 |

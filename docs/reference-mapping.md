@@ -101,6 +101,10 @@
 | **v18** 非流式图谱并行检索 | `ai-chat.service.ts` 扩展 | 🟡 分叉 | 基线在意图确定后并行检索图谱与知识库同构；主项目把「库里没有」收口收紧为 kb 不足且图谱无命中，且图谱 catch 不带 error 进回答 |
 | **v18** 前端 GraphCard 图谱卡 | `ChatMessageParts.tsx` / `chat-message-utils.ts` / `ForceGraph.tsx` | 🟡 分叉 | data-graph / 工具 part 双通道渲染与去重同构；分叉：复用主项目 `ForceGraph` 组件加 `compact` 模式，mention 边按 16 阈值防画布爆炸 |
 | **v18** Neo4j 镜像版本 | `docker-compose.yml` | 🟢 对齐 | 从 `latest` 固定到 `neo4j:2026.04.0`，避免环境漂移 |
+| **v19** `observability/langfuse.ts` | `observability/langfuse.ts` | 🟡 分叉 | `NodeSDK + LangfuseSpanProcessor` 与无 Key 降级同构；分叉：正文默认脱敏、userId 哈希、稳定采样、未开正文时不挂自动回调、信号退出等待 flush |
+| **v19** `ai/eval/*` | `ai/eval/*` | 🔴 超越 | 数据集 / 指标 / experiment 入口同构；主项目保存全轮次 attempt、区分工具 success/useful、增加首轮/末轮/MRR/改写收益、受限用户 ACL 用例、本地可比较报告 |
+| **v19** `runForEval` | `ai-stream.service.ts` `runForEval` | 🟡 分叉 | 同构复用线上 Agent、静默 writer、不走 SSE；主项目完全不读写用户记忆、保留 `mode` 参数、Callback 受正文开关约束 |
+| **v19** `chat` 第 5 参 `ChatOptions` | 第 6 参 `ChatOptions` | 🟡 分叉 | 主项目第 5 参已被 `SearchMode` 占用；`includeEval` 只供进程内使用，不暴露到公开 DTO |
 
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
@@ -204,6 +208,15 @@
 | 2026-10-25 | **`mergeGraphHits`**（v18） | 导出但全项目无调用点（死代码） | 不引入 | 每轮图谱检索只调一次、命中在 `retrieveForChat` 内已聚合，合并函数没有消费者 |
 | 2026-10-25 | **图谱关系可见性**（v18） | 只校验关系两端实体各自可见，关系可能来自另一篇不可见文档 | 建图时给 `RELATED_TO` 写 `sourceChunkIds`，查询严格沿来源块所属文档过滤；无来源存量边不返回 | 修复参考实现的关系级权限缺口；从「两端共现」近似升级为块级精确溯源，需全量重建补齐存量边 |
 | 2026-10-25 | **图谱发布状态过滤**（v18） | 文档过滤只看 `isPublic / authorId / teamId`，不校验 `status` | `neo4jDocumentAccessWhere` 统一附加 `status = Published`，对所有 KG 查询生效 | 与 ES/PG 的可见性口径一致，防撤稿 / 归档清理失败时残留节点泄露 |
+| 2026-10-26 | **观测内容边界**（v19） | 默认记录 prompt / 工具入参 / 回答；自定义 span 与自动 callback 都会带正文 | 正文默认关闭；关闭时不挂 LangChain 自动回调，只保留业务 span 与白名单 metadata；userId 加盐哈希、稳定采样 | 企业知识库的问答与检索摘录属于敏感数据；自动回调没有脱敏钩子，只做 custom span 脱敏会虚假安全。默认损失 token 级明细，换取可控的数据出境面 |
+| 2026-10-26 | **检索评测口径**（v19） | 只保留末轮 `rawHits`，Hit@5 实际测的是最后一次检索 | 每轮 attempt 全量保留，分别算首轮/末轮 Hit、Precision、MRR 与 rewrite gain | 末轮会掩盖首轮检索质量，也无法证明改写带来了收益；全轮快照才能定位是检索器、改写器还是排序的问题 |
+| 2026-10-26 | **工具策略指标**（v19） | `graphUsed/webUsed` 布尔值，调用失败也可能算使用 | `graphRuns/webRuns` 记录 success / useful / error，required 指标要求成功，forbidden 指标看实际调用 | 「调用过」与「调用成功」语义不同；否则供应商失败会把工具策略分数虚高 |
+| 2026-10-26 | **评测记忆隔离**（v19） | 评测用户仍读长期记忆 | `runForEval` 不读也不写用户记忆，只保留真实 Agent 与工具决策 | 用户画像会让同一数据集在不同账号下得出不同结论，破坏可复现性 |
+| 2026-10-26 | **权限评测身份**（v19） | 固定管理员，ACL 被管理员视野绕过 | 公共 suite 用管理员；配置受限账号后追加 `acl` suite，critical failure 单独拦截 | 管理员能看见全部文档，不能代表普通用户；权限结论必须用受限身份测 |
+| 2026-10-26 | **实验 Judge 成本与报告**（v19） | experiment evaluator 与本地评测各自调用 LLM Judge；无本地对比产物 | task 阶段只算一次，experiment 回放缓存分数；本地 JSON 记录版本、聚合、逐题变化，默认不存回答正文 | 同一题双跑既慢又可能出现两次 Judge 结论不一致；没有基线比较就无法判断优化是否回归 |
+| 2026-10-26 | **实验数据出境**（v19） | Experiment 直接上传完整 task output 与 data input，不受 tracing 内容开关影响 | 新增 `experiment-privacy.ts`：默认只传脱敏 input、intent 金标和指标型 output；关闭正文时评估器只回放本地分数 | Experiment runner 的根 span 会无条件写 input/output；只做自定义 span 脱敏会漏掉最大一条正文出境路径 |
+| 2026-10-26 | **外部数据集**（v19） | Golden Dataset 写死在 TypeScript，新增批次需改代码 | `EVAL_DATASET_PATH` 加载 JSON，zod 严格校验、重复 ID 阻断、版本写入报告；内置 9 条冒烟集保留 | 基线集会持续增长和版本化，写死代码会让「扩题」和「改 Agent」混在同一提交里，无法区分数据变化与实现变化 |
+| 2026-10-26 | **Precision/MRR 去重**（v19 指标口径） | 按命中的 chunk 计数，同文档多块会重复算相关 | 按 `documentId` 去重后再算 Precision@5 / MRR@5 | 金标是文档标题，不是 chunk；一个文档占满 Top5 不应得到满分 |
 
 
 
