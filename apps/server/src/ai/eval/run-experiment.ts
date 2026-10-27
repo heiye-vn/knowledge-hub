@@ -49,6 +49,13 @@ function loadDotEnv(): void {
     if (separator <= 0) continue;
     const key = trimmed.slice(0, separator).trim();
     let value = trimmed.slice(separator + 1).trim();
+    // 未加引号的值里，「空格 + #」之后视为行内注释（对齐 dotenv v16 语义）。
+    // 实际运行时 ConfigModule.forRoot 会先用 dotenv 读一遍 .env，这里只是兜底，
+    // 若不剥注释，EVAL_JUDGE_MODEL 等空值项会把注释文本当配置值。
+    if (!value.startsWith('"') && !value.startsWith("'")) {
+      const commentStart = value.indexOf(' #');
+      if (commentStart !== -1) value = value.slice(0, commentStart).trim();
+    }
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))

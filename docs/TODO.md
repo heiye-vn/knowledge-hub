@@ -282,8 +282,9 @@ S3 风格 XML 错误 `AccessDenied`。该问题与上面第 1 项联动：**决�
 
 | 项 | 说明 | 触发条件 |
 | :--- | :--- | :--- |
-| **在线基线实验未跑** | 代码与编译产物已验证，但本环境未配置真实 LangFuse Key 与业务语料，尚无基线指标 | 部署环境配好 Key 后执行 `pnpm eval:rag`，把报告作为首版基线 |
-| **数据集与语料对齐** | 基础 9 条用例的文档标题是通用制度子串，换环境需按真实文档调整 `relevantDocTitles` / `keyPoints` | 首次基线实验后，按空召回与误命中结果校准 |
+| **40 条基线仍被语料阻塞** | 2026-10-27 已跑通 9 条冒烟集（报告写入 `eval-reports/`），但 40 条集依赖的章节（加签 / 一等座 / 部门总监 / 工资卡）不在库：两篇发布文档正文只有 1294 / 1395 字符，入职指南缺二、三节 | 补齐完整制度文档后重索引，再跑 `EVAL_DATASET_PATH=eval/datasets/knowledge-base-40.json pnpm eval:rag`；重发后按 v18 要求 `POST /kg/build` 重建图谱 |
+| **语料抽取混入康熙部首变体字** | 入库正文含 ⽤ / ⼯ / ⽆ 等变体字形（PDF 抽取产物），「无需发票」与「⽆需发票」字面不等，会同时污染 BM25 分词、金标匹配与 Judge 关键点判定 | 解析层补 NFKC 归一化，并对存量文档重解析；与上一条一并处理 |
+| **冒烟集金标已按真实语料校准** | `kb-travel-meal` / `kb-vpn-account` / `kb-release-window` 三条已按实际条款重写（差旅餐饮 100 元/天、VPN 排查 Buddy/hosts、无灰度制度降级拒答题） | 已处理；换语料时按同一方法重新校准 |
 | **默认模式无 token span** | 为防止自动 callback 上传正文，`LANGFUSE_TRACE_CONTENT=false` 时不挂 CallbackHandler，因此没有逐次 LLM token/耗时；图谱/联网/检索已有自定义 tool span | 需要成本分析且确认数据边界后，显式开启正文采集；或实现带字段脱敏的自定义 CallbackHandler |
 | **流式 trace 根跨度生命周期** | 流式链路只有 `withTraceAttrs` 传播属性，没有贯穿整条 SSE 的 active root span；默认无 callback 时，意图/检索/tool span 可能各自成 trace，需要实机 LangFuse 验证并在 `writer.merge` 生命周期内补根 span | 首次线上 tracing 验收时确认；若 trace 分散，改为手动 OTel span + `context.with` 管理 |
 | **本地报告隐私** | SQLite/JSON 报告只承诺不存回答正文，但会存问题、命中标题和 Judge comment；文件已被 `.gitignore` 忽略 | 需要把报告外发时，增加去问题/去 comment 的报告模式 |

@@ -138,3 +138,22 @@ EVAL_DATASET_PATH=eval/datasets/knowledge-base-40.json pnpm eval:rag
   时 trace 可能分散，需在首次实机验收确认后调整 span 生命周期；
 - 目前只有离线评测 CLI，没有前端评测后台和 CI 阈值门禁；
 - 权限用例依赖外部真实账号配置，默认不跑，不能把管理员结果当权限结论。
+
+## 四、首次基线实录（2026-10-27）
+
+【实录】9 条冒烟集在本地真实语料上跑通（LangFuse 已配置，experiment 上传成功）：
+
+- Agent 行为层全绿：intent 9/9、tool policy 9/9、rewrite 1/1、拒答 2/2、忠实度 5/5、false hit 3/3，
+  `criticalFailures` 空；
+- 检索类指标全 0 不是检索故障：金标写「差旅 / 信息安全 / 生产环境变更」，库内真实标题是
+  `01-travel-expense-policy` / `新员工入职指南（研发中心）`，双向 `includes` 必然匹配不上；
+- 逐题 comment 反向定位到数据层：两篇发布文档在 PG 的正文只有 1294 / 1395 字符，ES 4 个块与 PG
+  完全一致（**不是索引丢块**）；入职指南缺二、三节，差旅文档没有「加签」条款，`张伟 / 李明 / 王芳`
+  均不在库；
+- 正文混有 PDF 抽取的康熙部首变体字（⽤ / ⼯ / ⽆），「无需发票」匹配不上「⽆需发票」，会同时污染
+  BM25 与 Judge 的关键点判定。
+
+【易错】金标必须来自当前语料原文，不能沿用「合理但不存在的制度」。校准后三条 kb-hit 改为真实条款
+（差旅餐饮 100 元/天、VPN 排查 Buddy/hosts），无制度覆盖的灰度题降级为 kb-empty 拒答题。
+`loadDotEnv` 已补行内注释剥除：实际运行时 `ConfigModule.forRoot` 会先用 dotenv v16 读过 `.env`，
+自定义解析只是兜底，但不剥注释会把 `EVAL_JUDGE_MODEL=   # ...` 读成注释文本。
