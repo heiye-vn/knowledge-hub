@@ -24,11 +24,25 @@ export interface PageResult<T> {
   pageSize: number
 }
 
+export interface ImportTaskView {
+  id: string
+  fileName: string
+  state: 'queued' | 'processing' | 'completed' | 'failed'
+  stage: string
+  documentId: string | null
+  warnings: string[]
+  error: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface DocumentItem {
   id: string
   title: string
   summary?: string | null
   content?: string
+  fileUrl?: string | null
+  fileName?: string | null
   categoryId?: string | null
   teamId?: string | null
   authorId?: string | null

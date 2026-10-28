@@ -8,7 +8,6 @@ import {
   Space,
   Table,
   Tag,
-  Upload,
   message,
 } from 'antd'
 import { documentApi } from '../api'
@@ -23,6 +22,7 @@ import {
   getVisibilityMeta,
 } from '../utils'
 import { FileTypeIcon, fileTypeLabel } from '../components/FileTypeIcon'
+import { DocumentImports } from '../components/DocumentImports'
 
 export default function DocumentsPage() {
   const user = useAuth()
@@ -90,32 +90,12 @@ export default function DocumentsPage() {
         </Checkbox>
         <Button onClick={() => void load(1)}>查询</Button>
         {can(user, 'document:create') ? (
-          <>
-            <Button type="primary" onClick={() => navigate('/documents/new')}>
-              新建文档
-            </Button>
-            <Upload
-              showUploadList={false}
-              beforeUpload={async (file) => {
-                const form = new FormData()
-                form.append('file', file)
-                try {
-                  const res = await documentApi.uploadParse(form)
-                  message.success('已解析为草稿，可在编辑页设置公开或团队')
-                  navigate(`/documents/${res.documentId}/edit`)
-                } catch (error) {
-                  message.error(
-                    error instanceof ApiError ? error.message : '上传失败',
-                  )
-                }
-                return false
-              }}
-            >
-              <Button>上传解析</Button>
-            </Upload>
-          </>
+          <Button type="primary" onClick={() => navigate('/documents/new')}>
+            新建文档
+          </Button>
         ) : null}
       </Space>
+      {user ? <DocumentImports key={user.userId} canUpload={can(user, 'document:create')} /> : null}
       <Table
         rowKey="id"
         loading={loading}

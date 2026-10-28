@@ -1,4 +1,4 @@
-import { clearAuth, getAccessToken, getRefreshToken, setAuth } from '../auth'
+import { clearAuth, getAccessToken, getRefreshToken, getUser, setAuth } from '../auth'
 import type { AuthUser } from '../types'
 
 const rawApiBase = import.meta.env.VITE_API_BASE || '/api'
@@ -49,7 +49,8 @@ async function tryRefresh() {
                 userInfo: AuthUser
               })
 
-        if (!data?.accessToken) return false
+        // A late refresh must not resurrect a logged-out or replaced session.
+        if (!data?.accessToken || getRefreshToken() !== refreshToken) return false
 
         setAuth({
           accessToken: data.accessToken,
@@ -80,13 +81,16 @@ export async function fetchWithAuthRefresh(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
+  const owner = getUser()?.userId
+  const refreshToken = getRefreshToken()
   const response = await fetch(input, init)
-  if (response.status !== 401) return response
+  if (response.status !== 401 || init?.signal?.aborted || getUser()?.userId !== owner) return response
 
   if (!(await refreshAccessToken())) {
-    clearAuth()
+    if (!init?.signal?.aborted && getRefreshToken() === refreshToken) clearAuth()
     return response
   }
+  if (init?.signal?.aborted || getUser()?.userId !== owner) return response
 
   const headers = new Headers(init?.headers)
   const token = getAccessToken()
@@ -94,11 +98,7 @@ export async function fetchWithAuthRefresh(
   return fetch(input, { ...(init ?? {}), headers })
 }
 
-export async function request<T>(
-  path: string,
-  init: RequestInit = {},
-  retry = true,
-): Promise<T> {
+async function requestResponse(path: string, init: RequestInit, retry = true) {
   const headers = new Headers(init.headers)
   const isForm = init.body instanceof FormData
   if (!isForm && !headers.has('Content-Type') && init.body) {
@@ -106,26 +106,42 @@ export async function request<T>(
   }
   const token = getAccessToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
-
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers })
-
-  if (
-    res.status === 401 &&
-    retry &&
-    !path.startsWith('/auth/login') &&
-    !path.startsWith('/auth/refresh')
-  ) {
-    const ok = await tryRefresh()
-    if (ok) return request<T>(path, init, false)
-    clearAuth()
-    throw new ApiError(401, '未登录或登录已过期')
+  const fetcher = retry && !path.startsWith('/auth/login') && !path.startsWith('/auth/refresh')
+    ? fetchWithAuthRefresh : fetch
+  const res = await fetcher(`${API_BASE}${path}`, { ...init, headers })
+  if (!res.ok) {
+    const body: unknown = await res.json().catch(() => null)
+    throw new ApiError(res.status, errorMessage(body,
+      res.status === 401 ? '未登录或登录已过期' : res.statusText || '请求失败'))
   }
+  return res
+}
 
+/** Only canonical document resources or the exact configured API prefix are accepted. */
+export function documentResourcePath(value: string, kind: 'asset' | 'source'): string | null {
+  const pattern = kind === 'asset' ? /^\/documents\/\d+\/assets\/\d+$/ : /^\/documents\/\d+\/source$/
+  if (pattern.test(value)) return value
+  const path = API_BASE && value.startsWith(`${API_BASE}/`) ? value.slice(API_BASE.length) : ''
+  return pattern.test(path) ? path : null
+}
+
+/** Binary endpoints bypass the JSON envelope, but share authentication and refresh. */
+export async function requestBlob(value: string, init: RequestInit = {}): Promise<Blob> {
+  const path = documentResourcePath(value, 'asset') ?? documentResourcePath(value, 'source')
+  if (!path) throw new ApiError(400, '不支持的文档资源地址')
+  // Private resources must not redirect a credentialed request to another URL.
+  const res = await requestResponse(path, { ...init, method: 'GET', redirect: 'error', cache: 'no-store' })
+  return res.blob()
+}
+
+export async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  retry = true,
+): Promise<T> {
+  const res = await requestResponse(path, init, retry)
   const text = await res.text()
   const data = text ? (JSON.parse(text) as unknown) : null
-  if (!res.ok) {
-    throw new ApiError(res.status, errorMessage(data, res.statusText || '请求失败'))
-  }
 
   // 统一解包 TransformInterceptor { code, message: 'success', data: ... }
   // 后端规范：code 对齐 HTTP 状态码（200, 201 等 2xx 均视为成功）

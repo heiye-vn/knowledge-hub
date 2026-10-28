@@ -7,7 +7,7 @@ import {
 } from 'react'
 import { Link } from 'react-router-dom'
 import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { safeMarkdownComponents, safeMarkdownPlugins } from './DocumentMarkdown'
 import { FileTypeIcon } from './FileTypeIcon'
 
 export interface CiteItem {
@@ -123,10 +123,11 @@ export function AnswerMarkdown({
   const wrap = (children: ReactNode) => injectCites(children, byIndex, handleCite)
 
   return (
-    <div className="kh-md">
+    <div className="kh-md kh-safe-markdown">
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        {...safeMarkdownPlugins}
         components={{
+          ...safeMarkdownComponents,
           p: ({ children }) => <p>{wrap(children)}</p>,
           li: ({ children }) => <li>{wrap(children)}</li>,
           strong: ({ children }) => <strong>{wrap(children)}</strong>,
@@ -135,8 +136,8 @@ export function AnswerMarkdown({
           h2: ({ children }) => <h3>{wrap(children)}</h3>,
           h3: ({ children }) => <h4>{wrap(children)}</h4>,
           h4: ({ children }) => <h4>{wrap(children)}</h4>,
-          td: ({ children }) => <td>{wrap(children)}</td>,
-          th: ({ children }) => <th>{wrap(children)}</th>,
+          td: ({ children, colSpan, rowSpan, align }) => <td colSpan={colSpan} rowSpan={rowSpan} align={align}>{wrap(children)}</td>,
+          th: ({ children, colSpan, rowSpan, align }) => <th colSpan={colSpan} rowSpan={rowSpan} align={align}>{wrap(children)}</th>,
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noreferrer">
               {wrap(children)}

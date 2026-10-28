@@ -10,6 +10,7 @@ import type {
   GraphHit,
   GraphNode,
   GraphOverview,
+  ImportTaskView,
   LoginResult,
   PageResult,
   PermissionNode,
@@ -47,14 +48,19 @@ export const documentApi = {
   publish: (id: string) => put<DocumentItem>(`/documents/${id}/publish`),
   archive: (id: string) => put<DocumentItem>(`/documents/${id}/archive`),
   saveDraft: (id: string) => put<DocumentItem>(`/documents/${id}/save-draft`),
-  uploadParse: (form: FormData) =>
-    request<{ documentId: string; title: string; status: number }>(
-      '/documents/upload/parse',
-      {
-        method: 'POST',
-        body: form,
-      },
-    ),
+  uploadParse: (form: FormData, signal?: AbortSignal) =>
+    request<ImportTaskView>('/documents/upload/parse', {
+      method: 'POST', body: form, signal,
+    }),
+  imports: (signal?: AbortSignal) =>
+    request<{ items: ImportTaskView[] }>('/documents/imports', { signal, cache: 'no-store' }),
+  importTask: (id: string, signal?: AbortSignal) =>
+    request<ImportTaskView>(`/documents/imports/${encodeURIComponent(id)}`, { signal, cache: 'no-store' }),
+  retryImport: (id: string, signal?: AbortSignal) =>
+    request<ImportTaskView>(`/documents/imports/${encodeURIComponent(id)}/retry`, { method: 'POST', signal }),
+  dismissImport: (id: string) =>
+    del<{ dismissed: number }>(`/documents/imports/${encodeURIComponent(id)}`),
+  dismissImports: () => del<{ dismissed: number }>('/documents/imports'),
   reviewTasks: (query: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams()
     for (const [k, v] of Object.entries(query)) {

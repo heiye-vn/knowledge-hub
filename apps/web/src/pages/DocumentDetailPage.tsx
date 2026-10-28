@@ -10,8 +10,8 @@ import {
   Typography,
   message,
 } from 'antd'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { DocumentMarkdown } from '../components/DocumentMarkdown'
+import { SourceFileAction } from '../components/SourceFileAction'
 import { documentApi } from '../api'
 import { ApiError } from '../api/client'
 import type { DocumentItem } from '../types'
@@ -82,6 +82,7 @@ export default function DocumentDetailPage() {
     <div className="kh-page">
       <Space style={{ marginBottom: 12 }} wrap>
         <Button onClick={() => navigate('/documents')}>返回列表</Button>
+        <SourceFileAction fileUrl={doc.fileUrl} fileName={doc.fileName ?? doc.title} />
         {writable ? (
           <Button onClick={() => navigate(`/documents/${id}/edit`)}>编辑</Button>
         ) : null}
@@ -183,9 +184,7 @@ export default function DocumentDetailPage() {
         ) : null}
       </div>
 
-      <div className="kh-doc-body">
-        <Markdown remarkPlugins={[remarkGfm]}>{doc.content || '（暂无正文）'}</Markdown>
-      </div>
+      <DocumentMarkdown content={doc.content || '（暂无正文）'} />
     </div>
   )
 }
