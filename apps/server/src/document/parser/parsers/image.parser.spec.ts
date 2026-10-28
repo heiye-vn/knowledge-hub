@@ -139,6 +139,45 @@ describe('image.parser (离线 Mock 纯单测，0 Token 消耗)', () => {
     ).rejects.toThrow(/视觉模型调用失败: 401 Unauthorized/);
   });
 
+  it('never includes credentials, request URLs or provider bodies in exceptions or logs', async () => {
+    const { Logger } = await import('@nestjs/common');
+    const logs = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => {});
+    const sensitive =
+      'sk-private https://private.test/path?token=secret raw-provider-body';
+    const replies = [
+      async () => {
+        throw new Error(sensitive);
+      },
+      async () => ({
+        ok: false,
+        status: 401,
+        statusText: sensitive,
+        text: async () => sensitive,
+      }),
+      async () => ({
+        ok: true,
+        json: async () => {
+          throw new Error(sensitive);
+        },
+      }),
+    ];
+    for (const reply of replies) {
+      globalThis.fetch = vi.fn().mockImplementation(reply);
+      const error = await parseImageWithVlm(Buffer.from('test'), 'png', {
+        apiKey: 'sk-private',
+      }).catch((value: unknown) => value);
+      expect(error).toBeInstanceOf(Error);
+      expect(String(error)).not.toMatch(
+        /sk-private|private.test|raw-provider-body/,
+      );
+    }
+    expect(JSON.stringify(logs.mock.calls)).not.toMatch(
+      /sk-private|private.test|raw-provider-body/,
+    );
+  });
+
   it('远端返回空内容时抛出友好异常', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,

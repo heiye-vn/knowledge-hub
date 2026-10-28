@@ -1,5 +1,6 @@
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
   S3Client,
@@ -16,7 +17,11 @@ import {
   UploadBytesOptions,
   UploadBytesResult,
 } from '../storage.interface.js';
-import { generateObjectKey } from '../storage.util.js';
+import {
+  generateObjectKey,
+  readObjectBytes,
+  validateObjectKey,
+} from '../storage.util.js';
 
 /**
  * 本地 RustFS 存储驱动（S3 兼容，支持本地 Docker 离线运行）
@@ -94,13 +99,16 @@ export class RustfsDriver implements StorageDriver, OnModuleInit {
       );
     }
 
-    await this.ensureBucket();
+    const key =
+      options.objectKey === undefined
+        ? generateObjectKey(
+            options.fileName,
+            options.contentType,
+            options.prefix,
+          )
+        : validateObjectKey(options.objectKey);
 
-    const key = generateObjectKey(
-      options.fileName,
-      options.contentType,
-      options.prefix,
-    );
+    await this.ensureBucket();
     const body = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
 
     await this.client.send(
@@ -118,6 +126,27 @@ export class RustfsDriver implements StorageDriver, OnModuleInit {
       `RustFS 上传成功: key=${key}, size=${body.length}, url=${url}`,
     );
     return { url, key };
+  }
+
+  async readBytes(key: string, maxBytes: number): Promise<Buffer> {
+    if (!this.isEnabled() || !this.client) {
+      throw new ServiceUnavailableException(
+        'RustFS 未启用或未配置，无法读取对象',
+      );
+    }
+    return readObjectBytes(this.client, this.bucket, key, maxBytes);
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    if (!this.isEnabled() || !this.client) {
+      throw new ServiceUnavailableException(
+        'RustFS 未启用或未配置，无法删除对象',
+      );
+    }
+    validateObjectKey(key);
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
   }
 
   private async ensureBucket(): Promise<void> {

@@ -185,6 +185,21 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     invokeMock.mockReset();
   });
 
+  it('passes late evidence intact and skips oversized hits without renumbering citations', async () => {
+    const content = 'Background '.repeat(85) + '\n$$E = mc^2$$\nLATE_EVIDENCE';
+    invokeMock.mockResolvedValue({ content: 'Late evidence [2].' });
+    const service = makeService(async () => [
+      { ...hit('huge', 0.99), content: 'x'.repeat(7000) },
+      { ...hit('late', 0.9), content },
+    ]);
+    const response = await service.chat('What is the evidence?');
+    const messages = invokeMock.mock.calls[0][0] as Array<{ content: unknown }>;
+    const prompt = messages.map((message) => String(message.content)).join('\n');
+    expect(prompt).toContain('[2] 文档 late\n' + content);
+    expect(prompt).not.toContain('[1] 文档 huge');
+    expect(response.sources.map((source) => [source.index, source.documentId])).toEqual([[2, 'doc-late']]);
+  });
+
   it('空问题返回固定话术，不调检索与 LLM', async () => {
     const search = vi.fn();
     const retrieval = { search } as unknown as RetrievalService;

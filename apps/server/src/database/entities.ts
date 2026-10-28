@@ -3,6 +3,8 @@ import { AiSessionEntity } from '../ai/entities/ai-session.entity.js';
 import { DocumentContentEntity } from '../document/entities/document-content.entity.js';
 import { DocumentReviewEntity } from '../document/entities/document-review.entity.js';
 import { DocumentEntity } from '../document/entities/document.entity.js';
+import { DocumentImportEntity } from '../document/entities/document-import.entity.js';
+import { DocumentResourceEntity } from '../document/entities/document-resource.entity.js';
 import { TeamMemberEntity } from '../team/entities/team-member.entity.js';
 import { TeamEntity } from '../team/entities/team.entity.js';
 import { PermissionEntity } from '../user/entities/permission.entity.js';
@@ -21,6 +23,8 @@ import { IndexOutboxEntity } from '../indexing/entities/index-outbox.entity.js';
  */
 export const ENTITIES = [
   DocumentEntity,
+  DocumentImportEntity,
+  DocumentResourceEntity,
   DocumentContentEntity,
   DocumentReviewEntity,
   UserEntity,

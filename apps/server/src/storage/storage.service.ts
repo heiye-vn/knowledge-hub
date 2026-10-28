@@ -86,4 +86,36 @@ export class StorageService implements StorageDriver, OnModuleInit {
     }
     return this.activeDriver.uploadBytes(bytes, options);
   }
+
+  /** 按资源持久化的驱动读取；未指定时使用当前激活驱动。 */
+  async readBytes(
+    key: string,
+    maxBytes: number,
+    driver?: StorageDriverType,
+  ): Promise<Buffer> {
+    return this.resolveDriver(driver).readBytes(key, maxBytes);
+  }
+
+  async deleteObject(key: string, driver?: StorageDriverType): Promise<void> {
+    return this.resolveDriver(driver).deleteObject(key);
+  }
+
+  private resolveDriver(driver?: StorageDriverType): StorageDriver {
+    let selected: StorageDriver | null;
+    if (driver === undefined) {
+      selected = this.activeDriver;
+    } else if (driver === 'oss') {
+      selected = this.ossDriver;
+    } else if (driver === 'rustfs') {
+      selected = this.rustfsDriver;
+    } else {
+      throw new ServiceUnavailableException('未知对象存储驱动');
+    }
+    if (!selected?.isEnabled()) {
+      throw new ServiceUnavailableException(
+        `对象存储驱动 [${driver ?? this.activeDriverName}] 未就绪，无法访问对象`,
+      );
+    }
+    return selected;
+  }
 }

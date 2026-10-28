@@ -1,4 +1,8 @@
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import {
   Injectable,
   Logger,
@@ -11,7 +15,11 @@ import {
   UploadBytesOptions,
   UploadBytesResult,
 } from '../storage.interface.js';
-import { generateObjectKey } from '../storage.util.js';
+import {
+  generateObjectKey,
+  readObjectBytes,
+  validateObjectKey,
+} from '../storage.util.js';
 
 /**
  * 阿里云 OSS 存储驱动（基于 AWS S3 兼容协议，零额外依赖，原生支持 Virtual-Hosted 格式）
@@ -105,11 +113,14 @@ export class AliyunOssDriver implements StorageDriver, OnModuleInit {
       );
     }
 
-    const key = generateObjectKey(
-      options.fileName,
-      options.contentType,
-      options.prefix,
-    );
+    const key =
+      options.objectKey === undefined
+        ? generateObjectKey(
+            options.fileName,
+            options.contentType,
+            options.prefix,
+          )
+        : validateObjectKey(options.objectKey);
     const body = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
 
     await this.client.send(
@@ -127,6 +138,27 @@ export class AliyunOssDriver implements StorageDriver, OnModuleInit {
       `阿里云 OSS 上传成功: key=${key}, size=${body.length}, url=${url}`,
     );
     return { url, key };
+  }
+
+  async readBytes(key: string, maxBytes: number): Promise<Buffer> {
+    if (!this.isEnabled() || !this.client) {
+      throw new ServiceUnavailableException(
+        '阿里云 OSS 驱动未启用或未配置，无法读取对象',
+      );
+    }
+    return readObjectBytes(this.client, this.bucket, key, maxBytes);
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    if (!this.isEnabled() || !this.client) {
+      throw new ServiceUnavailableException(
+        '阿里云 OSS 驱动未启用或未配置，无法删除对象',
+      );
+    }
+    validateObjectKey(key);
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
   }
 
   /**

@@ -29,6 +29,14 @@ export class RustfsService implements StorageDriver {
     return this.storageService.uploadBytes(bytes, options);
   }
 
+  readBytes(key: string, maxBytes: number): Promise<Buffer> {
+    return this.storageService.readBytes(key, maxBytes);
+  }
+
+  deleteObject(key: string): Promise<void> {
+    return this.storageService.deleteObject(key);
+  }
+
   getActiveDriverName(): string {
     return this.storageService.getActiveDriverName();
   }

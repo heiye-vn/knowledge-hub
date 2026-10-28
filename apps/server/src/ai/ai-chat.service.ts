@@ -11,6 +11,7 @@ import {
   type BaseMessage,
 } from '@langchain/core/messages';
 import { RetrievalService } from '../rag/retrieval.service.js';
+import { packHitContext } from './context-budget.js';
 import type { SearchHit, SearchMode } from '../rag/types/rag.types.js';
 import { ChatSessionService } from './chat-session.service.js';
 import { ChatShortMemoryService } from './chat-short-memory.service.js';
@@ -57,7 +58,6 @@ export type ChatResult = {
 };
 
 const EXCERPT_LEN = 200;
-const CONTEXT_SNIPPET_LEN = 800;
 const CITATION_RE = /\[(\d+)\]/g;
 
 /**
@@ -468,16 +468,7 @@ export class AiChatService {
   }
 
   private buildContext(hits: SearchHit[]): string {
-    return hits
-      .map((src, i) => {
-        const heading = src.heading ? ` / ${src.heading}` : '';
-        const snippet =
-          src.content.length > CONTEXT_SNIPPET_LEN
-            ? `${src.content.slice(0, CONTEXT_SNIPPET_LEN)}...`
-            : src.content;
-        return `[${i + 1}] ${src.documentTitle}${heading}\n${snippet}`;
-      })
-      .join('\n\n');
+    return packHitContext(hits);
   }
 
   private buildWebContext(web: WebSearchResult): string {

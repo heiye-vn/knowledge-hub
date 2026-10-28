@@ -246,6 +246,25 @@ describe('ChatQueryRewriteService · gradeHits（切题评估）', () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it('grades the original top five using whole evidence and preserves skipped indexes', async () => {
+    invokeMock.mockResolvedValue({ relevant: true, reason: 'late evidence' });
+    const service = new ChatQueryRewriteService(makeConfig());
+    const content = 'background '.repeat(85) + '\n| Rule |\n| --- |\n| LATE_EVIDENCE |\n\n$$E = mc^2$$';
+    await service.gradeHits('question', [
+      { ...hit('huge'), content: 'x'.repeat(7000) },
+      { ...hit('late'), content },
+      hit('c'), hit('d'), hit('e'), hit('excluded'),
+    ]);
+    const messages = invokeMock.mock.calls[0][0] as Array<{ content: unknown }>;
+    const prompt = String(messages[1].content);
+    expect(prompt).toContain('2. 文档 late');
+    expect(prompt).toContain(content);
+    expect(prompt).toContain('5. 文档 e');
+    expect(prompt).not.toContain('文档 huge');
+    expect(prompt).not.toContain('文档 excluded');
+    expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThan(6200);
+  });
+
   it('模型判定切题时返回 relevant', async () => {
     invokeMock.mockResolvedValue({
       relevant: true,
@@ -295,6 +314,24 @@ describe('ChatQueryRewriteService · rewriteAfterRetrieve（不足后改写）',
 
   beforeEach(() => {
     invokeMock.mockReset();
+  });
+
+  it('uses only the original top three with complete late evidence for rewriting', async () => {
+    invokeMock.mockResolvedValue({ query: 'new query' });
+    const service = new ChatQueryRewriteService(makeConfig());
+    const content = 'background '.repeat(85) + '\n```ts\nconst late = 42;\n```';
+    await service.rewriteAfterRetrieve('question', 'old', GRADE, [
+      { ...hit('huge'), content: 'x'.repeat(7000) },
+      { ...hit('late'), content },
+      hit('third'), hit('excluded'),
+    ]);
+    const messages = invokeMock.mock.calls[0][0] as Array<{ content: unknown }>;
+    const prompt = String(messages[1].content);
+    expect(prompt).toContain('2. 文档 late');
+    expect(prompt).toContain(content);
+    expect(prompt).toContain('3. 文档 third');
+    expect(prompt).not.toContain('文档 huge');
+    expect(prompt).not.toContain('文档 excluded');
   });
 
   it('根据上次词与不足原因生成新检索词', async () => {

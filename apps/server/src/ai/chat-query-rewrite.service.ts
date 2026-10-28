@@ -10,6 +10,7 @@ import { AsyncLocalStorageProviderSingleton } from '@langchain/core/singletons';
 import { z } from 'zod';
 import { compactRewriteContext } from './chat-memory.util.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
+import { packHitContext } from './context-budget.js';
 import { withObservation } from '../observability/langfuse.js';
 
 /**
@@ -409,15 +410,15 @@ export class ChatQueryRewriteService {
 }
 
 function summarizeHits(hits: SearchHit[], limit = 5): string {
-  return hits
-    .slice(0, limit)
-    .map((hit, i) => {
+  return packHitContext(hits, {
+    limit,
+    separator: '\n',
+    format: (hit, index) => {
       const heading = hit.heading ? ` / ${hit.heading}` : '';
-      const snippet = hit.content.replace(/\s+/g, ' ').trim().slice(0, 180);
       const score = Number.isFinite(hit.score) ? hit.score.toFixed(2) : '-';
-      return `${i + 1}. ${hit.documentTitle}${heading}（分=${score}）\n${snippet}`;
-    })
-    .join('\n');
+      return `${index}. ${hit.documentTitle}${heading}（分=${score}）\n${hit.content}`;
+    },
+  });
 }
 
 function distinctQuery(next: string, previous: string): string {

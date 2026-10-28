@@ -19,6 +19,7 @@ import {
 import { z } from 'zod';
 import type { Response } from 'express';
 import { RetrievalService } from '../rag/retrieval.service.js';
+import { packHitContext } from './context-budget.js';
 import type { SearchHit, SearchMode } from '../rag/types/rag.types.js';
 import { ChatSessionService } from './chat-session.service.js';
 import { ChatShortMemoryService } from './chat-short-memory.service.js';
@@ -58,7 +59,6 @@ import {
 } from '../observability/langfuse.js';
 
 const EXCERPT_LEN = 200;
-const CONTEXT_SNIPPET_LEN = 800;
 const CITATION_RE = /\[(\d+)\]/g;
 
 /** 流式消息上叠加的自定义事件（data-*），前端按 type 渲染过程组件 */
@@ -836,17 +836,7 @@ export function packRetrieveResult(
       heading: src.heading,
       excerpt: src.excerpt,
     })),
-    context: hits
-      .map((hit, i) => {
-        const src = sources[i];
-        const heading = hit.heading ? ` / ${hit.heading}` : '';
-        const snippet =
-          hit.content.length > CONTEXT_SNIPPET_LEN
-            ? `${hit.content.slice(0, CONTEXT_SNIPPET_LEN)}...`
-            : hit.content;
-        return `[${src.index}] ${hit.documentTitle}${heading}\n${snippet}`;
-      })
-      .join('\n\n'),
+    context: packHitContext(hits, { indexOffset: offset }),
     ...extra,
   };
 }

@@ -1,11 +1,9 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import type { RagOrchestrator } from '../rag/rag.orchestrator.js';
-import type { StorageService } from '../storage/storage.service.js';
 import { DocumentService } from './document.service.js';
 import type { DocumentReviewService } from './document-review.service.js';
 import type { DocumentEntity, DocumentStatus } from './entities/document.entity.js';
-import type { FileParserService } from './parser/file-parser.service.js';
 import type { SearchIndexService } from '../search/search-index.service.js';
 import { DocumentStatus as Status } from './document-status.js';
 
@@ -121,8 +119,6 @@ function makeService(
 
   const service = new DocumentService(
     em as never,
-    {} as unknown as FileParserService,
-    {} as unknown as StorageService,
     ragOrchestrator as unknown as RagOrchestrator,
     searchIndexService as unknown as SearchIndexService,
     kgBuildPublisher as never,
@@ -399,8 +395,6 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
 
     const service = new DocumentService(
       em as never,
-      {} as unknown as FileParserService,
-      {} as unknown as StorageService,
       {} as unknown as RagOrchestrator,
       {} as unknown as SearchIndexService,
       {} as never,
@@ -436,79 +430,17 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
   });
 });
 
-describe('DocumentService 图片上传解析闭环', () => {
-  it('支持上传并解析 png 图片文件，落库并持久化 fileExtension 为 png', async () => {
-    let savedDoc: Record<string, unknown> | null = null;
-    let savedContent: Record<string, unknown> | null = null;
-
-    const mockEm = {
-      transaction: async (cb: (tx: unknown) => Promise<unknown>) => {
-        const tx = {
-          create: (_entity: unknown, data: Record<string, unknown>) => data,
-          save: async (data: Record<string, unknown>) => {
-            if ('title' in data) savedDoc = data;
-            if ('content' in data) savedContent = data;
-            return data;
-          },
-        };
-        return cb(tx);
-      },
-    };
-
-    const mockParser = {
-      isSupported: (ext: string) => ['png', 'jpg', 'pdf'].includes(ext),
-      supportedList: () => 'png, jpg, pdf',
-      parse: async () => '# 解析出的架构图\n\n- 前端组件\n- 网关层',
-    };
-
-    const mockRustfs = {
-      isEnabled: () => true,
-      uploadBytes: async () => ({
-        url: 'http://rustfs/documents/arch.png',
-        key: 'documents/arch.png',
-      }),
-    };
-
+describe('DocumentService 文件元数据持久化', () => {
+  it('创建草稿时在同一事务保存正文和内部源文件信息', async () => {
+    const saved: Record<string, unknown>[] = [];
+    const tx = { create: (_entity: unknown, value: Record<string, unknown>) => value, save: async (value: Record<string, unknown>) => { saved.push(value); return value; } };
     const service = new DocumentService(
-      mockEm as never,
-      mockParser as never,
-      mockRustfs as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {
-        /** 免审模式：上传解析链路不涉及审核，用默认 false 保持用例语义 */
-        isRequireApproval: () => false,
-      } as never,
-      {} as never,
-      {} as never,
+      { transaction: async (callback: (manager: typeof tx) => Promise<unknown>) => callback(tx) } as never,
+      {} as never, {} as never, {} as never, { isRequireApproval: () => false } as never, {} as never, {} as never,
     );
-
-    const fakeFile = {
-      originalname: 'system-architecture.png',
-      buffer: Buffer.from('fake-png-binary'),
-      size: 1024,
-      mimetype: 'image/png',
-    } as unknown as Express.Multer.File;
-
-    const result = await service.uploadAndCreateDocument(fakeFile, {
-      remark: '系统架构快照',
-    });
-
-    expect(result.title).toBe('system-architecture');
-    expect(result.fileExtension).toBe('png');
-    expect(result.fileUrl).toBe('http://rustfs/documents/arch.png');
-    expect(result.contentPreview).toContain('解析出的架构图');
-    expect(savedDoc).toMatchObject({
-      title: 'system-architecture',
-      fileExtension: 'png',
-      fileUrl: 'http://rustfs/documents/arch.png',
-      objectKey: 'documents/arch.png',
-      status: 0,
-    });
-    expect(savedContent).toMatchObject({
-      content: '# 解析出的架构图\n\n- 前端组件\n- 网关层',
-    });
+    await service.create({ title: '架构图', content: '# 架构图' }, { fileUrl: '/documents/100/source', objectKey: 'document-imports/100/source.bin', fileName: 'arch.png', fileSize: '1024', fileExtension: 'png' });
+    expect(saved[0]).toMatchObject({ title: '架构图', fileExtension: 'png', fileUrl: '/documents/100/source', status: 0 });
+    expect(saved[1]).toMatchObject({ content: '# 架构图' });
   });
 });
 
@@ -590,8 +522,6 @@ describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
     const service = new DocumentService(
       em as never,
       {} as never,
-      {} as never,
-      {} as never,
       customSearchIndex as never,
       {} as never,
       { isRequireApproval: () => false } as never,
@@ -633,8 +563,6 @@ describe('DocumentService.safeBackfillVisibility 存量可见性回填', () => {
 
     const service = new DocumentService(
       mockEm as never,
-      {} as never,
-      {} as never,
       mockRag as never,
       {} as never,
       {} as never,
@@ -672,8 +600,6 @@ describe('DocumentService.safeBackfillVisibility 存量可见性回填', () => {
 
     const service = new DocumentService(
       mockEm as never,
-      {} as never,
-      {} as never,
       mockRag as never,
       {} as never,
       {} as never,

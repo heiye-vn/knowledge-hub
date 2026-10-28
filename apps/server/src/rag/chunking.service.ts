@@ -3,6 +3,24 @@ import { ConfigService } from '@nestjs/config';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { createHash } from 'crypto';
 import type { DocumentChunk } from './types/rag.types.js';
+import {
+  assertAtomicFits,
+  EMBEDDING_SAFE_BYTES,
+  markdownBlocks,
+  splitStructuredBlock,
+} from './markdown-structure.js';
+
+/** LangChain's empty-separator fallback otherwise cuts UTF-16 surrogate pairs. */
+class UnicodeProseSplitter extends RecursiveCharacterTextSplitter {
+  protected override splitOnSeparator(
+    text: string,
+    separator: string,
+  ): string[] {
+    return separator
+      ? super.splitOnSeparator(text, separator)
+      : Array.from(text);
+  }
+}
 
 export interface ChunkParams {
   /** Markdown 正文 */
@@ -20,51 +38,62 @@ export interface ChunkParams {
 }
 
 /**
- * 文档分块服务（LangChain RecursiveCharacterTextSplitter / markdown 感知）
- *
- * 为什么要分块：
- * - Embedding 有长度上限，超长会被截断丢信息
- * - 检索需要「段落级」命中，整篇召回噪声太大
- *
- * 策略（与基线实现 完全一致，便于对照）：
- * 1. Markdown 感知分隔符（标题 / 代码块 / 段落…）递归切分
- * 2. chunkSize / chunkOverlap 控制块大小与重叠
- * 3. 从块内标题行推断 heading，跨块继承上一标题并前缀补全
- *
- * 配置：RAG_CHUNK_SIZE / RAG_CHUNK_OVERLAP，单位 token，
- * 按 CHARS_PER_TOKEN=2 换算为字符（512 token ≈ 1024 字符）。
+ * Structure-aware Markdown chunks: recursive splitting/overlap for prose only;
+ * fences/math stay atomic and large tables split by rows with repeated headers.
+ * RAG_CHUNK_SIZE / RAG_CHUNK_OVERLAP retain the historical estimated-token units
+ * (2 characters per token). The target includes inherited headings; indivisible
+ * structures may use up to 4x that target, never above 6000 UTF-8 bytes.
  */
 @Injectable()
 export class ChunkingService {
   private readonly logger = new Logger(ChunkingService.name);
-  private readonly splitter: RecursiveCharacterTextSplitter;
-
-  /** token → 字符的粗略换算系数：中英文混合场景约 1 token ≈ 2 字符 */
-  private static readonly CHARS_PER_TOKEN = 2.0;
-
-  /** 匹配块内 Markdown ATX 标题行 */
-  private static readonly HEADING_LINE = /^(#{1,6})\s+(.+)$/m;
+  private readonly chunkSizeChars: number;
+  private readonly chunkOverlapChars: number;
 
   constructor(config: ConfigService) {
-    const chunkSizeTokens = Number(config.get('RAG_CHUNK_SIZE', 512));
-    const chunkOverlapTokens = Number(config.get('RAG_CHUNK_OVERLAP', 64));
-    const chunkSize = Math.floor(
-      chunkSizeTokens * ChunkingService.CHARS_PER_TOKEN,
+    const size = Number(config.get('RAG_CHUNK_SIZE', 512));
+    const overlap = Number(config.get('RAG_CHUNK_OVERLAP', 64));
+    if (
+      !Number.isFinite(size) ||
+      size < 1 ||
+      !Number.isFinite(overlap) ||
+      overlap < 0
+    ) {
+      throw new RangeError(
+        'RAG_CHUNK_SIZE must be positive and RAG_CHUNK_OVERLAP non-negative',
+      );
+    }
+    this.chunkSizeChars = Math.min(Math.floor(size * 2), EMBEDDING_SAFE_BYTES);
+    this.chunkOverlapChars = Math.min(
+      Math.floor(overlap * 2),
+      this.chunkSizeChars - 1,
     );
-    const chunkOverlap = Math.floor(
-      chunkOverlapTokens * ChunkingService.CHARS_PER_TOKEN,
-    );
+  }
 
-    // 内置 markdown 分隔符未含 H1（\n# ），补上以免一级标题不切分
-    this.splitter = new RecursiveCharacterTextSplitter({
+  private async splitProse(text: string, prefix: string): Promise<string[]> {
+    // A UTF-16 code unit needs at most three UTF-8 bytes. Reserve both heading
+    // characters and bytes before recursive splitting, not after producing chunks.
+    const chunkSize = Math.min(
+      this.chunkSizeChars - prefix.length,
+      Math.floor(
+        (EMBEDDING_SAFE_BYTES - Buffer.byteLength(prefix, 'utf8')) / 3,
+      ),
+    );
+    if (chunkSize < 1) {
+      throw new RangeError(
+        'Heading leaves no prose budget within chunk/embedding safe bound',
+      );
+    }
+    const splitter = new UnicodeProseSplitter({
       chunkSize,
-      chunkOverlap,
+      chunkOverlap: Math.min(this.chunkOverlapChars, chunkSize - 1),
       keepSeparator: true,
       separators: [
         '\n# ',
         ...RecursiveCharacterTextSplitter.getSeparatorsForLanguage('markdown'),
       ],
     });
+    return splitter.splitText(text);
   }
 
   /** 将一篇文档正文切成可索引的 DocumentChunk 列表；内容为空时返回 [] */
@@ -76,31 +105,19 @@ export class ChunkingService {
       return [];
     }
 
-    const texts = await this.splitter.splitText(content);
     const chunks: DocumentChunk[] = [];
     let currentHeading: string | null = null;
+    let pending = '';
+    let pendingHeading: string | null = null;
 
-    for (const text of texts) {
-      const trimmed = text.trim();
-      if (!trimmed) continue;
-
-      const headingInChunk = this.extractHeading(trimmed);
-      if (headingInChunk) {
-        currentHeading = headingInChunk;
-      }
-
-      // 同章节后续块通常不含标题行：前缀补上，便于检索命中时带上下文
-      let chunkContent = trimmed;
-      if (currentHeading && !ChunkingService.HEADING_LINE.test(trimmed)) {
-        chunkContent = `${currentHeading}\n\n${trimmed}`;
-      }
-
+    const emit = (chunkContent: string, heading: string | null) => {
+      assertAtomicFits(chunkContent, this.chunkSizeChars, 'Chunk');
       chunks.push({
         chunkId: this.buildChunkId(documentId, chunks.length),
         documentId,
         documentTitle,
         content: chunkContent,
-        heading: currentHeading,
+        heading,
         chunkIndex: chunks.length,
         totalChunks: 0,
         categoryId: params.categoryId ?? null,
@@ -110,7 +127,45 @@ export class ChunkingService {
         docStatus: params.docStatus ?? null,
         publishTime: params.publishTime ?? null,
       });
+    };
+    const flush = () => {
+      if (pending) emit(pending, pendingHeading);
+      pending = '';
+    };
+
+    for (const block of markdownBlocks(content)) {
+      const text = block.text.trim();
+      if (!text) continue;
+      if (block.kind === 'heading') {
+        flush();
+        currentHeading = block.heading ?? null;
+        assertAtomicFits(text, this.chunkSizeChars, 'Heading');
+        pending = text;
+        pendingHeading = currentHeading;
+        continue;
+      }
+      const prefix = currentHeading ? `${currentHeading}\n\n` : '';
+      const pieces =
+        block.kind === 'prose'
+          ? await this.splitProse(text, prefix)
+          : splitStructuredBlock(block, prefix, this.chunkSizeChars);
+      for (const piece of pieces) {
+        const candidate = pending ? `${pending}\n\n${piece}` : prefix + piece;
+        if (
+          candidate.length <= this.chunkSizeChars &&
+          Buffer.byteLength(candidate, 'utf8') <= EMBEDDING_SAFE_BYTES
+        ) {
+          pending = candidate;
+          pendingHeading = currentHeading;
+        } else {
+          flush();
+          pending = prefix + piece;
+          pendingHeading = currentHeading;
+          if (pending.length > this.chunkSizeChars) flush();
+        }
+      }
     }
+    flush();
 
     const total = chunks.length;
     chunks.forEach((c) => {
@@ -129,11 +184,5 @@ export class ChunkingService {
       .update(`${documentId}:${index}`)
       .digest('hex')
       .slice(0, 64);
-  }
-
-  /** 取块内第一个 ATX 标题文案（不含 #） */
-  private extractHeading(text: string): string | null {
-    const match = text.match(ChunkingService.HEADING_LINE);
-    return match?.[2]?.trim() || null;
   }
 }

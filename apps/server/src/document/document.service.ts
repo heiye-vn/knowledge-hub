@@ -12,7 +12,6 @@ import { nextSnowflakeId } from '../common/snowflake-id.js';
 import { CreateDocumentDto } from './dto/create-document.dto.js';
 import { UpdateDocumentDto } from './dto/update-document.dto.js';
 import { QueryDocumentDto } from './dto/query-document.dto.js';
-import { UploadParseDto } from './dto/upload-parse.dto.js';
 import type { ReviewDecisionDto } from './dto/review.dto.js';
 import { DocumentEntity } from './entities/document.entity.js';
 import {
@@ -26,11 +25,8 @@ import {
 import { DocumentContentEntity } from './entities/document-content.entity.js';
 import { DocumentReviewService } from './document-review.service.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
-import { StorageService } from '../storage/storage.service.js';
-import type { UploadBytesResult } from '../storage/storage.interface.js';
 import { RagOrchestrator } from '../rag/rag.orchestrator.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
-import { FileParserService } from './parser/file-parser.service.js';
 import { SearchIndexService } from '../search/search-index.service.js';
 import { KgBuildPublisher } from '../kg/kg-build.publisher.js';
 import { GraphBuildService } from '../kg/graph-build.service.js';
@@ -41,11 +37,6 @@ import {
   canReadDocument,
   canWriteDocument,
 } from './document-access.js';
-import {
-  decodeUploadFilename,
-  getExtension,
-  titleFromFilename,
-} from './parser/utils/markdown.util.js';
 
 
 /**
@@ -129,8 +120,6 @@ export class DocumentService implements OnModuleInit {
     /** Postgres 实体管理器 */
     @InjectEntityManager()
     private readonly em: EntityManager,
-    private readonly fileParserService: FileParserService,
-    private readonly storage: StorageService,
     private readonly ragOrchestrator: RagOrchestrator,
     /** 文档级全文搜索索引（ES kh_document）；与 RAG 的 kh_chunk 互补 */
     private readonly searchIndexService: SearchIndexService,
@@ -1075,109 +1064,6 @@ export class DocumentService implements OnModuleInit {
         : { vectorsCleaned: false, searchCleaned: false, kgDeleteQueued: false };
 
     return { id, deleted: true, ...cleanup };
-  }
-
-  /** 上传并解析文件 → 创建草稿文档（authorId/createBy 自动落到当前登录用户） */
-  async uploadAndCreateDocument(
-    file: Express.Multer.File,
-    meta: UploadParseDto = {},
-    actor?: AuthUser,
-  ) {
-    if (!file?.buffer?.length) {
-      throw new BadRequestException('文件不能为空');
-    }
-
-    const originalFilename = decodeUploadFilename(file.originalname);
-    const extension = getExtension(originalFilename);
-
-    if (!this.fileParserService.isSupported(extension)) {
-      throw new BadRequestException(
-        `不支持的文件格式: ${extension}，支持的格式: ${this.fileParserService.supportedList()}`,
-      );
-    }
-
-    this.logger.log(
-      `上传并解析文件：name=${originalFilename}, size=${file.size}, ext=${extension}`,
-    );
-
-    let parsedContent: string;
-    try {
-      parsedContent = await this.fileParserService.parse({
-        originalname: originalFilename,
-        buffer: file.buffer,
-        size: file.size,
-      });
-    } catch (error) {
-      if (error instanceof BadRequestException) throw error;
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `文件解析失败：name=${originalFilename}, error=${message}`,
-      );
-      throw new BadRequestException(`文件解析失败: ${message}`);
-    }
-
-    let uploadResult: UploadBytesResult | null = null;
-    if (this.storage.isEnabled()) {
-      try {
-        uploadResult = await this.storage.uploadBytes(file.buffer, {
-          fileName: originalFilename,
-          contentType: file.mimetype || 'application/octet-stream',
-          prefix: 'documents',
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`原文件上传存储服务失败：${message}`);
-        throw new BadRequestException(`原文件上传失败: ${message}`);
-      }
-    } else {
-      this.logger.warn('对象存储未启用，跳过原文件上传');
-    }
-
-    const title = titleFromFilename(originalFilename);
-
-    const created = await this.create(
-      {
-        title,
-        content: parsedContent,
-        categoryId: meta.categoryId,
-        teamId: meta.teamId,
-        authorId: meta.authorId,
-        tags: meta.tags,
-        remark: meta.remark,
-        createBy: meta.createBy,
-        isPublic: meta.isPublic,
-        status: DocumentStatus.Draft,
-      },
-      {
-        // 持久化源文件元数据，供列表/详情展示、重解析与对象清理反查
-        fileUrl: uploadResult?.url ?? null,
-        objectKey: uploadResult?.key ?? null,
-        fileName: originalFilename,
-        fileSize: String(file.size),
-        fileExtension: extension,
-      },
-      actor,
-    );
-
-    const fileUrl = uploadResult?.url ?? null;
-
-    const previewLen = Math.min(200, parsedContent.length);
-    const result = {
-      documentId: created.id,
-      title,
-      fileUrl,
-      fileSize: String(file.size),
-      fileExtension: extension,
-      contentLength: parsedContent.length,
-      contentPreview: parsedContent.slice(0, previewLen),
-      status: DocumentStatus.Draft,
-    };
-
-    this.logger.log(
-      `文件解析并创建文档成功：documentId=${created.id}, title=${title}, ext=${extension}, chars=${parsedContent.length}, fileUrl=${fileUrl}`,
-    );
-
-    return result;
   }
 
   /**

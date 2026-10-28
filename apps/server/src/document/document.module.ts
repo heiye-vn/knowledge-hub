@@ -3,6 +3,10 @@ import { DocumentService } from './document.service.js';
 import { DocumentReviewService } from './document-review.service.js';
 import { DocumentController } from './document.controller.js';
 import { FileParserService } from './parser/file-parser.service.js';
+import { MineruParser } from './parser/mineru.parser.js';
+import { DocumentImportService } from './document-import.service.js';
+import { DocumentImportController } from './document-import.controller.js';
+import { DocumentImportQueue } from './document-import.queue.js';
 import { RagModule } from '../rag/rag.module.js';
 import { SearchModule } from '../search/search.module.js';
 import { KgModule } from '../kg/kg.module.js';
@@ -28,8 +32,8 @@ import { IndexOutboxModule } from '../indexing/index-outbox.module.js';
     // 索引失败写入 outbox，由 IndexMaintenanceModule 的 Worker 重试
     IndexOutboxModule,
   ],
-  controllers: [DocumentController],
-  providers: [DocumentService, DocumentReviewService, FileParserService],
+  controllers: [DocumentImportController, DocumentController],
+  providers: [DocumentService, DocumentReviewService, FileParserService, MineruParser, DocumentImportService, DocumentImportQueue],
   exports: [DocumentService, DocumentReviewService, FileParserService],
 })
 export class DocumentModule {}

@@ -577,6 +577,23 @@ describe('systemForPlan', () => {
 });
 
 describe('packRetrieveResult', () => {
+  it('packs whole late evidence under a total budget with original cumulative indexes', () => {
+    const writer = { write: vi.fn() };
+    const sources: ChatSource[] = [];
+    packRetrieveResult([hit('prior')], 'prior', sources, writer as never);
+    const content = '<table><tr><td>' + 'value '.repeat(150) + 'LATE_CELL</td></tr></table>\n$$E = mc^2$$';
+    const result = packRetrieveResult([
+      { ...hit('huge'), content: 'x'.repeat(7000) },
+      { ...hit('late'), content },
+      { ...hit('other'), content: 'y'.repeat(5500) },
+    ], 'now', sources, writer as never);
+    expect(result.context).toBe('[3] 文档 late\n' + content);
+    expect(Buffer.byteLength(result.context, 'utf8')).toBeLessThanOrEqual(6000);
+    expect(result.items.map((item) => item.index)).toEqual([2, 3, 4]);
+    expect(sources.map((source) => source.index)).toEqual([1, 2, 3, 4]);
+    expect(sources[2].excerpt.length).toBeLessThanOrEqual(203);
+  });
+
   it('多次检索累计编号，并写出来源事件', () => {
     const writer = { write: vi.fn() };
     const sources: ChatSource[] = [];

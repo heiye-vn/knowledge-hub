@@ -8,21 +8,16 @@ import {
   Put,
   Delete,
   Query,
-  UseInterceptors,
-  UploadedFile,
-  BadRequestException,
 } from '@nestjs/common';
 import { DocumentService } from './document.service.js';
 import { DocumentReviewService } from './document-review.service.js';
 import { CreateDocumentDto } from './dto/create-document.dto.js';
 import { UpdateDocumentDto } from './dto/update-document.dto.js';
 import { QueryDocumentDto } from './dto/query-document.dto.js';
-import { UploadParseDto } from './dto/upload-parse.dto.js';
 import {
   QueryReviewTasksDto,
   ReviewDecisionDto,
 } from './dto/review.dto.js';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
@@ -50,25 +45,6 @@ export class DocumentController {
   @RequirePermission('document:create')
   create(@Body() dto: CreateDocumentDto, @CurrentUser() user: AuthUser) {
     return this.documentService.create(dto, undefined, user);
-  }
-
-  /** 上传文件并解析为 Markdown，创建草稿（form-data 字段名: file） */
-  @Post('upload/parse')
-  @RequirePermission('document:create')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: { fileSize: 50 * 1024 * 1024 },
-    }),
-  )
-  uploadAndParse(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() meta: UploadParseDto,
-    @CurrentUser() user: AuthUser,
-  ) {
-    if (!file) {
-      throw new BadRequestException('请上传文件（form-data 字段名: file）');
-    }
-    return this.documentService.uploadAndCreateDocument(file, meta, user);
   }
 
   // -------------------------------------------------------------------------

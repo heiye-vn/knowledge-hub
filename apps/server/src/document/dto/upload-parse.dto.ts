@@ -1,8 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUUID } from 'class-validator';
 
 /** 上传解析接口的可选表单字段 */
 export class UploadParseDto {
+  @IsOptional()
+  @IsUUID()
+  requestId?: string;
+
   @IsOptional()
   @IsString()
   categoryId?: string;

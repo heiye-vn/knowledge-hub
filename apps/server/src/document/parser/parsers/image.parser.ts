@@ -64,7 +64,8 @@ export async function parseImageWithVlm(
   const baseUrl = (
     options.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
   ).replace(/\/+$/, '');
-  const timeoutMs = options.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : 60000;
+  const timeoutMs =
+    options.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : 60000;
 
   const base64Data = buffer.toString('base64');
   const dataUrl = `data:${mimeType};base64,${base64Data}`;
@@ -108,20 +109,16 @@ export async function parseImageWithVlm(
       body: JSON.stringify(requestBody),
       signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    logger.error(`视觉大模型网络请求异常: ${errorMsg}`);
-    throw new BadRequestException(`视觉模型请求失败: ${errorMsg}`);
+  } catch {
+    logger.error('视觉大模型网络请求异常');
+    throw new BadRequestException('视觉模型请求失败，请稍后重试');
   }
 
   if (!response.ok) {
-    let errDetail = '';
-    try {
-      errDetail = await response.text();
-    } catch {
-      // 忽略读取错误体的异常
-    }
-    const msg = `视觉模型调用失败: ${response.status} ${response.statusText}${errDetail ? ` - ${errDetail}` : ''}`;
+    // Never expose a provider body, signed URL, API key or untrusted status text.
+    const status =
+      response.status === 401 ? '401 Unauthorized' : `HTTP ${response.status}`;
+    const msg = `视觉模型调用失败: ${status}`;
     logger.error(msg);
     throw new BadRequestException(msg);
   }
@@ -137,14 +134,15 @@ export async function parseImageWithVlm(
   let resData: ChatCompletionResponse;
   try {
     resData = (await response.json()) as ChatCompletionResponse;
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    throw new BadRequestException(`视觉模型响应 JSON 解析失败: ${errorMsg}`);
+  } catch {
+    throw new BadRequestException('视觉模型响应 JSON 解析失败');
   }
 
   const rawContent = resData?.choices?.[0]?.message?.content?.trim();
   if (!rawContent) {
-    throw new BadRequestException('视觉模型解析结果为空，请确认图片清晰度与内容');
+    throw new BadRequestException(
+      '视觉模型解析结果为空，请确认图片清晰度与内容',
+    );
   }
 
   const elapsed = Date.now() - start;

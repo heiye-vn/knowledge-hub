@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   NestInterceptor,
+  StreamableFile,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -15,17 +16,18 @@ import type { ApiResponse } from '../interfaces/api-response.interface.js';
  */
 @Injectable()
 export class TransformInterceptor<T>
-  implements NestInterceptor<T, ApiResponse<T>>
+  implements NestInterceptor<T, ApiResponse<T> | StreamableFile>
 {
   intercept(
     context: ExecutionContext,
     next: CallHandler<T>,
-  ): Observable<ApiResponse<T>> {
+  ): Observable<ApiResponse<T> | StreamableFile> {
     const ctx = context.switchToHttp();
     const response = ctx.getResponse();
 
     return next.handle().pipe(
       map((data: T) => {
+        if (data instanceof StreamableFile) return data;
         // 在 handler 返回后读取，兼容健康检查等动态设置 HTTP 状态的接口
         const statusCode: number = response?.statusCode ?? 200;
 
