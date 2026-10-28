@@ -1,6 +1,6 @@
 # 参考项目映射对照表（knowledge-hub-backend ↔ knowledge-hub）
 
-> **文档定位**：`knowledge-hub-backend` 是**只读的参考项目**（对比分支随迭代推进，当前到 `v18`），`knowledge-hub` 是**真正在做的主项目**。
+> **文档定位**：`knowledge-hub-backend` 是**只读的参考项目**（对比分支随迭代推进，当前到 `v20`），`knowledge-hub` 是**真正在做的主项目**。
 > 本文件是两者之间的映射登记簿：记录「参考项目的哪个模块，对应主项目的哪个模块」，
 > 以及**哪里有意分叉、为什么分叉、参考项目的哪些缺陷主项目已修复**。
 >
@@ -105,6 +105,13 @@
 | **v19** `ai/eval/*` | `ai/eval/*` | 🔴 超越 | 数据集 / 指标 / experiment 入口同构；主项目保存全轮次 attempt、区分工具 success/useful、增加首轮/末轮/MRR/改写收益、受限用户 ACL 用例、本地可比较报告 |
 | **v19** `runForEval` | `ai-stream.service.ts` `runForEval` | 🟡 分叉 | 同构复用线上 Agent、静默 writer、不走 SSE；主项目完全不读写用户记忆、保留 `mode` 参数、Callback 受正文开关约束 |
 | **v19** `chat` 第 5 参 `ChatOptions` | 第 6 参 `ChatOptions` | 🟡 分叉 | 主项目第 5 参已被 `SearchMode` 占用；`includeEval` 只供进程内使用，不暴露到公开 DTO |
+| **v20** `document/parser/mineru.parser.ts` | `document/parser/mineru.parser.ts` | 🟡 分叉 | 云端 v4 batch 流程同构；分叉：PDF 显式 OCR、可信域名/DNS 固定、有限重试、checkpoint 恢复、ZIP 真实解压上限与图片引用 AST 改写 |
+| **v20** `document/parser/file-parser.service.ts` | 同名服务 | 🟡 分叉 | PDF/DOCX/PPTX → MinerU，TXT/MD/XLSX 本地，独立图片保留 VLM；新增文件签名校验与结构化返回 `{markdown,images,warnings,parser}` |
+| **v20** 同步上传解析 | `document-import.{service,queue,controller}.ts` | 🔵 新增 | 参考项目同步等待 MinerU；主项目改为 PG 持久任务 + BullMQ Worker + 补偿扫描 + 幂等 requestId，接口立即 202 |
+| **v20** 参考项目无导入任务表 | `kh_document_import` / `kh_document_resource` | 🔵 新增 | 记录任务、警告、脱敏错误、checkpoint；资源表保存加密密钥、驱动、对象 key，供鉴权读取和重试 |
+| **v20** 图片直传对象存储并写公开 URL | `storage/resource-crypto.ts` + `GET /documents/:id/{source,assets/:assetId}` | 🔴 超越 | 资源 AES-256-GCM 加密、文档 ACL 校验后解密返回；避免公开桶直链绕过文档权限 |
+| **v20** 前端仅升级详情页渲染 | `DocumentMarkdown` / `AnswerMarkdown` / `AuthenticatedImage` / `DocumentImports` | 🔵 新增 | 文档与聊天共用安全 HTML/公式渲染；上传进度、失败重试、刷新恢复；私有图片走 Blob URL |
+| **v20** 参考项目分块仅 Markdown 分隔符 | `rag/chunking.service.ts` + `context-budget.ts` | 🔴 超越 | 保护 fenced code、公式、HTML/GFM 表格；超长表格重复表头；问答/改写/相关性共用完整块预算 |
 
 图例：🟢 对齐（照搬模式） 🟡 分叉（换实现，保留语义） 🔵 新增（参考项目没有） 🔴 超越（修复参考项目缺陷）
 
@@ -217,6 +224,12 @@
 | 2026-10-26 | **实验数据出境**（v19） | Experiment 直接上传完整 task output 与 data input，不受 tracing 内容开关影响 | 新增 `experiment-privacy.ts`：默认只传脱敏 input、intent 金标和指标型 output；关闭正文时评估器只回放本地分数 | Experiment runner 的根 span 会无条件写 input/output；只做自定义 span 脱敏会漏掉最大一条正文出境路径 |
 | 2026-10-26 | **外部数据集**（v19） | Golden Dataset 写死在 TypeScript，新增批次需改代码 | `EVAL_DATASET_PATH` 加载 JSON，zod 严格校验、重复 ID 阻断、版本写入报告；内置 9 条冒烟集保留 | 基线集会持续增长和版本化，写死代码会让「扩题」和「改 Agent」混在同一提交里，无法区分数据变化与实现变化 |
 | 2026-10-26 | **Precision/MRR 去重**（v19 指标口径） | 按命中的 chunk 计数，同文档多块会重复算相关 | 按 `documentId` 去重后再算 Precision@5 / MRR@5 | 金标是文档标题，不是 chunk；一个文档占满 Top5 不应得到满分 |
+| 2026-10-28 | **导入任务模型**（v20） | 上传请求同步等待 MinerU 解析完成，HTTP 连接可被占用 10 分钟 | 原文件先加密落存储，写 PG 任务后立即 202；BullMQ Worker 解析，20 次/分钟限流，5 秒补偿扫描，PG advisory lock 去重执行 | 浏览器/反向代理不应承担解析时长；任务状态必须跨重启可恢复，Redis 不能承载文件 Buffer 或唯一事实 |
+| 2026-10-28 | **MinerU 提交重试**（v20） | 轮询遇到任何非 2xx 都直接失败；POST 无幂等控制 | POST 只提交一次并持久化 checkpoint；PUT/GET/下载按 429/5xx/网络有界退避；POST 结果不确定时明确失败，禁止盲目重提 | 提交接口没有幂等键，重放可能创建重复云端任务；只能从已落库的 batch/uploadUrl 续跑 |
+| 2026-10-28 | **扫描件 OCR 配置**（v20） | 仅图片扩展名设置 `is_ocr=true`，PDF 依赖模型隐式行为 | PDF 与图片显式开启 OCR，Office 关闭；切换 VLM/pipeline 后端时行为可解释 | 扫描 PDF 是核心场景，不能把能否识别绑定到不可见的模型默认值 |
+| 2026-10-28 | **图片存储与访问**（v20） | 图片上传后写公开对象 URL，文档 ACL 无法约束图片 | 每资源随机 AES-256-GCM 密钥，密文存储；正文写内部资源路径，下载时校验文档可见性后解密 | 企业知识库的图片与正文同级敏感；公开桶直链会让「撤回/团队可见」失效 |
+| 2026-10-28 | **结构化内容分块与上下文**（v20） | 仅修掉 800 字截断，分块器不保护 HTML 表格/公式 | 表格/公式/代码块结构保护，超长表格拆行重复表头；统一按预算保留完整块，超预算跳过整块 | MinerU 输出表格和公式更长；截断或按字符硬切会破坏语义，甚至把 HTML 标签切成半个 |
+| 2026-10-28 | **前端渲染边界**（v20） | 只升级文档详情页；聊天仍用旧渲染 | 文档与聊天共用 `remark-gfm + remark-math + rehype-raw + 自定义 sanitize + KaTeX`；私有图片只接受内部资源路径并用 Blob 展示 | 同一份 MinerU 正文会同时出现在详情和聊天引用中，两套渲染会让公式/表格表现不一致；同步放行任意 HTML 会引入 XSS |
 
 
 

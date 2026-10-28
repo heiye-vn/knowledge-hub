@@ -60,6 +60,14 @@
     {
       "key": "sessionId",
       "value": ""
+    },
+    {
+      "key": "importId",
+      "value": ""
+    },
+    {
+      "key": "assetId",
+      "value": ""
     }
   ],
   "item": [
@@ -282,7 +290,7 @@
       "name": "文件上传解析",
       "item": [
         {
-          "name": "上传文件并解析为 Markdown",
+          "name": "上传文件并创建异步导入任务（202）",
           "request": {
             "method": "POST",
             "header": [],
@@ -293,7 +301,13 @@
                   "key": "file",
                   "type": "file",
                   "src": "apps/server/test/fixtures/李先生_28岁_76761.pdf",
-                  "description": "必填。支持 PDF / DOCX / XLSX / PPTX / TXT / MD，单文件上限 50MB"
+                  "description": "必填。支持格式见接口说明，最大 50MB。"
+                },
+                {
+                  "key": "requestId",
+                  "value": "{{$guid}}",
+                  "type": "text",
+                  "description": "必填。客户端生成 UUID；同一次上传的网络重试必须复用同一个值，避免重复建任务。"
                 },
                 {
                   "key": "categoryId",
@@ -305,13 +319,15 @@
                   "key": "teamId",
                   "value": "",
                   "type": "text",
-                  "disabled": true
+                  "disabled": true,
+                  "description": "非管理员只能选择自己所在的团队。"
                 },
                 {
                   "key": "authorId",
                   "value": "",
                   "type": "text",
-                  "disabled": true
+                  "disabled": true,
+                  "description": "仅管理员可指定。"
                 },
                 {
                   "key": "tags",
@@ -344,7 +360,140 @@
                 "parse"
               ]
             },
-            "description": "上传 → 解析为 Markdown → 创建**草稿**文档（status=0）。\n\n支持格式：pdf / docx / xlsx / pptx / txt / md + **png / jpg / jpeg / webp**。\n- 图片走视觉大模型（VLM）识别，需配置**独立的 VLM_API_KEY**，未配置时上传图片会返回 400「未配置视觉模型 API 密钥」\n- pdf 可选提取内嵌图片并上传（pdf-images/ 前缀）\n\n源文件经统一存储门面上传，元数据写入 file_url / object_key / file_name / file_size / file_extension 五列：\n- STORAGE_DRIVER=oss → 阿里云 OSS（未指定且配了 OSS 凭据时也会自动优选 OSS）\n- STORAGE_DRIVER=rustfs → 本地 RustFS（离线开发）\n\n⚠️ 导入后请在 Body → form-data 里**重新选择本地文件**（原 src 路径不可用）。\n项目自带夹具：apps/server/test/fixtures/ 下有 PDF/DOCX 等样例。\n\n成功后同样从 data.documentId 取文档 ID 填到变量 docId，再调用「发布文档」。"
+            "description": "上传文件并创建**持久化导入任务**，立即返回 202 与 taskId（响应 data.id），解析在 BullMQ Worker 后台执行，页面可离开后凭任务 ID 查询。\n\n支持：pdf / docx / pptx / xlsx / txt / md / png / jpg / jpeg / webp，单文件上限 50MB。\n- PDF / DOCX / PPTX 走 MinerU 精准解析；扫描件 OCR 依赖 MINERU_API_TOKEN，未配置时任务会失败并返回可读原因\n- TXT / MD 本地读取；XLSX 走本地结构化解析；独立图片沿用 VLM（需 VLM_API_KEY）\n- requestId 必填且由客户端生成 UUID；同一用户重复提交相同 requestId + 相同文件会幂等返回同一任务，内容不同返回 409\n- 原文件先加密落对象存储，解析图片同样加密；不会把存储直链写进正文\n\n成功：data.id 填入 importId，data.state 为 queued。失败：400 参数/格式错误，401 未登录，403 无权指定作者或团队，409 requestId 冲突，503 存储/队列不可用。"
+          }
+        },
+        {
+          "name": "我的最近导入任务（最多 20 条）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "imports"
+              ]
+            },
+            "description": "返回当前登录用户最近的导入任务。仅创建者可见；包含 state（queued / processing / completed / failed）、stage、documentId、warnings、error。\n\n轮询建议 3 秒一次；完成后用 documentId 打开详情，失败可调用重试接口。"
+          }
+        },
+        {
+          "name": "导入任务详情与进度",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/imports/{{importId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "imports",
+                "{{importId}}"
+              ]
+            },
+            "description": "查询单个导入任务。documentId 仅在 completed 时返回；error 为已脱敏的用户可读原因，不包含 Token、签名 URL 或云端内部地址。\n\n404：任务不存在或不属于当前用户。"
+          }
+        },
+        {
+          "name": "重试失败的导入任务（202）",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/imports/{{importId}}/retry",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "imports",
+                "{{importId}}",
+                "retry"
+              ]
+            },
+            "description": "仅 failed 任务可重试；复用已保存的原文件与 MinerU checkpoint（若已取得 batch），不会重复上传原文件。\n\n成功返回 202 与更新后的任务；409 表示任务不是失败态，404 表示任务不存在或非本人。"
+          }
+        },
+        {
+          "name": "下载文档原文件（需鉴权）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/source",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "source"
+              ]
+            },
+            "description": "鉴权下载原文件，响应为二进制 StreamableFile（非统一 JSON 信封），带 Content-Disposition。\n\n按文档可见性校验：草稿仅作者/管理员可读；公开或团队文档按既有 ACL。404 表示文档或资源不存在，403 表示无权访问。"
+          }
+        },
+        {
+          "name": "读取文档图片资源（需鉴权）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/assets/{{assetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "assets",
+                "{{assetId}}"
+              ]
+            },
+            "description": "鉴权读取 MinerU 提取并加密保存的图片资源，响应为二进制图片（非统一 JSON 信封），前端通过 fetch + Blob URL 展示，不应把该路径当公开直链。\n\n404/403 规则同上。"
+          }
+        },
+        {
+          "name": "隐藏单条导入记录（软删除）",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/imports/{{importId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "imports",
+                "{{importId}}"
+              ]
+            },
+            "description": "仅 completed/failed 任务可隐藏；进行中的任务返回 409。\n\n只把记录从“我的最近导入”列表隐藏，不删除草稿文档、加密资源与原文件，已完成文档的图片链接不受影响。返回 {\"dismissed\": 1}。"
+          }
+        },
+        {
+          "name": "清空已完成/失败的导入记录",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "imports"
+              ]
+            },
+            "description": "隐藏当前用户全部 completed/failed 导入记录，进行中的任务保留。返回 {\"dismissed\": 数量}。不删除任何文档与资源。"
           }
         }
       ]
