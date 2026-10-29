@@ -5,6 +5,13 @@ import { DocumentReviewEntity } from '../document/entities/document-review.entit
 import { DocumentEntity } from '../document/entities/document.entity.js';
 import { DocumentImportEntity } from '../document/entities/document-import.entity.js';
 import { DocumentResourceEntity } from '../document/entities/document-resource.entity.js';
+import { CategoryEntity } from '../document/entities/category.entity.js';
+import { CommentEntity } from '../document/entities/comment.entity.js';
+import { DocumentLikeEntity } from '../document/entities/document-like.entity.js';
+import { DocumentFavoriteEntity } from '../document/entities/document-favorite.entity.js';
+import { DocumentShareEntity } from '../document/entities/document-share.entity.js';
+import { DocumentVersionEntity } from '../document/entities/document-version.entity.js';
+import { NotificationEntity } from '../notification/notification.entity.js';
 import { TeamMemberEntity } from '../team/entities/team-member.entity.js';
 import { TeamEntity } from '../team/entities/team.entity.js';
 import { PermissionEntity } from '../user/entities/permission.entity.js';
@@ -27,6 +34,13 @@ export const ENTITIES = [
   DocumentResourceEntity,
   DocumentContentEntity,
   DocumentReviewEntity,
+  CategoryEntity,
+  CommentEntity,
+  DocumentLikeEntity,
+  DocumentFavoriteEntity,
+  DocumentShareEntity,
+  DocumentVersionEntity,
+  NotificationEntity,
   UserEntity,
   RoleEntity,
   UserRoleEntity,

@@ -11,6 +11,18 @@ import { RagModule } from '../rag/rag.module.js';
 import { SearchModule } from '../search/search.module.js';
 import { KgModule } from '../kg/kg.module.js';
 import { IndexOutboxModule } from '../indexing/index-outbox.module.js';
+import { CategoryService } from './category.service.js';
+import { CategoryController } from './category.controller.js';
+import { DocumentVersionService } from './document-version.service.js';
+import { DocumentSocialService } from './document-social.service.js';
+import { DocumentShareService } from './document-share.service.js';
+import {
+  DocumentEngagementController,
+  FavoriteController,
+} from './document-engagement.controller.js';
+import { ShareController } from './share.controller.js';
+import { NotificationModule } from '../notification/notification.module.js';
+import { RedisModule } from '../redis/redis.module.js';
 
 /**
  * 文档模块
@@ -31,9 +43,31 @@ import { IndexOutboxModule } from '../indexing/index-outbox.module.js';
     KgModule,
     // 索引失败写入 outbox，由 IndexMaintenanceModule 的 Worker 重试
     IndexOutboxModule,
+    // 互动通知写入（点赞 / 评论 / 回复）
+    NotificationModule,
+    // 分享密码失败限流（Redis INCR + TTL）
+    RedisModule,
   ],
-  controllers: [DocumentImportController, DocumentController],
-  providers: [DocumentService, DocumentReviewService, FileParserService, MineruParser, DocumentImportService, DocumentImportQueue],
+  controllers: [
+    DocumentImportController,
+    DocumentController,
+    DocumentEngagementController,
+    FavoriteController,
+    CategoryController,
+    ShareController,
+  ],
+  providers: [
+    DocumentService,
+    DocumentReviewService,
+    FileParserService,
+    MineruParser,
+    DocumentImportService,
+    DocumentImportQueue,
+    CategoryService,
+    DocumentVersionService,
+    DocumentSocialService,
+    DocumentShareService,
+  ],
   exports: [DocumentService, DocumentReviewService, FileParserService],
 })
 export class DocumentModule {}

@@ -13,12 +13,13 @@ import {
   SafetyCertificateOutlined,
   SearchOutlined,
   SettingOutlined,
+  StarOutlined,
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { Avatar, Badge, Dropdown, Layout, Menu, Tag, theme } from 'antd'
 import type { MenuProps } from 'antd'
-import { authApi, teamApi } from '../api'
+import { authApi, notificationApi, teamApi } from '../api'
 import { clearAuth, updateUser, useAuth } from '../auth'
 import type { TeamItem } from '../types'
 import { can, displayName, isAdmin, isReviewer } from '../utils'
@@ -34,6 +35,7 @@ export default function AppLayout() {
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
   const [myTeams, setMyTeams] = useState<TeamItem[]>([])
+  const [unread, setUnread] = useState(0)
   const {
     token: { colorBgContainer },
   } = theme.useToken()
@@ -44,9 +46,29 @@ export default function AppLayout() {
     teamApi.mine().then(setMyTeams).catch(() => setMyTeams([]))
   }, [])
 
+  // 未读角标：30s 轮询 + 通知页已读后主动广播刷新
+  useEffect(() => {
+    let timer = 0
+    const loadUnread = () => {
+      notificationApi
+        .unreadCount()
+        .then((res) => setUnread(res.count))
+        .catch(() => undefined)
+    }
+    loadUnread()
+    timer = window.setInterval(loadUnread, 30000)
+    const onChange = () => loadUnread()
+    window.addEventListener('kh:notifications-changed', onChange)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('kh:notifications-changed', onChange)
+    }
+  }, [location.pathname])
+
   const topKey = useMemo(() => {
     if (
       location.pathname.startsWith('/documents') ||
+      location.pathname.startsWith('/favorites') ||
       location.pathname.startsWith('/admin/reviews')
     ) {
       return '/documents'
@@ -54,7 +76,12 @@ export default function AppLayout() {
     if (location.pathname.startsWith('/search')) return '/search'
     if (location.pathname.startsWith('/chat')) return '/chat'
     if (location.pathname.startsWith('/graph')) return '/graph'
-    if (location.pathname.startsWith('/profile')) return '/profile'
+    if (
+      location.pathname.startsWith('/profile') ||
+      location.pathname.startsWith('/notifications')
+    ) {
+      return '/profile'
+    }
     if (location.pathname.startsWith('/admin')) return '/admin'
     return '/dashboard'
   }, [location.pathname])
@@ -99,7 +126,8 @@ export default function AppLayout() {
       isAdmin(user) ||
       can(user, 'system:user') ||
       can(user, 'system:role') ||
-      can(user, 'system:team')
+      can(user, 'system:team') ||
+      can(user, 'document:category')
     if (canManageSystem) {
       items.push({
         key: '/admin/users',
@@ -114,6 +142,7 @@ export default function AppLayout() {
     if (topKey === '/documents') {
       const items: MenuItem[] = [
         { key: '/documents', icon: <ReadOutlined />, label: '全部文档' },
+        { key: '/favorites', icon: <StarOutlined />, label: '我的收藏' },
         {
           key: '/documents/new',
           icon: <FileTextOutlined />,
@@ -156,7 +185,10 @@ export default function AppLayout() {
     if (topKey === '/profile') {
       return {
         title: '个人中心',
-        items: [{ key: '/profile', icon: <UserOutlined />, label: '账号资料' }],
+        items: [
+          { key: '/profile', icon: <UserOutlined />, label: '账号资料' },
+          { key: '/notifications', icon: <BellOutlined />, label: '消息通知' },
+        ],
       }
     }
     if (topKey === '/admin') {
@@ -180,6 +212,20 @@ export default function AppLayout() {
           key: '/admin/teams',
           icon: <TeamOutlined />,
           label: '团队管理',
+        })
+      }
+      if (isAdmin(user) || can(user, 'document:category')) {
+        adminItems.push({
+          key: '/admin/categories',
+          icon: <ApartmentOutlined />,
+          label: '分类管理',
+        })
+      }
+      if (isAdmin(user)) {
+        adminItems.push({
+          key: '/admin/notifications',
+          icon: <BellOutlined />,
+          label: '发送通知',
         })
       }
       return {
@@ -210,14 +256,12 @@ export default function AppLayout() {
           onClick={({ key }) => navigate(key)}
         />
         <div className="kh-header-right">
-          {isReviewer(user) ? (
-            <Badge size="small" className="kh-bell">
-              <BellOutlined
-                style={{ fontSize: 18, cursor: 'pointer' }}
-                onClick={() => navigate('/admin/reviews')}
-              />
-            </Badge>
-          ) : null}
+          <Badge count={unread} size="small" className="kh-bell">
+            <BellOutlined
+              style={{ fontSize: 18, cursor: 'pointer' }}
+              onClick={() => navigate('/notifications')}
+            />
+          </Badge>
           <Dropdown
             menu={{
               items: [

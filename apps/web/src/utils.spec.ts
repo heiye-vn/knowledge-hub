@@ -3,6 +3,7 @@ import {
   can,
   canWriteDocument,
   escapeHtml,
+  flattenCategories,
   getVisibilityMeta,
   isAdmin,
   isReviewer,
@@ -72,5 +73,32 @@ describe('权限工具', () => {
       '&lt;img src=x onerror=&quot;alert(&#39;x&#39;)&quot;&gt;',
     )
     expect(escapeHtml('财务部 & 差旅')).toBe('财务部 &amp; 差旅')
+  })
+
+  it('分类树按层级打平，子分类带全角缩进', () => {
+    const flat = flattenCategories([
+      {
+        id: '1',
+        name: '制度规范',
+        parentId: '0',
+        sort: 1,
+        children: [
+          {
+            id: '2',
+            name: '财务制度',
+            parentId: '1',
+            sort: 1,
+            children: [],
+          },
+        ],
+      },
+      { id: '3', name: '技术文档', parentId: '0', sort: 2, children: [] },
+    ])
+    expect(flat.map((item) => item.id)).toEqual(['1', '2', '3'])
+    expect(flat.map((item) => item.label)).toEqual([
+      '制度规范',
+      '　财务制度',
+      '技术文档',
+    ])
   })
 })

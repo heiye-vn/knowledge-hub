@@ -51,6 +51,7 @@ export const ADMIN_OPERATION_PERMISSIONS = [
   'document:edit',
   'document:delete',
   'document:review',
+  'document:category',
   'system:user',
   'system:role',
   'system:permission',

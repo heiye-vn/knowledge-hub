@@ -87,6 +87,8 @@
 
 ## 已知局限与后续待办
 
+- 【易错】正文 NUL 过滤（2026-10-29 补齐）：解析产物的列表符有时会变成 `0x00`，PG UTF-8 文本直接拒收、整条落库事务失败。`stripNullBytes` 放在唯一写入源头（`rewriteImageUrls` 之后），下游正文、摘要、字数、v1 快照共用干净值；自研解析链路经 `cleanMarkdown` 内置过滤；在线 create / update 正文入口同样过滤。单测见 `parser/utils/markdown.util.spec.ts`。
+
 - 失败任务留下的已上传图片资源没有自动清理 Worker；当前靠重试复用，后续补按任务/文档的孤儿资源清理。被隐藏（dismissed）的失败任务资源同样等待清理。
 - 任务队列依赖 Redis；`REDIS_ENABLED=false` 或队列启动失败时上传返回 503（控制器检查 `queue.isReady()`），已排队任务需等队列恢复或进程重启后的补偿扫描。
 - 旧文档的公开图片 URL 仍保留；新导入资源才走加密鉴权链路。

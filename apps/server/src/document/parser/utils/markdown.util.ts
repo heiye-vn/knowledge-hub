@@ -1,7 +1,16 @@
+/**
+ * 去掉 NUL。PostgreSQL 的 UTF-8 文本不接受 0x00，
+ * 解析产物的列表符有时会变成这个字节，不滤掉会让落库整条事务失败。
+ */
+export function stripNullBytes(text: string): string {
+  if (!text || !text.includes('\u0000')) return text;
+  return text.split('\u0000').join('');
+}
+
 /** 规范化 Markdown：统一换行，压缩连续空行，去首尾空白 */
 export function cleanMarkdown(text: string): string {
   if (!text) return '';
-  return text
+  return stripNullBytes(text)
     .replace(/\r\n/g, '\n')
     .replace(/\n{4,}/g, '\n\n\n')
     .trim();

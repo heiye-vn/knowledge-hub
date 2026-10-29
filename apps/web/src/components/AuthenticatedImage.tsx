@@ -39,7 +39,7 @@ export function loadPrivateImage(
 type ImageProps = { src?: string; alt?: string; title?: string }
 
 /** Legacy local RustFS images are HTTP in development; other external images must be HTTPS. */
-function allowedExternalImage(src: string): boolean {
+export function allowedExternalImage(src: string): boolean {
   try {
     const url = new URL(src)
     if (url.username || url.password) return false

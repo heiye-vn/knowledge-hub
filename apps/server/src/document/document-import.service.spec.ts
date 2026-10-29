@@ -28,6 +28,8 @@ function createService(affected: number | undefined, row: unknown = null) {
     {} as never,
     {} as never,
     {} as never,
+    { recordInitial: vi.fn() } as never,
+    { normalize: async () => null } as never,
   );
   return { service, em, chain, update };
 }

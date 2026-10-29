@@ -1,4 +1,4 @@
-import type { AuthUser, TeamTreeNode } from './types'
+import type { AuthUser, CategoryNode, TeamTreeNode } from './types'
 
 export const DOC_STATUS: Record<number, { label: string; color: string }> = {
   0: { label: '草稿', color: 'default' },
@@ -81,6 +81,31 @@ export interface FlatTeamOption {
   id: string
   name: string
   depth: number
+}
+
+export interface FlatCategoryOption {
+  id: string
+  name: string
+  label: string
+}
+
+/** 分类树打平为下拉选项，子分类用全角空格缩进 */
+export function flattenCategories(
+  nodes: CategoryNode[],
+  depth = 0,
+): FlatCategoryOption[] {
+  const result: FlatCategoryOption[] = []
+  for (const node of nodes) {
+    result.push({
+      id: node.id,
+      name: node.name,
+      label: `${'　'.repeat(depth)}${node.name}`,
+    })
+    if (node.children?.length) {
+      result.push(...flattenCategories(node.children, depth + 1))
+    }
+  }
+  return result
 }
 
 /** 递归扁平化团队树为下拉选项列表（带全角空格缩进展示层级） */

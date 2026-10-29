@@ -44,6 +44,7 @@ export interface DocumentItem {
   fileUrl?: string | null
   fileName?: string | null
   categoryId?: string | null
+  categoryName?: string | null
   teamId?: string | null
   authorId?: string | null
   tags?: string | null
@@ -51,6 +52,10 @@ export interface DocumentItem {
   isPublic: boolean
   viewCount?: number
   likeCount?: number
+  commentCount?: number
+  favouriteCount?: number
+  liked?: boolean
+  favorited?: boolean
   wordCount?: number
   publishTime?: string | null
   createdAt?: string
@@ -245,6 +250,76 @@ export interface UserStats {
   viewCount: number
   likeCount: number
   commentCount: number
+}
+
+export interface CategoryNode {
+  id: string
+  name: string
+  parentId: string
+  sort: number
+  description?: string | null
+  children?: CategoryNode[]
+}
+
+export interface CommentItem {
+  id: string
+  documentId: string
+  userId: string
+  userName: string
+  content: string
+  parentId?: string | null
+  createdAt: string
+}
+
+export interface ShareLink {
+  id: string
+  documentId: string
+  code: string
+  needPassword: boolean
+  expireAt?: string | null
+  createdAt: string
+  expired: boolean
+}
+
+export interface SharePreview {
+  code: string
+  title: string | null
+  needPassword: boolean
+  expireAt?: string | null
+}
+
+export interface ShareDocument {
+  title: string
+  summary?: string | null
+  content: string
+  expireAt?: string | null
+}
+
+export interface DocumentVersionSummary {
+  id: string
+  documentId: string
+  version: number
+  title: string
+  summary?: string | null
+  createBy?: string | null
+  createdAt: string
+}
+
+export interface DocumentVersionDetail extends DocumentVersionSummary {
+  content: string
+}
+
+export interface NotificationItem {
+  id: string
+  userId: string
+  type: 'like' | 'comment' | 'system' | string
+  title: string
+  content?: string | null
+  documentId?: string | null
+  senderId?: string | null
+  senderName?: string | null
+  isRead: boolean
+  createdAt: string
 }
 
 export interface PermissionNode {

@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 /** 文档列表查询 */
 export class QueryDocumentDto {
@@ -22,6 +22,12 @@ export class QueryDocumentDto {
   @IsOptional()
   @IsString()
   authorId?: string;
+
+  /** 只看当前登录用户自己的文档（含草稿） */
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  mine?: boolean;
 
   /** 状态 */
   @IsOptional()

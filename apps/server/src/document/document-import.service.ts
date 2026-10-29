@@ -22,8 +22,14 @@ import {
 } from '../storage/resource-crypto.js';
 import { DocumentImportEntity } from './entities/document-import.entity.js';
 import { DocumentResourceEntity } from './entities/document-resource.entity.js';
+import {
+  SOURCE_RESOURCE_PATH as SOURCE_PATH,
+  readDocumentResource,
+} from './document-resource.reader.js';
 import { DocumentEntity } from './entities/document.entity.js';
 import { DocumentContentEntity } from './entities/document-content.entity.js';
+import { DocumentVersionService } from './document-version.service.js';
+import { CategoryService } from './category.service.js';
 import { DocumentStatus } from './document-status.js';
 import { nextSnowflakeId } from '../common/snowflake-id.js';
 import type { UploadParseDto } from './dto/upload-parse.dto.js';
@@ -33,11 +39,11 @@ import { accessFromUser, canReadDocument } from './document-access.js';
 import {
   decodeUploadFilename,
   getExtension,
+  stripNullBytes,
   titleFromFilename,
 } from './parser/utils/markdown.util.js';
 
 export const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
-const SOURCE_PATH = '$source';
 
 export interface ImportTaskView {
   id: string;
@@ -60,6 +66,8 @@ export class DocumentImportService {
     private readonly parser: FileParserService,
     private readonly storage: StorageService,
     private readonly config: ConfigService,
+    private readonly versions: DocumentVersionService,
+    private readonly categories: CategoryService,
   ) {}
 
   async submit(
@@ -114,9 +122,11 @@ export class DocumentImportService {
       if (id !== undefined && !/^\d{1,19}$/.test(id))
         throw new BadRequestException('标识必须为数字字符串');
     }
+    // 导入链路绕过 DocumentService.create，分类合法性要在这里单独校验
+    const categoryId = await this.categories.normalize(meta.categoryId);
     const requestId = meta.requestId ?? randomUUID();
     const metadata = {
-      categoryId: meta.categoryId,
+      categoryId: categoryId ?? undefined,
       teamId: meta.teamId,
       authorId: meta.authorId,
       createBy: meta.createBy,
@@ -418,7 +428,11 @@ export class DocumentImportService {
             `/documents/${task.documentId}/assets/${resource.id}`,
           );
         }
-        const markdown = rewriteImageUrls(parsed.markdown, urls);
+        // NUL 会 PG 整条落库事务失败；在唯一的写入源头上过滤一次，
+        // 下游正文、摘要、字数、v1 快照全部干净
+        const markdown = stripNullBytes(
+          rewriteImageUrls(parsed.markdown, urls),
+        );
         await this.updateStage(id, 'saving');
         await this.em.transaction(async (tx) => {
           const current = await tx.findOne(DocumentImportEntity, {
@@ -465,6 +479,18 @@ export class DocumentImportService {
               version: 1,
               deleted: false,
             }),
+          );
+          // 导入完成即 v1 快照，与文档、正文同事务落库
+          await this.versions.recordInitial(
+            {
+              documentId: task.documentId,
+              version: 1,
+              title,
+              content: markdown,
+              summary: null,
+              userId: metadata.createBy ?? task.ownerId,
+            },
+            tx,
           );
           await tx.update(
             DocumentResourceEntity,
@@ -521,24 +547,15 @@ export class DocumentImportService {
     });
     if (!doc || !canReadDocument(doc, accessFromUser(actor)))
       throw new NotFoundException('文档资源不存在');
-    const resource = await this.em.findOneBy(
-      DocumentResourceEntity,
-      assetId
-        ? { id: assetId, documentId, ready: true }
-        : { documentId, path: SOURCE_PATH, ready: true },
-    );
-    if (!resource || (assetId && resource.path === SOURCE_PATH))
-      throw new NotFoundException('文档资源不存在');
-    const bytes = decryptResource(
-      await this.storage.readBytes(
-        resource.objectKey,
-        Math.min(MAX_IMPORT_BYTES, resource.byteLength) + 128,
-        resource.driver,
-      ),
-      resource.encryptionKey,
+    const resource = await readDocumentResource(
+      this.em,
+      this.storage,
+      documentId,
+      assetId,
+      MAX_IMPORT_BYTES,
     );
     return {
-      bytes,
+      bytes: resource.bytes,
       contentType: resource.contentType,
       fileName: assetId
         ? resource.path.split('/').pop()!

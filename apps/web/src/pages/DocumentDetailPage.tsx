@@ -11,6 +11,7 @@ import {
   message,
 } from 'antd'
 import { DocumentMarkdown } from '../components/DocumentMarkdown'
+import DocumentEngagement from '../components/DocumentEngagement'
 import { SourceFileAction } from '../components/SourceFileAction'
 import { documentApi } from '../api'
 import { ApiError } from '../api/client'
@@ -85,6 +86,9 @@ export default function DocumentDetailPage() {
         <SourceFileAction fileUrl={doc.fileUrl} fileName={doc.fileName ?? doc.title} />
         {writable ? (
           <Button onClick={() => navigate(`/documents/${id}/edit`)}>编辑</Button>
+        ) : null}
+        {writable ? (
+          <Button onClick={() => navigate(`/documents/${id}/versions`)}>版本</Button>
         ) : null}
         {writable && (doc.status === 0 || doc.status === 2) ? (
           <Button
@@ -163,6 +167,7 @@ export default function DocumentDetailPage() {
         <div className="kh-doc-meta">
           <Tag color={status?.color}>{status?.label}</Tag>
           <Tag color={vis.color}>{vis.label}</Tag>
+          {doc.categoryName ? <Tag>{doc.categoryName}</Tag> : null}
           <span>更新于 {formatTime(doc.updatedAt)}</span>
           {doc.wordCount ? <span>约 {doc.wordCount} 字</span> : null}
         </div>
@@ -185,6 +190,7 @@ export default function DocumentDetailPage() {
       </div>
 
       <DocumentMarkdown content={doc.content || '（暂无正文）'} />
+      <DocumentEngagement doc={doc} onChange={setDoc} />
     </div>
   )
 }

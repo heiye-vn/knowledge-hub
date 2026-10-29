@@ -224,4 +224,15 @@ describe('fetchWithAuthRefresh', () => {
       status: 403, message: '无权访问资源',
     })
   })
+
+  it('only accepts signed share asset urls', async () => {
+    const client = await import('./client')
+    const sig = 'a'.repeat(64)
+    expect(
+      client.shareAssetUrl(`/shares/abc_123/assets/900?exp=1700000000&sig=${sig}`),
+    ).toBe(`/api/shares/abc_123/assets/900?exp=1700000000&sig=${sig}`)
+    expect(client.shareAssetUrl('/shares/abc_123/assets/900')).toBeNull()
+    expect(client.shareAssetUrl('/documents/1/assets/900')).toBeNull()
+    expect(client.shareAssetUrl(`/shares/abc/assets/900?exp=1&sig=${'g'.repeat(64)}`)).toBeNull()
+  })
 })

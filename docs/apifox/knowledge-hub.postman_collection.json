@@ -68,6 +68,38 @@
     {
       "key": "assetId",
       "value": ""
+    },
+    {
+      "key": "categoryId",
+      "value": ""
+    },
+    {
+      "key": "commentId",
+      "value": ""
+    },
+    {
+      "key": "versionId",
+      "value": ""
+    },
+    {
+      "key": "shareId",
+      "value": ""
+    },
+    {
+      "key": "shareCode",
+      "value": ""
+    },
+    {
+      "key": "notificationId",
+      "value": ""
+    },
+    {
+      "key": "shareExp",
+      "value": ""
+    },
+    {
+      "key": "shareSig",
+      "value": ""
     }
   ],
   "item": [
@@ -3095,6 +3127,594 @@
               ]
             },
             "description": "立即执行一轮可见性校正（以写代检，幂等），返回 { scanned, synced, failed }。\n定时任务关闭（VISIBILITY_PATROL_ENABLED=false）时作为兜底入口。仅管理员可访问。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "分类管理（feat-v21）",
+      "item": [
+        {
+          "name": "分类树",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/tree",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "tree"
+              ]
+            },
+            "description": "所有能看文档列表的用户都可调用（document:list）；返回按 sort 排序的树。分类下拉、列表筛选、文档表单共用。"
+          }
+        },
+        {
+          "name": "新建分类",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"制度规范\",\n  \"parentId\": \"0\",\n  \"sort\": 1,\n  \"description\": \"公司制度与流程\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "需 document:category（管理员短路）。parentId 不传或 0 为根；name 最长 100。"
+          }
+        },
+        {
+          "name": "编辑分类",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"制度规范（修订）\",\n  \"sort\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "只传需要修改的字段。不能把分类挂到自身或自己的子孙下（服务端环检测）。"
+          }
+        },
+        {
+          "name": "删除分类",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
+              ]
+            },
+            "description": "软删除。仍有子分类或未删除文档引用时返回 400，需先迁移文档。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "文档互动（feat-v21）",
+      "item": [
+        {
+          "name": "点赞 / 取消点赞",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/likes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "likes"
+              ]
+            },
+            "description": "切换语义：已点赞再次调用即取消。计数与互动行同事务 + 文档行锁，避免并发丢更新。需要可读该文档（document:list）。"
+          }
+        },
+        {
+          "name": "收藏 / 取消收藏",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/favorites",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "favorites"
+              ]
+            },
+            "description": "切换语义。不产生通知；收藏列表只展示仍有权查看的文档。"
+          }
+        },
+        {
+          "name": "评论列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/comments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "comments"
+              ]
+            },
+            "description": "按创建时间正序返回未删除评论；前端按 parentId 组装一层回复。"
+          }
+        },
+        {
+          "name": "发表评论 / 回复",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/comments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "comments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"写得不错\",\n  \"parentId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "content 最长 2000；parentId 只能指向顶层评论（回复的回复返回 400）。会通知文档作者；回复还会通知被回复者。"
+          }
+        },
+        {
+          "name": "删除评论",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/comments/{{commentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "comments",
+                "{{commentId}}"
+              ]
+            },
+            "description": "作者本人或管理员可删；删除顶层评论会连带删除其回复，并同步回退评论数。"
+          }
+        },
+        {
+          "name": "我的收藏",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/favorites?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "favorites"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "可见性条件下推到 SQL 后分页，按收藏时间倒序；文档被删或失去权限会自动消失。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "版本管理（feat-v21）",
+      "item": [
+        {
+          "name": "版本列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "versions"
+              ]
+            },
+            "description": "仅作者/管理员（服务层写权限校验）。只返回元数据，不返回正文，避免长文档 × 多版本的响应膨胀。"
+          }
+        },
+        {
+          "name": "版本详情",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/versions/{{versionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "versions",
+                "{{versionId}}"
+              ]
+            },
+            "description": "返回选中版本完整正文，供预览。"
+          }
+        },
+        {
+          "name": "回滚到指定版本",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/versions/{{versionId}}/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "versions",
+                "{{versionId}}",
+                "restore"
+              ]
+            },
+            "description": "复用 PATCH 更新链路：把该版本标题/正文/摘要写成一条新版本，旧记录保留，并自动触发已发布文档的索引重建。审核中（status=3）会返回 400。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "文档分享（feat-v21）",
+      "item": [
+        {
+          "name": "创建分享链接",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/shares",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "shares"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"secret1\",\n  \"expireDays\": 7\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "仅作者/管理员，且文档必须已发布（否则 400）。password 至少 4 位，不传则免密；expireDays 1~365，不传长期有效。"
+          }
+        },
+        {
+          "name": "分享链接列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/shares",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "shares"
+              ]
+            },
+            "description": "仅作者/管理员。返回未关闭的链接，带 expired 标识（过期但未关闭仍可手动关闭）。"
+          }
+        },
+        {
+          "name": "关闭分享链接",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/shares/{{shareId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "shares",
+                "{{shareId}}"
+              ]
+            },
+            "description": "仅作者/管理员。关闭后再访问返回 404「分享链接不存在或已关闭」。"
+          }
+        },
+        {
+          "name": "公开预览（免登录）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/shares/{{shareCode}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "shares",
+                "{{shareCode}}"
+              ]
+            },
+            "description": "无需登录。带密码的链接只返回 needPassword / expireAt，title 为 null，避免验密前泄露文档主题。"
+          }
+        },
+        {
+          "name": "公开访问（免登录）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/shares/{{shareCode}}/access",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "shares",
+                "{{shareCode}}",
+                "access"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"secret1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "无需登录。带密码链接需传正确 password，否则 403；过期 400；已关闭/文档未发布 404。返回标题、摘要与正文。\n\n响应正文中的私有图片地址会重写为 /shares/:code/assets/:assetId?exp=...&sig=... 的短期签名 URL，前端直接用该地址加载即可；签名有效期默认 900 秒，关闭分享后资源接口立即失效。"
+          }
+        },
+        {
+          "name": "分享图片（免登录，签名 URL）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/shares/{{shareCode}}/assets/{{assetId}}?exp={{shareExp}}&sig={{shareSig}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "shares",
+                "{{shareCode}}",
+                "assets",
+                "{{assetId}}"
+              ],
+              "query": [
+                {
+                  "key": "exp",
+                  "value": "{{shareExp}}"
+                },
+                {
+                  "key": "sig",
+                  "value": "{{shareSig}}"
+                }
+              ]
+            },
+            "description": "无需登录。exp/sig 由 POST /shares/:code/access 返回的正文图片 URL 中直接复制，不要手工拼接。\n\n校验顺序：分享仍有效（未关闭/未过期/文档已发布）→ 签名未过期且 timing-safe 匹配 → 资源确属该文档；通过后解密返回图片字节。\n\n失败语义：过期 400「资源签名已过期」；签名不匹配 403「资源签名无效」；分享关闭/文档下架 404；资源不存在 404。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "通知（feat-v21）",
+      "item": [
+        {
+          "name": "通知列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "只返回当前登录用户的通知，按时间倒序。type: like / comment / system。"
+          }
+        },
+        {
+          "name": "未读数",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "unread-count"
+              ]
+            },
+            "description": "顶栏铃铛角标使用；前端 30s 轮询 + 已读后广播事件即时刷新。"
+          }
+        },
+        {
+          "name": "单条已读",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{notificationId}}/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "{{notificationId}}",
+                "read"
+              ]
+            },
+            "description": "只能操作自己的通知，否则 404。"
+          }
+        },
+        {
+          "name": "全部已读",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/read-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "read-all"
+              ]
+            },
+            "description": "只更新当前用户的未读记录。"
+          }
+        },
+        {
+          "name": "管理员广播",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/broadcast",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "broadcast"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"维护通知\",\n  \"content\": \"今晚 22:00 停机维护\",\n  \"userIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "需 ROLE_ADMIN。userIds 不传或空数组 = 发给所有启用用户；服务端按 500 条分批 INSERT。"
           }
         }
       ]

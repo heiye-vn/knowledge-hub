@@ -10,7 +10,7 @@ import {
   Tag,
   message,
 } from 'antd'
-import { documentApi } from '../api'
+import { categoryApi, documentApi } from '../api'
 import { ApiError } from '../api/client'
 import type { DocumentItem } from '../types'
 import { useAuth } from '../auth'
@@ -18,6 +18,7 @@ import {
   DOC_STATUS,
   can,
   canWriteDocument,
+  flattenCategories,
   formatTime,
   getVisibilityMeta,
 } from '../utils'
@@ -29,6 +30,8 @@ export default function DocumentsPage() {
   const navigate = useNavigate()
   const [title, setTitle] = useState('')
   const [status, setStatus] = useState<number | undefined>()
+  const [categoryId, setCategoryId] = useState<string>()
+  const [categories, setCategories] = useState<{ value: string; label: string }[]>([])
   const [mineOnly, setMineOnly] = useState(false)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -44,6 +47,7 @@ export default function DocumentsPage() {
         pageSize,
         title: title.trim() || undefined,
         status,
+        categoryId,
         authorId: mineOnly ? user?.userId : undefined,
       })
       setItems(res.items)
@@ -57,6 +61,17 @@ export default function DocumentsPage() {
   }
 
   useEffect(() => {
+    categoryApi
+      .tree()
+      .then((tree) =>
+        setCategories(
+          flattenCategories(tree).map((item) => ({
+            value: item.id,
+            label: item.label,
+          })),
+        ),
+      )
+      .catch(() => setCategories([]))
     void load(1)
   }, [])
 
@@ -73,6 +88,14 @@ export default function DocumentsPage() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onPressEnter={() => void load(1)}
+        />
+        <Select
+          allowClear
+          placeholder="分类"
+          style={{ width: 180 }}
+          value={categoryId}
+          onChange={setCategoryId}
+          options={categories}
         />
         <Select
           allowClear
@@ -129,6 +152,12 @@ export default function DocumentsPage() {
             dataIndex: 'title',
             width: 100,
             render: (docTitle: string) => fileTypeLabel(docTitle),
+          },
+          {
+            title: '分类',
+            dataIndex: 'categoryName',
+            width: 140,
+            render: (value?: string | null) => value || '-',
           },
           {
             title: '状态',

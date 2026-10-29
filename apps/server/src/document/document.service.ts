@@ -37,6 +37,9 @@ import {
   canReadDocument,
   canWriteDocument,
 } from './document-access.js';
+import { CategoryService } from './category.service.js';
+import { DocumentVersionService } from './document-version.service.js';
+import { stripNullBytes } from './parser/utils/markdown.util.js';
 
 
 /**
@@ -130,6 +133,10 @@ export class DocumentService implements OnModuleInit {
     private readonly graphBuildService: GraphBuildService,
     /** 索引失败补偿：写入 kh_index_outbox，由 Worker 退避重试 */
     private readonly indexOutbox: IndexOutboxService,
+    /** 分类树与分类名校验 */
+    private readonly categories: CategoryService,
+    /** 正文历史版本快照 */
+    private readonly versions: DocumentVersionService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -280,8 +287,11 @@ export class DocumentService implements OnModuleInit {
     }
 
     const id = nextSnowflakeId();
+    // PG 正文不接受 NUL；在入口过滤一次，字数、摘要、正文、v1 快照共用干净值
+    dto.content = stripNullBytes(dto.content);
     const wordCount = this.countWords(dto.content);
     const status = requestedStatus;
+    const categoryId = await this.categories.normalize(dto.categoryId);
     // 未传 summary 时，从正文截取预览作为 contentSummary
     const contentSummary = dto.summary ?? this.buildContentSummary(dto.content);
 
@@ -292,7 +302,7 @@ export class DocumentService implements OnModuleInit {
         id,
         title: dto.title,
         summary: dto.summary,
-        categoryId: dto.categoryId,
+        categoryId,
         teamId: dto.teamId,
         authorId: dto.authorId ?? actor?.userId ?? null,
         coverImage: dto.coverImage,
@@ -324,6 +334,19 @@ export class DocumentService implements OnModuleInit {
         deleted: false,
       });
       await tx.save(content);
+
+      // 与文档、正文同事务：v1 快照要么一起成功，要么一起回滚
+      await this.versions.recordInitial(
+        {
+          documentId: id,
+          version: 1,
+          title: dto.title,
+          content: dto.content,
+          summary: dto.summary ?? null,
+          userId: dto.createBy ?? actor?.userId ?? null,
+        },
+        tx,
+      );
 
       return savedDoc;
     });
@@ -383,7 +406,9 @@ export class DocumentService implements OnModuleInit {
     if (query.teamId) {
       qb.andWhere('doc.team_id = :teamId', { teamId: query.teamId });
     }
-    if (query.authorId) {
+    if (query.mine) {
+      qb.andWhere('doc.author_id = :authorId', { authorId: user?.userId ?? '' });
+    } else if (query.authorId) {
       qb.andWhere('doc.author_id = :authorId', { authorId: query.authorId });
     }
     if (query.status !== undefined) {
@@ -396,9 +421,17 @@ export class DocumentService implements OnModuleInit {
       .take(pageSize);
 
     const [items, total] = await qb.getManyAndCount();
+    const categoryNames = await this.categories.namesByIds(
+      items.map((item) => item.categoryId),
+    );
 
     return {
-      items,
+      items: items.map((item) => ({
+        ...item,
+        categoryName: item.categoryId
+          ? (categoryNames.get(item.categoryId) ?? null)
+          : null,
+      })),
       total,
       page,
       pageSize,
@@ -422,19 +455,28 @@ export class DocumentService implements OnModuleInit {
       throw new ForbiddenException('无权查看该文档');
     }
 
+    const categoryNames = await this.categories.namesByIds([doc.categoryId]);
+    const categoryName = doc.categoryId
+      ? (categoryNames.get(doc.categoryId) ?? null)
+      : null;
+
     if (!withContent) {
-      return doc;
+      return { ...doc, categoryName };
     }
 
     return {
       ...doc,
+      categoryName,
       content: await this.loadContent(id),
     };
   }
 
-  /** 按 documentId 读取未删除正文；内容行缺失时返回空串（沿用 Mongo 时代的容错语义） */
-  private async loadContent(documentId: string): Promise<string> {
-    const row = await this.em.findOne(DocumentContentEntity, {
+  /** 按 documentId 读取未删除正文；内容行缺失时返回空串（沿用历史容错语义） */
+  private async loadContent(
+    documentId: string,
+    manager: EntityManager = this.em,
+  ): Promise<string> {
+    const row = await manager.findOne(DocumentContentEntity, {
       where: { documentId, deleted: false },
     });
     return row?.content ?? '';
@@ -484,49 +526,90 @@ export class DocumentService implements OnModuleInit {
 
     this.assertAuditFieldsAllowed(dto, actor);
 
-    // —— 正文变更 ——
+    // PG 正文不接受 NUL；在入口过滤一次，正文行、快照、索引共用干净值
     if (dto.content !== undefined) {
-      newContent = dto.content;
-      const contentSummary =
-        dto.summary ?? this.buildContentSummary(dto.content);
-      const contentRow = await this.em.findOne(DocumentContentEntity, {
-        where: { documentId: id, deleted: false },
-      });
-      if (!contentRow) {
-        throw new BadRequestException(
-          `Document content ${id} not found`,
-        );
-      }
-      contentRow.content = dto.content;
-      contentRow.contentLength = dto.content.length;
-      contentRow.contentSummary = contentSummary;
-      contentRow.version += 1; // 版本号 +1
-      await this.em.save(contentRow);
-      doc.wordCount = this.countWords(dto.content);
-    } else if (dto.summary !== undefined) {
-      // 只改摘要时，同步内容表预览字段（update 不走生命周期钩子，手动带 updatedAt）
-      await this.em.update(
-        DocumentContentEntity,
-        { documentId: id },
-        { contentSummary: dto.summary, updatedAt: new Date() },
-      );
+      dto.content = stripNullBytes(dto.content);
     }
 
-    // —— 元数据字段（有传才覆盖）——
-    if (dto.title !== undefined) doc.title = dto.title;
-    if (dto.summary !== undefined) doc.summary = dto.summary;
-    if (dto.categoryId !== undefined) doc.categoryId = dto.categoryId;
-    if (dto.teamId !== undefined) doc.teamId = dto.teamId;
-    if (dto.authorId !== undefined) doc.authorId = dto.authorId;
-    if (dto.coverImage !== undefined) doc.coverImage = dto.coverImage;
-    if (dto.tags !== undefined) doc.tags = dto.tags;
-    if (dto.remark !== undefined) doc.remark = dto.remark;
-    if (dto.isPublic !== undefined) doc.isPublic = dto.isPublic;
-    if (dto.updateBy !== undefined) doc.updateBy = dto.updateBy;
-    else if (actor?.userId) doc.updateBy = actor.userId;
+    // 分类合法性只读校验放事务外，避免长事务持有分类表锁
+    const nextCategoryId =
+      dto.categoryId !== undefined
+        ? await this.categories.normalize(dto.categoryId)
+        : undefined;
 
-    const saved = await this.em.save(doc);
-    const finalContent = newContent ?? (await this.loadContent(id));
+    const { saved, finalContent } = await this.em.transaction(async (tx) => {
+      // —— 正文变更 ——
+      if (dto.content !== undefined) {
+        newContent = dto.content;
+        const contentSummary =
+          dto.summary ?? this.buildContentSummary(dto.content);
+        const contentRow = await tx.findOne(DocumentContentEntity, {
+          where: { documentId: id, deleted: false },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!contentRow) {
+          throw new BadRequestException(`Document content ${id} not found`);
+        }
+        const previousVersion = contentRow.version > 0 ? contentRow.version : 1;
+        const nextVersion = previousVersion + 1;
+        const previousContent = contentRow.content ?? '';
+        contentRow.content = dto.content;
+        contentRow.contentLength = dto.content.length;
+        contentRow.contentSummary = contentSummary;
+        contentRow.version = nextVersion;
+        await tx.save(contentRow);
+        doc.wordCount = this.countWords(dto.content);
+
+        // 正文与历史快照同事务：要么都写成功，要么一起回滚
+        await this.versions.recordContentChange(
+          {
+            previous: {
+              documentId: id,
+              version: previousVersion,
+              title: doc.title,
+              content: previousContent,
+              summary: doc.summary ?? null,
+              userId: actor?.userId ?? null,
+            },
+            next: {
+              documentId: id,
+              version: nextVersion,
+              title: dto.title ?? doc.title,
+              content: dto.content,
+              summary: dto.summary ?? doc.summary ?? null,
+              userId: actor?.userId ?? null,
+            },
+          },
+          tx,
+        );
+      } else if (dto.summary !== undefined) {
+        // 只改摘要时，同步内容表预览字段（update 不走生命周期钩子，手动带 updatedAt）
+        await tx.update(
+          DocumentContentEntity,
+          { documentId: id },
+          { contentSummary: dto.summary, updatedAt: new Date() },
+        );
+      }
+
+      // —— 元数据字段（有传才覆盖）——
+      if (dto.title !== undefined) doc.title = dto.title;
+      if (dto.summary !== undefined) doc.summary = dto.summary;
+      if (dto.categoryId !== undefined) doc.categoryId = nextCategoryId ?? null;
+      if (dto.teamId !== undefined) doc.teamId = dto.teamId;
+      if (dto.authorId !== undefined) doc.authorId = dto.authorId;
+      if (dto.coverImage !== undefined) doc.coverImage = dto.coverImage;
+      if (dto.tags !== undefined) doc.tags = dto.tags;
+      if (dto.remark !== undefined) doc.remark = dto.remark;
+      if (dto.isPublic !== undefined) doc.isPublic = dto.isPublic;
+      if (dto.updateBy !== undefined) doc.updateBy = dto.updateBy;
+      else if (actor?.userId) doc.updateBy = actor.userId;
+
+      const savedDoc = await tx.save(doc);
+      return {
+        saved: savedDoc,
+        finalContent: newContent ?? (await this.loadContent(id, tx)),
+      };
+    });
 
     const visibilityChanged =
       saved.isPublic !== oldIsPublic ||

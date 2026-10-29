@@ -125,6 +125,15 @@ export function documentResourcePath(value: string, kind: 'asset' | 'source'): s
   return pattern.test(path) ? path : null
 }
 
+const SHARE_ASSET_PATTERN =
+  /^\/shares\/[A-Za-z0-9_-]{1,64}\/assets\/\d+\?exp=\d+&sig=[a-f0-9]{64}$/
+
+/** 分享正文里的图片地址只接受后端签发的签名 URL，并补上 API 前缀 */
+export function shareAssetUrl(value?: string | null): string | null {
+  if (!value || !SHARE_ASSET_PATTERN.test(value)) return null
+  return `${API_BASE}${value}`
+}
+
 /** Binary endpoints bypass the JSON envelope, but share authentication and refresh. */
 export async function requestBlob(value: string, init: RequestInit = {}): Promise<Blob> {
   const path = documentResourcePath(value, 'asset') ?? documentResourcePath(value, 'source')

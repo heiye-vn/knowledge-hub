@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import Markdown, { type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -5,6 +6,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeKatex from "rehype-katex";
 import { AuthenticatedImage } from "./AuthenticatedImage";
+import { ShareImage } from "./ShareImage";
 import "katex/dist/katex.min.css";
 
 const mathClasses: [string, ...string[]] = [
@@ -68,10 +70,29 @@ export const safeMarkdownComponents: Components = {
   ),
 };
 
-export function DocumentMarkdown({ content }: { content: string }) {
+export function DocumentMarkdown({
+  content,
+  assetMode = "private",
+}: {
+  content: string;
+  /** private：登录态 + 文档 ACL；share：公开分享页的签名直链 */
+  assetMode?: "private" | "share";
+}) {
+  const components = useMemo<Components>(
+    () =>
+      assetMode === "share"
+        ? {
+            ...safeMarkdownComponents,
+            img: ({ src, alt, title }) => (
+              <ShareImage src={src} alt={alt} title={title} />
+            ),
+          }
+        : safeMarkdownComponents,
+    [assetMode],
+  );
   return (
     <div className="kh-doc-body kh-safe-markdown">
-      <Markdown {...safeMarkdownPlugins} components={safeMarkdownComponents}>
+      <Markdown {...safeMarkdownPlugins} components={components}>
         {content}
       </Markdown>
     </div>

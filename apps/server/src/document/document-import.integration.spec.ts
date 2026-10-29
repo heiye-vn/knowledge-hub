@@ -4,6 +4,8 @@ import { DataSource, type DataSourceOptions } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 import { buildTypeOrmOptions } from '../database/typeorm.options.js';
 import { DocumentImportService } from './document-import.service.js';
+import { DocumentVersionService } from './document-version.service.js';
+import { CategoryService } from './category.service.js';
 import { DocumentImportEntity } from './entities/document-import.entity.js';
 import { DocumentResourceEntity } from './entities/document-resource.entity.js';
 import { DocumentEntity } from './entities/document.entity.js';
@@ -74,7 +76,7 @@ describe.skipIf(!enabled)('Document imports with PostgreSQL transactions', () =>
   beforeEach(async () => {
     await ds.query('TRUNCATE kh_document_resource, kh_document_import, kh_document_content, kh_document CASCADE');
     objects.clear(); parseCount = 0; parseFailure = false;
-    service = new DocumentImportService(ds.manager, parser as never, storage as never, new ConfigService({ REDIS_ENABLED: 'true' }));
+    service = new DocumentImportService(ds.manager, parser as never, storage as never, new ConfigService({ REDIS_ENABLED: 'true' }), new DocumentVersionService(ds.manager), new CategoryService(ds.manager));
   });
   it('persists encrypted source, completes one private draft and never exposes checkpoint or keys', async () => {
     const submitted = await service.submit(file, { requestId: randomUUID() }, actor);

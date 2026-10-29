@@ -15,6 +15,12 @@ import UsersPage from './pages/admin/UsersPage'
 import RolesPage from './pages/admin/RolesPage'
 import TeamsPage from './pages/admin/TeamsPage'
 import ReviewsPage from './pages/admin/ReviewsPage'
+import CategoriesPage from './pages/admin/CategoriesPage'
+import BroadcastPage from './pages/admin/BroadcastPage'
+import FavoritesPage from './pages/FavoritesPage'
+import DocumentVersionsPage from './pages/DocumentVersionsPage'
+import NotificationsPage from './pages/NotificationsPage'
+import SharePage from './pages/SharePage'
 import { can, isAdmin, isReviewer } from './utils'
 
 function Guard({ children }: { children: ReactNode }) {
@@ -37,6 +43,8 @@ export default function App() {
         path="/login"
         element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />}
       />
+      {/* 分享链接免登录访问 */}
+      <Route path="/share/:code" element={<SharePage />} />
       <Route
         path="/"
         element={
@@ -56,10 +64,26 @@ export default function App() {
           }
         />
         <Route
+          path="favorites"
+          element={
+            <Perm code="document:list">
+              <FavoritesPage />
+            </Perm>
+          }
+        />
+        <Route
           path="documents/new"
           element={
             <Perm code="document:create">
               <DocumentEditPage />
+            </Perm>
+          }
+        />
+        <Route
+          path="documents/:id/versions"
+          element={
+            <Perm code="document:edit">
+              <DocumentVersionsPage />
             </Perm>
           }
         />
@@ -103,6 +127,7 @@ export default function App() {
             </Perm>
           }
         />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route
           path="profile"
           element={
@@ -136,6 +161,26 @@ export default function App() {
           element={
             isAdmin(user) || can(user, 'system:team') ? (
               <TeamsPage />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          }
+        />
+        <Route
+          path="admin/categories"
+          element={
+            isAdmin(user) || can(user, 'document:category') ? (
+              <CategoriesPage />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          }
+        />
+        <Route
+          path="admin/notifications"
+          element={
+            isAdmin(user) ? (
+              <BroadcastPage />
             ) : (
               <Navigate to="/dashboard" replace />
             )

@@ -310,17 +310,39 @@ export class UserService {
     return this.toUserVO(await this.findByIdOrThrow(userId));
   }
 
-  /** 用户文档统计（我的贡献计数） */
-  async getUserStatistics(userId: string): Promise<{ documentCount: number }> {
+  /** 用户文档统计（我的贡献计数：文档数 + 浏览 / 点赞 / 评论合计） */
+  async getUserStatistics(userId: string): Promise<{
+    documentCount: number;
+    viewCount: number;
+    likeCount: number;
+    commentCount: number;
+  }> {
     const documentCount = await this.documentRepo.count({
       where: { createBy: userId },
     });
-    return { documentCount };
+    const raw = await this.documentRepo
+      .createQueryBuilder('d')
+      .select('COALESCE(SUM(d.view_count), 0)', 'viewCount')
+      .addSelect('COALESCE(SUM(d.like_count), 0)', 'likeCount')
+      .addSelect('COALESCE(SUM(d.comment_count), 0)', 'commentCount')
+      .where('d.author_id = :userId', { userId })
+      .andWhere('d.deleted = false')
+      .getRawOne<{
+        viewCount: string;
+        likeCount: string;
+        commentCount: string;
+      }>();
+    return {
+      documentCount,
+      viewCount: Number(raw?.viewCount ?? 0),
+      likeCount: Number(raw?.likeCount ?? 0),
+      commentCount: Number(raw?.commentCount ?? 0),
+    };
   }
 
   /** 管理员分页查询用户（关键字模糊匹配用户名/姓名/邮箱，status 精确过滤） */
   async pageUsers(query: QueryUserDto): Promise<{
-    list: UserVO[];
+    items: UserVO[];
     total: number;
     page: number;
     pageSize: number;
@@ -343,8 +365,8 @@ export class UserService {
     }
 
     const [users, total] = await qb.getManyAndCount();
-    const list = await Promise.all(users.map((u) => this.toUserVO(u)));
-    return { list, total, page: query.page, pageSize: query.pageSize };
+    const items = await Promise.all(users.map((u) => this.toUserVO(u)));
+    return { items, total, page: query.page, pageSize: query.pageSize };
   }
 
   /** 管理员新建用户（初始密码必填，可指定角色；默认绑 ROLE_USER） */

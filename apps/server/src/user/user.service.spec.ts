@@ -75,3 +75,38 @@ describe('UserService.purgeInactiveAccounts', () => {
     expect((await service.purgeInactiveAccounts()).olderThanDays).toBe(7);
   });
 });
+
+describe('UserService.getUserStatistics', () => {
+  it('返回文档数与浏览/点赞/评论合计', async () => {
+    const qb = {
+      select: vi.fn(() => qb),
+      addSelect: vi.fn(() => qb),
+      where: vi.fn(() => qb),
+      andWhere: vi.fn(() => qb),
+      getRawOne: vi.fn(async () => ({
+        viewCount: '10',
+        likeCount: '4',
+        commentCount: '2',
+      })),
+    };
+    const documentRepo = {
+      count: vi.fn(async () => 3),
+      createQueryBuilder: vi.fn(() => qb),
+    };
+    const service = new UserService(
+      {} as never,
+      {} as never,
+      {} as never,
+      documentRepo as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.getUserStatistics('100')).resolves.toEqual({
+      documentCount: 3,
+      viewCount: 10,
+      likeCount: 4,
+      commentCount: 2,
+    });
+  });
+});

@@ -23,6 +23,7 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator.js';
 import { RoleCode } from '../common/constants/roles.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
+import { DocumentSocialService } from './document-social.service.js';
 
 /**
  * 文档接口
@@ -38,6 +39,7 @@ export class DocumentController {
   constructor(
     private readonly documentService: DocumentService,
     private readonly reviewService: DocumentReviewService,
+    private readonly social: DocumentSocialService,
   ) {}
 
   /** 创建文档 */
@@ -101,11 +103,13 @@ export class DocumentController {
     return this.documentService.findAll(query, user);
   }
 
-  /** 查询文档详情（含正文，校验读取权限） */
+  /** 查询文档详情（含正文，校验读取权限；附带当前用户的点赞 / 收藏状态） */
   @Get(':id')
   @RequirePermission('document:list')
-  findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.documentService.findOne(id, true, user);
+  async findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    const doc = await this.documentService.findOne(id, true, user);
+    const flags = await this.social.flags(id, user.userId);
+    return { ...doc, ...flags };
   }
 
   /** 更新文档（待审核中不可改正文/标题；不允许改状态，状态走专用接口） */

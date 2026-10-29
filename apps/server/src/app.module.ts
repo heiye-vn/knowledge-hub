@@ -18,6 +18,7 @@ import { AiModule } from './ai/ai.module.js';
 import { HealthModule } from './health/health.module.js';
 import { buildTypeOrmOptions } from './database/typeorm.options.js';
 import { IndexMaintenanceModule } from './indexing/index-maintenance.module.js';
+import { NotificationModule } from './notification/notification.module.js';
 
 @Module({
   imports: [
@@ -45,6 +46,8 @@ import { IndexMaintenanceModule } from './indexing/index-maintenance.module.js';
     IndexMaintenanceModule,
     // 存活 / 就绪探针（真实探测 PG、Redis、ES、Neo4j）
     HealthModule,
+    // feat-v21：站内通知（互动通知 + 管理员广播）
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [

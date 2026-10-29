@@ -7,6 +7,16 @@ import type { DocumentEntity, DocumentStatus } from './entities/document.entity.
 import type { SearchIndexService } from '../search/search-index.service.js';
 import { DocumentStatus as Status } from './document-status.js';
 
+const categoryStub = {
+  normalize: async (id?: string | null) => id?.trim() || null,
+  namesByIds: async () => new Map<string, string>(),
+};
+
+const versionStub = {
+  recordInitial: async () => undefined,
+  recordContentChange: async () => undefined,
+};
+
 /**
  * 文档状态流转与索引联动的单元测试（不依赖 PG / ES，纯 fake）
  *
@@ -125,6 +135,8 @@ function makeService(
     reviewService as unknown as DocumentReviewService,
     graphBuildService as never,
     outbox as never,
+    categoryStub as never,
+    versionStub as never,
   );
 
   return {
@@ -401,6 +413,8 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
       reviewService as unknown as DocumentReviewService,
       {} as never,
       {} as never,
+      categoryStub as never,
+      versionStub as never,
     );
 
     return service;
@@ -437,6 +451,7 @@ describe('DocumentService 文件元数据持久化', () => {
     const service = new DocumentService(
       { transaction: async (callback: (manager: typeof tx) => Promise<unknown>) => callback(tx) } as never,
       {} as never, {} as never, {} as never, { isRequireApproval: () => false } as never, {} as never, {} as never,
+      categoryStub as never, versionStub as never,
     );
     await service.create({ title: '架构图', content: '# 架构图' }, { fileUrl: '/documents/100/source', objectKey: 'document-imports/100/source.bin', fileName: 'arch.png', fileSize: '1024', fileExtension: 'png' });
     expect(saved[0]).toMatchObject({ title: '架构图', fileExtension: 'png', fileUrl: '/documents/100/source', status: 0 });
@@ -452,7 +467,7 @@ describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
   it('findOne: 本人无论是否发布均可读取', async () => {
     const doc = { id: '1001', authorId: 'u1', status: Status.Draft, isPublic: false } as unknown as DocumentEntity;
     const { service } = makeService(doc);
-    await expect(service.findOne('1001', false, authorUser)).resolves.toEqual(doc);
+    await expect(service.findOne('1001', false, authorUser)).resolves.toEqual({ ...doc, categoryName: null });
   });
 
   it('findOne: 未发布文档非作者访问抛 Forbidden', async () => {
@@ -464,13 +479,13 @@ describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
   it('findOne: 已发布公开文档任何用户可读', async () => {
     const doc = { id: '1001', authorId: 'u1', status: Status.Published, isPublic: true } as unknown as DocumentEntity;
     const { service } = makeService(doc);
-    await expect(service.findOne('1001', false, otherUser)).resolves.toEqual(doc);
+    await expect(service.findOne('1001', false, otherUser)).resolves.toEqual({ ...doc, categoryName: null });
   });
 
   it('findOne: 已发布团队文档同团队用户可读，不同团队抛 Forbidden', async () => {
     const doc = { id: '1001', authorId: 'u1', teamId: 't1', status: Status.Published, isPublic: false } as unknown as DocumentEntity;
     const { service } = makeService(doc);
-    await expect(service.findOne('1001', false, { ...otherUser, teamIds: ['t1'] })).resolves.toEqual(doc);
+    await expect(service.findOne('1001', false, { ...otherUser, teamIds: ['t1'] })).resolves.toEqual({ ...doc, categoryName: null });
     await expect(service.findOne('1001', false, otherUser)).rejects.toThrow(ForbiddenException);
   });
 
@@ -527,6 +542,8 @@ describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
       { isRequireApproval: () => false } as never,
       {} as never,
       {} as never,
+      categoryStub as never,
+      versionStub as never,
     );
 
     await service.update('1001', { isPublic: true }, authorUser);
@@ -569,6 +586,8 @@ describe('DocumentService.safeBackfillVisibility 存量可见性回填', () => {
       { isRequireApproval: () => false } as never,
       mockKg as never,
       {} as never,
+      categoryStub as never,
+      versionStub as never,
     );
 
     const result = await service.safeBackfillVisibility();
@@ -606,6 +625,8 @@ describe('DocumentService.safeBackfillVisibility 存量可见性回填', () => {
       { isRequireApproval: () => false } as never,
       mockKg as never,
       {} as never,
+      categoryStub as never,
+      versionStub as never,
     );
 
     const result = await service.safeBackfillVisibility();
