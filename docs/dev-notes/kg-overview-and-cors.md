@@ -3,7 +3,7 @@
 > **模块范围**：
 > - 服务端 CORS 跨域安全配置：`apps/server/src/main.ts`
 > - 全景图谱数据检索与力导向图契约：`apps/server/src/kg/graph-build.service.ts`、`kg.controller.ts`、`dto/graph-query.dto.ts`、`types/kg.types.ts`
-> - 接口测试集合与差异登记：`docs/apifox/knowledge-hub.postman_collection.json`、`docs/reference-mapping.md`
+> - 接口测试集合：`docs/apifox/knowledge-hub.postman_collection.json`
 
 ---
 
@@ -15,9 +15,9 @@
 
 ---
 
-## 二、 关键决策与相对基线实现的改进
+## 二、 关键架构决策与技术选型
 
-| 关注点 | 基线实现做法 | 本项目做法 | 技术理由 |
+| 关注点 | 传统/简化做法 | 本项目做法 | 技术理由 |
 | :--- | :--- | :--- | :--- |
 | **CORS 跨域源** | `origin: true` 反射任意请求源 | 环境变量 `CORS_ORIGINS` 白名单配置（默认 `http://localhost:5173`） | 【缺陷层】`origin: true` 在带 `credentials: true` 时允许任意恶意网站跨域读取接口，存在严重安全隐患 |
 | **图谱路由前缀** | `GET /graph/overview` | `GET /kg/overview` | 保持知识图谱域统一收敛在 `/kg/*` 路由命名空间下 |

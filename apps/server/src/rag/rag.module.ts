@@ -11,18 +11,15 @@ import { SearchController } from './search.controller.js';
 import { VectorIndexService } from './vector-index.service.js';
 
 /**
- * RAG 模块
+ * RAG 检索增强生成模块
  *
- * 命名刻意与基线实现 保持一致
- * （Chunking / Embedding / VectorIndex / Orchestrator），便于两个项目 grep 对照。
- *
- * 组成：
- * - ElasticsearchService：客户端 + `kh_chunk` 索引（IK + dense_vector）幂等初始化
- * - ChunkingService：Markdown 感知分块
- * - EmbeddingService：百炼 qwen3.7-text-embedding-flash，1024 维（延迟初始化，缺 Key 不阻断启动）
- * - VectorIndexService：ES 写入 / 按文档删除
- * - RagOrchestrator：分块 → 嵌入 → 索引 的编排
- * - RetrievalService：kNN + BM25 + RRF 混合检索 + reranker 精排（基线实现缺失，本项目补齐）
+ * 核心架构组件：
+ * - ElasticsearchService：ES 客户端与 `kh_chunk` 索引（IK + dense_vector）初始化与连接管理
+ * - ChunkingService：Markdown 结构感知分块
+ * - EmbeddingService：文本向量化服务（延迟初始化，缺 Key 不阻断系统启动）
+ * - VectorIndexService：ES 向量索引写入与按文档级联删除
+ * - RagOrchestrator：分块 → 向量化 → 索引构建 全流程编排
+ * - RetrievalService：kNN 向量 + BM25 关键词 + RRF 融合检索与重排精排
  */
 @Module({
   imports: [

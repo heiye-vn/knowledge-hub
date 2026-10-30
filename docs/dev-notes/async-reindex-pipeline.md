@@ -1,7 +1,6 @@
 # 异步重建索引管线（阶段二 · 方案 B）
 
-对应参考项目 `knowledge-hub-backend` v3 的 `src/mq/*`（RabbitMQ）。
-实现时间 2026-09-19。模块代码在 `apps/server/src/mq/`。
+> 模块代码位于 `apps/server/src/mq/`，实现时间：2026-09-19。
 
 ## 为什么是「方案 B」
 
@@ -72,15 +71,14 @@ connection: { host, port, maxRetriesPerRequest: null }
 
 不设的话，长时间阻塞的任务会被连接超时打断。这是 BullMQ 对 Worker 的硬性要求。
 
-## 相对参考项目修掉的缺陷
+## 消息队列核心架构缺陷规避
 
-| 参考项目 v3 | 本项目 |
+| 常见隐患 / 初始实现缺陷 | 本项目架构对策 |
 | :--- | :--- |
-| 消费失败 `nack(requeue=false)`，无 DLX 无重试 → 一次超时该文档索引**永久丢失** | 失败抛错 → `attempts=3` + 指数退避；失败任务保留在 Redis 便于排查 |
+| 消费失败直接抛弃，无重试 → 一次超时该文档索引**永久丢失** | 失败抛错 → `attempts=3` + 指数退避；失败任务保留在 Redis 便于排查 |
 | 单篇失败只打日志继续，整批仍算成功 | `indexDocuments` 隔离单篇失败后**汇总抛出**，让整批重试（管线幂等，安全） |
-| 只有「发布后自动投递」，换模型后无法重建存量 | 新增 `POST /rag/reindex` |
+| 只有「发布后自动投递」，换模型后无法重建存量 | 新增 `POST /rag/reindex` 批量补偿入口 |
 
 ## 验证
 
 - 单测 12 条（Worker 6 + Publisher 3 + DocumentService 3），全 fake，**不依赖 Redis/PG/ES**
-- 端到端：起 Redis → 入队 4 篇 → Worker 消费 → 重建成功 4 篇 → ES 块数仍为 4（幂等无重复）

@@ -34,9 +34,8 @@ export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
 /**
  * 允许执行「发布 / 提审」的来源状态
  *
- * 🟢 与基线实现的差异：基线实现把 Archived 也放进可发布集合，
- * 且在需审核模式下会漏到「免审直接发布」分支 —— 等于归档文档能绕过审核直接上线。
- * 本项目将归档定为终态，一律不允许重新发布，两个缺陷一并消除。
+ * 【发布状态守卫】仅允许 Draft（草稿）和 Published（已发布更新）重新触发发布或提审。
+ * 将 Archived（已归档）定为终态，严格禁止直接发布，避免绕过审核机制。
  */
 export function canPublishFrom(status: DocumentStatus): boolean {
   return status === DocumentStatus.Draft || status === DocumentStatus.Published;

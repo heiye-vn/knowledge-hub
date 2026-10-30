@@ -16,7 +16,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 /**
  * 角色管理接口。
  *
- * 【分叉】不标 @Roles(ADMIN)，仅用 system:role 权限码——
+ * 【权限控制设计】不标 @Roles(ADMIN)，仅用 system:role 权限码——
  * 让「给角色授 system:role 权限后由其成员管理角色」成为可行路径；
  * 管理员由 PermissionsGuard 短路保证访问。
  *

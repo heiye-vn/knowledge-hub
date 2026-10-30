@@ -1,7 +1,7 @@
 # 存储切换：PG + Mongo 双库 → 单 PostgreSQL
 
 > 完成时间：2026-09-20
-> 类型：功能模块 · 存储架构（同步登记 [reference-mapping.md](../reference-mapping.md) 分叉）
+> 类型：功能模块 · 存储架构重构
 > 代码路径：`document/entities/document-content.entity.ts`（新增）、`document.service.ts`（6 处 Mongo 调用改造）、
 > `kg/kg-build.worker.ts`、`app/document/kg` 三个 module、`init-scripts/postgresql/01-init.sql`、`docker-compose.yml`
 

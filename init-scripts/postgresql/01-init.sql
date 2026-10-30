@@ -125,8 +125,7 @@ CREATE TABLE IF NOT EXISTS kh_document_review (
 CREATE INDEX IF NOT EXISTS idx_kh_document_review_document_id
     ON kh_document_review(document_id);
 
--- 🔴 修基线实现缺陷：其「同一文档只能有一条待审」只在应用层判空，并发提审会插进两条。
--- 这里用部分唯一索引把约束下沉到数据库：一个文档最多一条 review_result IS NULL 的记录。
+-- 【并发安全防护】通过部分唯一索引把约束下沉到数据库：一个文档最多一条 review_result IS NULL 的记录。
 -- 顺带覆盖待办列表的查询模式（部分索引只装待审行，历史越久越不吃亏）。
 CREATE UNIQUE INDEX IF NOT EXISTS uq_kh_document_review_pending
     ON kh_document_review(document_id) WHERE review_result IS NULL;

@@ -12,8 +12,7 @@ DOC_ID='docid'
 curl -s -X PUT "http://localhost:3000/documents/${DOC_ID}/publish"
 ```
 
-> ⚠️ 本项目**阶段一为同步执行，没有消息队列**。
-> 参考项目 `knowledge-hub-backend` 才走 RabbitMQ 异步解耦（本项目阶段二会引入 BullMQ）。
+> ⚠️ 本项目文档单篇发布为同步执行，批量重建则走 BullMQ 异步队列。
 >
 > 响应示例：
 > ```json
@@ -24,7 +23,7 @@ curl -s -X PUT "http://localhost:3000/documents/${DOC_ID}/publish"
 
 ---
 
-## 检索（本项目新增，参考项目没有）
+## 检索
 
 ```bash
 # 混合检索（默认）：kNN 向量 + BM25 关键词 + RRF 融合

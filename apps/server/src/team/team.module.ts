@@ -9,7 +9,7 @@ import { TeamController } from './team.controller.js';
 /**
  * 团队组织架构模块（与 RBAC 权限体系无关）。
  *
- * 只承载「部门 / 成员」数据，为第 64 讲文档可见性过滤
+ * 只承载「部门 / 成员」数据，为文档可见性过滤
  * （kh_document.team_id）提供组织维度来源；接口本身用
  * system:team 权限码做访问控制。
  */

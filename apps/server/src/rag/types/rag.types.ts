@@ -2,7 +2,6 @@
  * RAG 管线共用类型定义
  *
  * 这些结构在编排器、分块结果、ES 文档之间流转。
- * 字段与基线实现 的 pipeline.types.ts 保持一致，便于对照。
  */
 
 /**
@@ -51,7 +50,6 @@ export interface PipelineDocument {
   updatedAt?: Date | string | null;
   /**
    * 计数类字段：不参与向量检索，仅用于文档级搜索索引与结果排序
-   * （对齐基线实现 v4 写入 kh_document 的 view/like/comment 三列）
    */
   viewCount?: number;
   likeCount?: number;

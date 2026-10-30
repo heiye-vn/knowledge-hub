@@ -1217,7 +1217,7 @@
                 "build"
               ]
             },
-            "description": "不传 documentIds = 全量重建全部已发布文档。\n\n换 LLM 模型 / 修抽取 bug 后的标准补偿操作（对应 BUILD_ALL 消息）。\n🔴 参考项目的 BUILD_ALL 没有任何投递入口（死代码），这是补齐。"
+            "description": "不传 documentIds = 全量重建全部已发布文档。\n\n换 LLM 模型 / 修抽取 bug 后的标准补偿操作（对应 BUILD_ALL 消息）。"
           },
           "description": "\n【可见性过滤（feat-v15）】结果仅包含 自己写的 ∪ 已发布公开 ∪ 已发布且所在团队 的文档；管理员/审核员不限。检索侧在召回前过滤，不影响相关度打分。"
         },

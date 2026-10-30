@@ -59,10 +59,8 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 /**
  * 队列任务状态查询（`kg.graph` 与 `rag.reindex` 共用）
  *
- * 🔵 **相对基线实现的新增**：异步任务此前只有入队响应里的 taskId，
- * 建图 / 批量重建跑到哪一步只能翻日志。本服务把「按 taskId 查状态」
- * 收口成一个统一入口，前端 / 运维凭 taskId 即可轮询
- * 「排队中 / 执行中 / 完成 / 失败」。
+ * 本服务把「按 taskId 查状态」收口成一个统一入口，调用方凭 taskId 即可轮询
+ * 「排队中 / 执行中 / 完成 / 失败」，提升异步链路的可观测性。
  *
  * 设计要点：
  * - jobId 全局唯一（randomUUID），两个队列各查一次，先命中先用；

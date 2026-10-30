@@ -20,11 +20,11 @@
 
 **关键取舍：权限码校验要真正生效，就不能再叠 `@Roles`。**
 
-参考项目 v9 给权限、角色、团队三个 controller 都同时标了 `@Roles(ADMIN)` 和
+若给权限、角色、团队三个 controller 都同时标了 `@Roles(ADMIN)` 和
 `@RequirePermission(...)`——RolesGuard 先执行，非管理员在角色层就被 403，
 **权限码比对分支永远走不到**，等于花力气建了细粒度模型、实际还在做粗粒度角色判断。
-更糟的是这会堵死「给非管理员直接授权 `system:xxx`」这条扩展路径（参考项目自己强调
-「支持用户直接赋权」，实现上却让它对接口鉴权完全无效）。
+更糟的是这会堵死「给非管理员直接授权 `system:xxx`」这条扩展路径（违背了
+「支持用户直接赋权」的设计初衷，导致权限码对接口鉴权完全失效）。
 
 本项目做法：**系统管理类接口只用权限码**（`@RequirePermission('system:user' / 'system:role' /
 'system:permission' / 'system:team')`），`@Roles` 只留在角色语义明确的场景
@@ -32,7 +32,7 @@
 管理员由 `PermissionsGuard` 的 `ADMIN_ROLES` 短路保证访问，库里不必给管理员逐条绑定权限。
 
 如何验证：把某个非管理员账号直接绑上 `system:user` 权限（`PUT /users/:id/permissions`），
-用它调 `GET /users/page` 应当 200——参考项目同样操作会返回 403。
+用它调 `GET /users/page` 应当 200，说明细粒度权限码生效。
 
 ---
 
@@ -43,8 +43,7 @@
 **原因**：`@Public()` 让 `JwtAuthGuard` 直接 return true、**不挂 `request.user`**；
 随后 `RolesGuard` 用 `getAllAndOverride([handler, class])` 仍能从类上取到
 `@Roles(ADMIN)` 声明，此时 `user` 为 `undefined` → `!user?.roles?.length` → 抛 403。
-（参考项目 v9 的 `TeamController` 正是这个组合，`curl-rbac.md` 里写的
-「团队树公开无需登录」实际跑不通。）
+（若控制器类上标了角色，公开端点将无法免登录访问。）
 
 **解法**：团队 controller 类上不标任何角色声明，`tree` 只标 `@Public()`；
 管理接口各自标 `@RequirePermission('system:team')`。
@@ -59,15 +58,14 @@
 `@RequirePermission('a', 'b')` 命中其一即放行（与 `@Roles` 语义一致），
 实现是 `required.some((p) => owned.has(p))`。
 
-注意课程讲义 58 的 mermaid 图写的是「包含全部所需权限码」——**与参考项目代码实现不一致**
-（参考项目用的是 `.some()`）。当前所有接口都只传单个权限码，二者无差异；
+【设计规范】在多权限码比对时，代码实现采用的是 `.some()`（命中其一即可放行）。当前所有接口都只传单个权限码，二者无差异；
 将来出现多码场景时必须明确选一种，别默认。
 
 ---
 
 ## 四、 【实录】权限绑定必须事务化
 
-**现象**：整体替换绑定 = 「先 delete 全部，再逐条 insert」。参考项目无事务，
+**现象**：整体替换绑定 = 「先 delete 全部，再逐条 insert」。若无事务控制，
 中途抛错会留下「旧绑定已清空、新绑定没补完」的中间态——用户权限被静默清零。
 
 **解法**：`assignRolePermissions` / `assignUserPermissions` 包进 `em.transaction`，
@@ -81,8 +79,8 @@
 
 ## 五、 【实录】权限 ID 校验的重复元素陷阱
 
-参考项目用 `found.length !== ids.length` 判断「是否所有 ID 都有效」。
-若入参含重复 ID（前端勾选重复、或重试叠加），`In(ids)` 查询去重后返回条数变少，
+若直接用 `found.length !== ids.length` 判断「是否所有 ID 都有效」。
+入参含重复 ID（前端勾选重复、或重试叠加）时，`In(ids)` 查询去重后返回条数变少，
 **明明都是合法权限却被误判成 404**。
 
 解法：先 `[...new Set(ids)]` 去重再比对，插入时也用去重后的列表（UNIQUE 约束本就拦重复）。
@@ -167,7 +165,7 @@ const build = (parentId: string) => (byParent.get(parentId) ?? []).map(...)
 
 ## 七、 数据库约束优化：条件部分唯一索引
 
-**背景**：参考项目在 `kh_permission` 的 `permission_code` 字段上设置了全局 `UNIQUE` 约束，而业务层采用逻辑软删除（`deleted = true`）。一旦管理员软删某个权限后再以相同编码重建，会直接触发 PostgreSQL 数据库级 `duplicate key value violates unique constraint` 错误。
+**背景**：若在 `kh_permission` 的 `permission_code` 字段上设置全局 `UNIQUE` 约束，而业务层采用逻辑软删除（`deleted = true`）。一旦管理员软删某个权限后再以相同编码重建，会直接触发 PostgreSQL 数据库级 `duplicate key value violates unique constraint` 错误。
 
 **解法**：在 DDL 中移除字段级全局 `UNIQUE`，改用条件部分索引（Partial Index）：
 ```sql
@@ -203,12 +201,11 @@ docker exec -i knowledge_hub_postgres psql -U user -d knowledge_hub < init-scrip
 - **树形结构的构建复杂度优化**：当前 `PermissionService.getTree()` 与 `TeamService.getTree()` 采用内存递归 `filter`（$O(N^2)$），在当前几十至几百个节点规模下耗时小于 1ms。若后续组织架构和权限节点规模扩展至数千级，可重构成基于 `Map<parentId, children[]>` 的单次遍历构建（$O(N)$）。
 - **超管通配权限码与动态扩展**：`getUserPermissionCodes` 在用户是管理员时，除了注入预置常量权限集合，额外追加了 `'*'` 通配符，便于前端统一识别超管对后台动态新增菜单/按钮的全量放行。
 - **权限树只做分类，不继承**：`parent_id` 无业务含义，拥有父权限 ≠ 拥有子权限。目前前端需要自己按 code 枚举，后续若要「授予父即含子」需改数据模型。
-- **`document:*` 权限码已在 feat-v10 接线到业务接口**：此前只有前端语义（原计划等第 64 讲再统一，
-  实际提前到 feat-v10 完成）。挂载映射：create / upload→`document:create`，list / findOne /
+- **`document:*` 权限码已在 feat-v10 接线到业务接口**：此前只有前端语义，已在 feat-v10 完成业务接口的细粒度挂载。挂载映射：create / upload→`document:create`，list / findOne /
   reviews/{current,history}→`document:list`，patch / publish / submit / archive / save-draft→
   `document:edit`，delete→`document:delete`，`/search/documents`→`search`。
   **审核工作台 4 个接口刻意不挂码**（角色语义明确，保留 `@Roles(REVIEWER, ADMIN)`；
   叠加会堵死临时授权路径，见第一节）。种子数据同步补绑：普通用户 + create/edit/delete
   （作者主链路），审核员 + search。
-- **团队模块与检索可见性尚未接线**：`kh_team` / `kh_team_member` 已就绪，但 `kh_document.team_id` 的召回期过滤属于第 64 讲，本轮未改检索链路。（`docs/TODO.md` §3「鉴权过滤」条目已可开工。）
+- **团队模块与检索可见性已接线**：`kh_team` / `kh_team_member` 已就绪，召回期过滤已在 feat-v15 闭环（`docs/TODO.md` §3「鉴权过滤」条目）。
 - **无权限变更审计**：谁在什么时候给谁加了什么权限，目前不落日志；等有合规需求时补一张操作流水表。

@@ -1,27 +1,19 @@
 /**
  * RAG 重建索引队列常量（BullMQ）
  *
- * 🟡 与基线实现 的**实现层分叉**：
- * - 基线实现：RabbitMQ topic 交换机 `rag.reindex.exchange` + 队列 `kh.rag.reindex.queue`
- *   + 路由键 `rag.reindex.by_ids`
- * - 本项目：BullMQ 单个队列 `rag.reindex`，路由语义由 `job.data.type` 承担
- *
- * 队列名与消息结构**保持同名同形**（`rag.reindex` / `{taskId, type, documentIds}`），
- * 便于两项目 grep 对照；换实现层的理由见
- * `docs/reference-mapping.md`「分叉登记」：BullMQ 自带重试/退避/任务状态查询，
- * 直接修掉基线实现「消费失败 nack 后消息永久丢失」的 P0。
+ * 采用 BullMQ 单队列架构（`rag.reindex`），路由语义由 `job.data.type` 承担。
+ * 原生提供重试、指数退避、延迟队列与任务状态追踪机制。
  */
 
 /** 重建索引队列名 */
 export const RAG_REINDEX_QUEUE = 'rag.reindex';
 
 /**
- * KG 建图队列名（feat-v5，对齐基线实现 v5 的 `kg.graph.exchange` / `kh.kg.graph.queue`）
+ * KG 建图队列名
  *
- * 🔴 为什么 KG 必须走队列，而 v4 的 Search 走同步：
- * 实测（test/fixtures 两个真实 PDF，历史模型 qwen-plus，已弃用）单块抽取 19~57s，
- * 一篇 2 块的文档就要 38~57 秒 —— 塞进同步 publish 必然撞网关超时。
- * Search upsert 是毫秒级 ES 请求，才用的同步。
+ * 🔴 为什么 KG 必须走队列，而 Search 走同步：
+ * 实测单块抽取 19~57s，一篇多分块文档耗时较长，塞进同步 publish 必然撞网关超时。
+ * Search upsert 是毫秒级 ES 请求，故采用同步处理。
  */
 export const KG_GRAPH_QUEUE = 'kg.graph';
 
@@ -37,8 +29,7 @@ export const DEFAULT_REINDEX_CONCURRENCY = 1;
 
 /**
  * 单任务最大尝试次数（含首次）。
- * 🔴 相对基线实现的修复：基线实现消费失败直接 `nack(requeue=false)`，无重试无 DLX，
- * 一次限流/超时该文档的索引就永久丢失且无感知。
+ * 失败时结合指数退避重试，防止偶发限流或超时导致重建任务丢失。
  */
 export const DEFAULT_REINDEX_ATTEMPTS = 3;
 

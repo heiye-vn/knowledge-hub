@@ -2,7 +2,7 @@
 
 > **v17 更新（2026-10-24）**：Agent 由构造期单例的 `web_search` 改为每轮按意图挂载
 > `retrieve_knowledge` / `rewrite_query` / `web_search`，检索最多两次，过程事件新增
-> `data-intent` / `data-eval`。实现细节、分叉与验证见
+> `data-intent` / `data-eval`。实现细节与工程验证见
 > [agentic-rag.md](./agentic-rag.md)；本文以下保留 v14 的流式协议、会话与前端基座说明。
 
 > **模块范围**
@@ -14,7 +14,7 @@
 > `ai/ai.controller.ts`、`ai/ai.module.ts`、`ai/chat-session.service.ts`（touchTitle / assertOwned）；
 > web：`pages/ChatPage.tsx`、`components/ChatMessageParts.tsx`、`components/SourceCiteList.tsx`
 >
-> **对应讲次**：第 63 讲（基线实现 v14）
+> **迭代版本**：feat-v14
 
 ---
 
@@ -58,7 +58,7 @@ onFinish: 拼 answer → 抽 [n] 引用 → appendTurn 落库（尽力而为）
 ## 三、 会话与落库
 
 - 传 `sessionId`：开场 `touchTitle` 校验归属并早更新默认标题，越权当场 404
-  （基线实现要到 onFinish 落库才失败，此时已白跑一次 LLM）。`appendTurn` 末尾
+  （避免等到生成结束落库才因越权报错而白白消耗 Token）。`appendTurn` 末尾
   仍保留标题兜底，覆盖流异常与非流式路径。
 - 不传：以首问为标题直接建会话，`data-session` 事件回传 id 供前端改 URL。
 - 落库在 onFinish：从最终 parts 拼回答、正则抽 `[n]` 只存被引用资料，
@@ -90,7 +90,7 @@ web 生产构建均通过；langchain 1.5.16 + core 1.2.11 + zod v4 冒烟验证
 
 遗留（详见 docs/TODO.md）：
 1. 流式接口 401 不会自动刷新令牌——`DefaultChatTransport` 自管 fetch，
-   绕过了 client.ts 的刷新拦截，过期需手动重登（基线实现同样未处理）。
+   绕过了 client.ts 的刷新拦截，过期需手动重登（待后续统一流式传输层拦截器）。
 2. `@langchain/core` peer 要求 ^1.2.17、实装 1.2.11，冒烟兼容；
    升级待沙箱装依赖回合执行。
 3. 联网搜索需配置 `BOCHA_API_KEY` 或 `TAVILY_API_KEY`；都未配置时为显式降级非故障。

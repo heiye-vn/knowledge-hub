@@ -104,12 +104,9 @@ export interface IndexCleanupResult {
  * - 正文：kh_document_content（1:1，document_id 主键）
  * - 审核流水：kh_document_review（由 DocumentReviewService 负责读写）
  *
- * 🟡 与基线实现的分叉：基线实现用 PG + Mongo 双库（正文在 Mongo），
- * 本项目于 2026-09-20 切换为单 PostgreSQL——Mongo 侧原始规划的
- * chunks / chat_histories 已分别落在 ES / 未启动，只剩正文一个集合，
- * 为它维护一整套独立数据库得不偿失。
- * 直接受益：create 从「先写 Mongo 拿 _id → 写 PG → 失败补偿删 Mongo」
- * 简化为单库事务，双写补偿逻辑整体删除。
+ * 【存储架构选型】统一采用单 PostgreSQL 存储方案：
+ * 元数据与正文分表存放（`kh_document` + `kh_document_content`）。
+ * 通过单库数据库事务保证原子性，彻底避免跨库双写的数据一致性补偿开销。
  *
  * 状态流转与索引联动全部收敛在本服务：
  * 本服务持有三条索引链路的编排能力，DocumentReviewService 只管审核流水表，
@@ -149,7 +146,7 @@ export class DocumentService implements OnModuleInit {
   }
 
   /**
-   * 存量数据可见性回填（参考基线未做、本项目主动增强）
+   * 存量数据可见性回填
    * 探测 ES kh_chunk 与 Neo4j KnowledgeDocument 的可见性缺口，
    * 对已发布文档执行原地更新，避免历史公开文档被误过滤。
    */
@@ -679,9 +676,8 @@ export class DocumentService implements OnModuleInit {
    * - 需审核（DOCUMENT_REQUIRE_APPROVAL，默认）：草稿 / 已发布 → 待审核，不建索引
    * - 免审：草稿 / 已发布 → 已发布，并建三条索引
    *
-   * 🟢 与基线实现的差异：基线实现把已归档也放进可发布集合，且需审模式下会漏到
-   * 「免审直接发布」分支 —— 归档文档能绕过审核直接上线。本项目把归档定为终态，
-   * 两个模式下都拒绝，从源头堵住这个后门。
+   * 【状态安全守卫】把已归档定为终态，在需审与免审模式下均严格拒绝重新发布，
+   * 避免归档文档绕过生命周期管理直接上线。
    */
   async publish(id: string, actor?: AuthUser) {
     const doc = await this.findActive(id);
@@ -1080,9 +1076,8 @@ export class DocumentService implements OnModuleInit {
   /**
    * 按 ID 批量加载「待索引文档」（PG 元数据 + 正文，单库两表直查）
    *
-   * 供重建队列的 Worker 使用。基线实现把这段放在 `PipelineOrchestrator` 内部
-   * （`loadDocumentsByIds`），本项目 Orchestrator 只接收已加载的 `PipelineDocument`，
-   * 故加载职责留在调用方，保持「编排器不管数据源」的边界。
+   * 供重建队列的 Worker 使用。Orchestrator 仅接收已组装好的 `PipelineDocument`，
+   * 数据加载职责内聚在调用方服务内，保持「编排器不耦合数据源」的职责边界。
    *
    * 不存在的文档跳过并记日志，不中断整批。
    */

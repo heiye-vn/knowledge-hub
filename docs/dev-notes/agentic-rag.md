@@ -7,9 +7,6 @@
 > - `apps/server/src/ai/ai-stream.service.ts`：每轮 Agent、工具挂载、检索上限、过程事件
 > - `apps/server/src/ai/ai-chat.service.ts`：非流式 Agentic RAG 与按需联网
 > - `apps/web/src/chat-message-utils.ts`、`components/ChatMessageParts.tsx`、`pages/ChatPage.tsx`、`index.css`：意图/评估/改写/来源时间线与滚动交互
->
-> **对应基线实现**：后端 `v17`；前端参考分支为 `v17`（本项目前端无 v16 分支，实际从 v14/v15 UI 直接升级）
-> **分叉总表**：[docs/reference-mapping.md](../reference-mapping.md) 第三节
 
 ---
 
@@ -94,26 +91,26 @@ LangChain 的 callbacks 存在 `AsyncLocalStorage` 中，内部结构化输出�
 验证：`chat-query-rewrite.service.spec.ts` 的 16 条用例 + 前端
 `chat-message-utils.spec.ts` 的内部 JSON 过滤用例。
 
-## 三、 相对基线的有意分叉
+## 三、 核心架构设计与工程优化
 
-| 分叉点 | 基线 v17 | 本项目 |
+| 关注维度 | 传统/简化实现 | 本系统设计与工程优化 |
 | :--- | :--- | :--- |
-| 检索服务 | `HybridRetrievalService`，无模式切换 | 复用 `RetrievalService`，保留 `hybrid/vector/keyword`、MIN_SCORE、PG 一致性兜底 |
-| 检索参数 | 只传 query/topK | 额外透传请求级 `mode`；模型可在 1–10 内覆盖 topK |
-| 流前校验 | 无独立校验 | `touchTitle` 内部 `assertOwned`，越权在流开始前 404，同时早更新默认标题 |
-| 模型配置 | `OPENAI_API_KEY/DASHSCOPE_API_KEY` + qwen-plus | 既有回退链 `LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY` + `LLM_MODEL` |
-| 来源事件 | 失败检索也写空 `data-sources` | 空命中不写；前端取最后一个非空段，修复改写重查后引用丢失 |
-| 评估标签 | `retried_*` 文案称「已改写」 | UI 改为「再次检索」，避免模型未调用 rewrite 时误标 |
-| 前端输入能力 | 无 topK/模式/仅检索 | 保留三输入与「仅检索不落库」 |
-| 流式错误 | 同 | 保留落库尽力而为；非流式检索错误折叠为「库里没有」属已知局限 |
+| 检索服务编排 | 裸检索，无多模式与安全兜底 | 复用 `RetrievalService`，保留 `hybrid/vector/keyword` 切换、MIN_SCORE 过滤与 PG 一致性兜底 |
+| 检索参数 | 仅传 query/topK | 额外透传请求级 `mode`；模型可在 1–10 范围内覆盖 topK |
+| 流前校验 | 无独立鉴权校验 | `touchTitle` 内部执行 `assertOwned`，越权直接在流建立前抛 404，并提前更新默认标题 |
+| 模型凭证 | 强依赖固定单一环境变量 | 统一 Key 回退链（`LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY`）+ `LLM_MODEL` |
+| 来源事件 | 失败检索也下发空 `data-sources` | 空命中不下发；前端取最后一个非空段，彻底修复改写重查后引用丢失问题 |
+| 评估标签 | 将重查一律标为「已改写」 | UI 规范为「再次检索」，避免模型未调用 rewrite 时的误导 |
+| 前端交互 | 仅单轮基础输入 | 支持自定义 topK、检索模式切换以及「仅检索不落库」调试模式 |
+| 流式错误处理 | 异常直接打断 | 保持持久化尽力而为，保障用户获取生成答案体验 |
 
-## 四、 【易错】参考实现踩到的两个点
+## 四、 【易错】事件流与前端状态渲染踩坑记
 
 ### 4.1 多段 `data-sources` 不能取第一个
 
-参考实现前端 `sourcesFromParts` 直接返回第一个匹配 part。v17 的首次检索不足时
-会先写一个空 `data-sources`，第二次检索成功再写完整数组；取第一个会让
-「改写重查成功」这条主路径**引用卡全部消失**。
+如果前端 `sourcesFromParts` 简单返回第一个匹配 part，在首次检索不足时
+会先下发一个空 `data-sources`，第二次检索成功再下发完整数组；此时取第一个会导致
+「改写重查成功」这条主路径的**引用卡全部丢失**。
 
 本项目的处理：
 

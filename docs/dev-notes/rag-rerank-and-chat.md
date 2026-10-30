@@ -8,7 +8,7 @@
 > `rag/reranker.service.ts`、`rag/retrieval.service.ts`（接入点）、
 > `ai/ai-chat.service.ts`、`ai/ai.controller.ts`、`ai/dto/chat.dto.ts`
 >
-> **对应讲次**：第 60 讲（基线实现 v11）
+> **迭代版本**：feat-v11
 
 ---
 
@@ -21,8 +21,8 @@
   → 截 RAG_TOP_K（默认 5）返回
 ```
 
-**精排放 PG 兜底之后**：兜底先剔除已下线文档，rerank 只给活文档打分，
-不浪费 API 额度。基线实现没有 PG 兜底层，是「先精排后返回」。
+**精排放 PG 兜底之后**：兜底先剔除已下线文档，rerank 只给有效活文档打分，
+不浪费 API 额度。避免在已失效内容上白白消耗精排调用。
 
 **单路模式（vector / keyword）不精排**：rerank 的价值是修正「双路融合后
 排名失真」，单路结果本身就是该路的原始排序，没有修正对象。
@@ -74,8 +74,7 @@
 RERANK_API_KEY → LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY
 ```
 
-基线 v11 的回退链是 DASHSCOPE/OPENAI——主项目没有 DASHSCOPE_API_KEY
-变量，沿用 extraction 建立的「百炼全家桶共用一个 Key」习惯。
+回退链遵循全项目统一的 Key 继承约定，chat、embedding 与 rerank 共享凭证额度，避免多处配置。
 ⚠️ 唯一例外：**VLM 的 Key 严格物理隔离**（见 image-document-parser 笔记），
 rerank / chat 不允许回退到 VLM_API_KEY。
 
@@ -111,12 +110,12 @@ curl -X POST localhost:3000/ai/chat -H "Authorization: Bearer $TOKEN" \
 单测：`reranker.service.spec.ts`（mock fetch 九场景）、
 `ai-chat.service.spec.ts`（mock 检索与 LLM 七场景）。
 
-## 八、 与基线实现的分叉汇总
+## 八、 关键设计决策与优化汇总
 
-| 分叉点 | 基线 v11 | 主项目 | 理由 |
+| 关注维度 | 传统/简化实现 | 本系统设计与优化 | 理由 |
 | :--- | :--- | :--- | :--- |
-| reranker 归属 | `ai/` 模块 | `rag/` 模块 | 精排是检索链路组件，ai 模块只做对话编排 |
-| 精排对象 | RRF 融合后直接送 | PG 兜底后再送 | 不给已下线文档浪费打分额度 |
-| 检索复用 | HybridRetrievalService 自实现 | 复用 RetrievalService | 继承 MIN_SCORE 过滤与一致性兜底 |
-| 路由 | `/rag/search` + `/ai/chat` | `/search`（既有）+ `/ai/chat` | 路由契约稳定优先 |
-| 溯源 | 同款 [n] 设计 | 同款 | 模式层对齐 |
+| reranker 归属 | 放入 `ai/` 模块 | 放入 `rag/` 模块 | 精排本质是检索链路组件，ai 模块纯粹专注对话编排 |
+| 精排对象 | RRF 融合后直接送模型打分 | PG 兜底过滤后再送打分 | 避免给已下线文档浪费外部 API 打分额度 |
+| 检索复用 | 多套自实现混杂 | 统一复用 RetrievalService | 统一继承 MIN_SCORE 门禁与数据库一致性兜底 |
+| 路由设计 | 频繁变更路径 | 保持 `/search` 与 `/ai/chat` | 保证既有 API 契约向下兼容与稳定 |
+| 引用溯源 | 粗粒度全量返回 | [n] 引用标号精确溯源 | 建立结构化引用，方便前端卡片溯源定位 |

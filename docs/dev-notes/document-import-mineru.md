@@ -20,15 +20,15 @@
 
 ### 1. 云端 MinerU 是 HTTP 服务，不是 Node SDK
 
-**【实录】** 参考实现的 Node 后端直接用 `fetch` 调 `/api/v4/file-urls/batch`，没有安装任何 MinerU 包；本项目沿用该模式，并补上地址校验、DNS 固定、响应体上限和重定向限制。Python 只存在于开源自建形态；云端精准解析 API 与语言无关。
+**【实录】** 云端精准解析 API 是标准 HTTP 服务，直接采用原生 `fetch` 交互即可，无需安装专门的 Node SDK 包。在此基础上，本项目补齐了 SSRF 地址校验、DNS 绑定防护、响应体上限与重定向严格限制。Python 仅存在于自建容器形态；云端 API 与语言无关。
 
 ### 2. 扫描件必须显式区分解析后端
 
-**【易错】** 参考 v20 只对图片扩展名传 `is_ocr=true`，PDF 依赖 `model_version=vlm` 隐式 OCR。本项目对 PDF 也显式传 `is_ocr=true`，Office 文档传 `false`，避免把「扫描件识别」变成不可解释的模型默认行为。
+**【易错】** 对扫描件解析需显式指定参数：PDF 显式传入 `is_ocr=true`，Office 文档传 `false`，避免把「扫描件识别」变成不可控的模型隐式行为。
 
 ### 3. 解析必须异步，且状态要能跨进程恢复
 
-**【实录】** 参考实现同步等待 MinerU，最长 10 分钟，前端必须停留在页面。本项目：
+**【实录】** 解析大文档耗时较长（最长可达 10 分钟），若采用同步等待前端必须阻塞在页面，极易超时且体验不佳。本项目采用全异步架构：
 
 - `POST /documents/upload/parse` 先把原文件加密落存储，再写 `kh_document_import`，立即返回 202 + taskId；
 - `DocumentImportQueue` 用 BullMQ + 5 秒补偿扫描；任务进度写在 PG，不依赖 Redis 保存文件 Buffer；

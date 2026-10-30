@@ -34,7 +34,7 @@
 | :--- | :--- | :--- | :--- |
 | [rag-pipeline.md](./rag-pipeline.md) | 功能模块 · RAG 索引与检索管线 | 2026-09-19 | **kNN 必然返回 topK 条**；IK 装了≠生效；原生 RRF 需商业 license；换模型必须重索引 |
 | [async-reindex-pipeline.md](./async-reindex-pipeline.md) | 功能模块 · 异步重建索引管线（阶段二） | 2026-09-19 | **`new Queue()` 连不上也返回实例**（接口会假装可用）；连接错误刷屏需节流；实测证明单次发布不慢，故采用方案 B |
-| [search-index.md](./search-index.md) | 功能模块 · 文档级搜索索引（ES `kh_document`） | 2026-09-20 | **两条索引可用性要分开判定**；同步 vs 异步按「单篇耗时」分层而非二选一；参考项目 v4 第二次没用 IK |
+| [search-index.md](./search-index.md) | 功能模块 · 文档级搜索索引（ES `kh_document`） | 2026-09-20 | **两条索引可用性要分开判定**；同步 vs 异步按「单篇耗时」分层而非二选一；ES 需显式指定 IK 分词器 |
 | [kg-graph.md](./kg-graph.md) | 功能模块 · KG 知识图谱（LLM 抽取 + Neo4j） | 2026-09-20 | **实测揪出三个真 bug**：先截断后校验误杀关系、跨块关系补不回、同形异码（⼯ U+2F2F）；单块抽取实测 19~57s，KG 必须异步 |
 | [storage-single-postgres.md](./storage-single-postgres.md) | 功能模块 · 存储切换（PG+Mongo → 单 PG） | 2026-09-20 | **em.update() 不更新 @UpdateDateColumn**；并行 Edit 同一文件会互相覆盖；为一个集合养一整套数据库得不偿失 |
 | [document-review-status.md](./document-review-status.md) | 功能模块 · 文档审核与四状态流转 | 2026-09-24 | **索引唯一入口是 Published**；审核流水与状态同事务、索引放事务外（失败可用 reindex 兜底）；待审唯一性必须下沉到部分唯一索引 |
@@ -44,12 +44,11 @@
 | [authentication.md](./authentication.md) | 功能模块 · 用户鉴权（JWT 双令牌 + 全局守卫） | 2026-09-25 | **双令牌独立密钥**；登出吊销 Redis 黑名单（ioredis v6 无 waitUntilReady）；全局守卫「最小标注」原则；审核人从令牌取，不信前端 |
 | [queue-task-status.md](./queue-task-status.md) | 功能模块 · 队列任务状态查询（`GET /tasks/:taskId`） | 2026-09-28 | **`removeOnComplete: true` 会让「查完成任务」永远 404**；Redis 断连时 getJob 无限挂起必须加超时；jobId 全局唯一 → 两队列各查一次先命中先用 |
 | [user-module.md](./user-module.md) | 功能模块 · 用户模块完善（邮箱激活 / 重置密码 / 用户角色管理） | 2026-09-28 | **fail-open 与 fail-closed 按功能性质分流**（验证类 503 绝不放行）；激活 token 双键互指防旧链接复活；TTL 反推 60s 冷却省一个键；发信失败必须回滚 Redis 态 |
-| [rbac.md](./rbac.md) | 功能模块 · RBAC 权限系统 + 团队组织架构（feat-v9） | 2026-09-30 | **权限码要生效就不能再叠 @Roles**（参考项目把细粒度模型架空）；`@Public` + 类级角色声明会让公开接口 403；绑定必须事务化；权限 ID 校验的去重陷阱 |
+| [rbac.md](./rbac.md) | 功能模块 · RBAC 权限系统 + 团队组织架构（feat-v9） | 2026-09-30 | **权限码要生效就不能再叠 @Roles**（细粒度权限码防架空）；`@Public` + 类级角色声明会让公开接口 403；绑定必须事务化；权限 ID 校验的去重陷阱 |
 | [kg-overview-and-cors.md](./kg-overview-and-cors.md) | 功能模块 · 全景图谱与跨域配置（feat-v12） | 2026-10-04 | **CORS 白名单防御**；图谱路由收敛 `/kg`；Cypher tags 持久化与 Neo4j 时间格式统一；异常可观测不吞错 |
 | [chat-sessions.md](./chat-sessions.md) | 功能模块 · AI 对话会话持久化（feat-v13） | 2026-10-07 | **落库尽力而为**（回答已生成就不因存储故障丢失）；越权与不存在统一 404；外键 CASCADE 就不用应用层重复防御；标题自动生成只覆盖默认名 |
 | [ai-streaming.md](./ai-streaming.md) | 功能模块 · AI 流式对话（SSE + useChat，feat-v14） | 2026-10-09 | **toUIMessageStream 要关 sendStart/Finish** 防双发；DTO 必须放行 useChat 附加字段否则 400；百炼思考内容要流上原位改写；vite 代理必须 timeout:0 |
 | [account-activation-governance.md](./account-activation-governance.md) | 功能模块 · 账号激活治理（重发激活邮件 / 未激活账号过期清理） | 2026-10-05 | **公开端点凭密码证明归属**防邮件轰炸；TTL 反推冷却、发信失败回滚 token；清理前核对所有 `email_verified=0` 写入点防误删；QueryBuilder update 需手动带 `updatedAt` |
-| [reference-project-alignment.md](./reference-project-alignment.md) | 方法论 · 与参考项目的对照策略 | 2026-09-19 | **三层判断法（模式/实现/缺陷）**：什么照搬、什么可换、什么必须改 |
 | [document-visibility.md](./document-visibility.md) | 功能模块 · 文档检索可见性控制（feat-v15） | 2026-10-11 | **存量回填防误杀**；ES 过滤必须挂 filter 上下文；Cypher 实体要沿 MENTIONS 穿透；就地更新与重建互斥 |
 | [chat-memory.md](./chat-memory.md) | 功能模块 · 对话记忆与检索改写（feat-v16） | 2026-10-19 | **短期窗口只存 user/assistant 原文**；Redis 只是热缓存、PG 才是真源；改写后的 query 必须继续带可见性 scope；Mem0 只从用户提问抽事实；摘要压缩在 Agent 中间件而非存储层 |
 | [agentic-rag.md](./agentic-rag.md) | 功能模块 · Agentic RAG（feat-v17） | 2026-10-24 | **路由 fail-closed、评估 fail-open**；不切题命中必须在数据层清空；检索上限用闭包计数；内部结构化输出必须隔离 callbacks；多段 `data-sources` 取最后一个非空 |
@@ -59,17 +58,11 @@
 | [document-categories.md](./document-categories.md) | 功能模块 · 文档分类（feat-v21） | 2026-10-29 | 只加一个 `document:category` 权限码，树复用 `document:list`；环检测与删除守卫必须在服务端；分类名批量回填防 N+1 |
 | [document-versions.md](./document-versions.md) | 功能模块 · 正文历史版本（feat-v21） | 2026-10-29 | 版本号沿用正文 `version`；首改补记旧稿；正文与快照同事务；列表不返正文；导入链路也要记 v1；审核中禁止回滚 |
 | [document-engagement.md](./document-engagement.md) | 功能模块 · 点赞 / 收藏 / 评论（feat-v21） | 2026-10-29 | 计数与互动行同事务 + 行锁；`getManyAndCount` 配非实体 join alias 排序会炸，收藏列表改 raw 分页 + 回表；评论只做一层回复 |
-| [document-sharing.md](./document-sharing.md) | 功能模块 · 文档分享链接（feat-v21） | 2026-10-29 | 创建必须校验写权限（基线越权）；带密码预览不返回标题；私有图片改短期 HMAC 签名 URL；密码失败 Redis 限流 10 次/10 分钟，Redis 挂了 fail-closed |
+| [document-sharing.md](./document-sharing.md) | 功能模块 · 文档分享链接（feat-v21） | 2026-10-29 | 创建必须校验写权限（严防未授权越权生成公开链接）；带密码预览不返回标题；私有图片改短期 HMAC 签名 URL；密码失败 Redis 限流 10 次/10 分钟，Redis 挂了 fail-closed |
 | [notifications.md](./notifications.md) | 功能模块 · 站内通知（feat-v21） | 2026-10-29 | 通知尽力而为不回滚主流程；广播 500 条分批 + 接收人远程搜索；点赞未读通知去重；角标轮询 + 本地事件；顺手修 `/users/page` 的 list→items 契约 |
 | [database-migrations.md](./database-migrations.md) | 基础设施 · TypeORM 迁移体系 | 2026-10-22 | **基线迁移要"探测已存在就只登记不执行"**；空卷快照冻结、结构演进只走 migrations；部分唯一索引承接 outbox 合并 |
 | [index-outbox.md](./index-outbox.md) | 功能模块 · 索引失败补偿与可见性巡检 | 2026-10-22 | **补偿走 PG 轮询而不是队列**（队列挂了也要能补）；部分唯一索引 + ON CONFLICT 合并待办；巡检以写代检、失败入 outbox |
 | [health-check.md](./health-check.md) | 功能模块 · 存活 / 就绪探针 | 2026-10-22 | **存活不查依赖、就绪才查**；必需/可选依赖分别对应 503 与 degraded；探测必须带超时；拦截器状态码要在 handler 之后读 |
-
-
-
-> 两类文件并存：
-> **功能模块类**（做完一个模块记一个）记录实现过程中的坑；
-> **方法论类**（如对照策略）记录讨论形成的**判断标准**——后者不随单个模块结束而失效。
 
 ---
 
@@ -82,6 +75,5 @@
    - **【易错】**：提炼出的风险点，尚未踩坑但值得预防
    - 不要把推测写成既成事实
 3. **每条尽量写全**：现象 → 原因 → 解法 → **如何验证**。缺了「如何验证」价值大打折扣。
-4. **涉及与参考项目 `knowledge-hub-backend` 的差异**，同时到
-   [reference-mapping.md](../reference-mapping.md) 分叉表登记一行，本目录放更细的技术细节。
+4. **涉及架构设计与重构演进**，写清技术决策理由与前后收益对比。
 5. 文件开头写清**模块覆盖范围与对应代码路径**，结尾写**已知局限与后续待办**。

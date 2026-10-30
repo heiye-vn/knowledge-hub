@@ -221,8 +221,8 @@ export class PermissionService {
   /**
    * 整体替换角色的权限绑定。
    *
-   * 【实录·参考项目缺陷】参考项目 v9 为「delete 后循环 save」无事务，
-   * 中途失败会留下「绑定被清空但没补回」的中间态；本项目包进
+   * 【事务完整性防坑】若「delete 后循环 save」无事务，
+   * 中途失败会留下「绑定被清空但没补回」的脏数据中间态；此处必须包进
    * em.transaction，且组装为单个数组单次批量 insert，任一步失败整体回滚。
    */
   async assignRolePermissions(roleId: string, dto: AssignPermissionIdsDto) {
@@ -354,7 +354,7 @@ export class PermissionService {
 
   /**
    * 校验权限 ID 全部存在且有效。
-   * 【实录·参考项目缺陷】参考项目用 found.length !== ids.length 判断，
+   * 【入参校验防坑】若直接用 found.length !== ids.length 判断，
    * 入参含重复 ID 时会误报 404；先去重再比对。
    */
   private async validatePermissionIds(ids: string[]) {

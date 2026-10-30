@@ -16,8 +16,8 @@
 管理员广播可能面向全量用户。服务端每 500 条 `save` 一次，避免单条 SQL 参数过多。
 接收人支持 `userIds`；不传或空数组 = 所有 `deleted=false AND status=1` 的用户。
 
-【易错】基线前端接收人下拉只加载前 100 个用户（`pageSize=100`），超过 100 人的组织里部分用户不可选。
-主项目改为远程搜索：`filterOption={false}` + `onSearch` 调 `/users/page?keyword=`，已选用户与搜索结果合并去重。
+【易错】前端接收人下拉若仅静态加载前 100 个用户（`pageSize=100`），超过 100 人的组织里部分用户不可选。
+本项目采用远程搜索防抖：`filterOption={false}` + `onSearch` 调 `/users/page?keyword=`，已选用户与搜索结果合并去重。
 
 ### 3. 角标刷新：轮询 + 本地事件
 

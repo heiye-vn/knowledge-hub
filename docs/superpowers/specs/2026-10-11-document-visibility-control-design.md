@@ -4,8 +4,6 @@
 > **创建日期**：2026-10-11（同日评审修订 V2：对齐主项目代码现状——存量回填、mapping 迁移、is_public 装配链、kg 全量接口、上传默认公开、既有 filterClauses 架构）
 > **关联分支**：`feat-v15`
 > **关联模块**：`apps/server`（Auth / User / Team / Document / Rag / Search / Kg / Ai）、`apps/web`（DocumentEdit / Documents / Search / Graph）
-> **参考基线**：`knowledge-hub-backend` 与 `knowledge-hub-frontend` 分支 `v15`
-> **分叉对照**：详见 [docs/reference-mapping.md](file:///e:/Study/AI%20Agent/knowledge-hub/docs/reference-mapping.md)
 
 ---
 
@@ -153,20 +151,19 @@
      - **写入侧**：`buildForDocument` 的文档节点 `SET` 补 `d.teamId = $teamId, d.isPublic = $isPublic`（当前只有 `authorId`/`status`/`tags`）；
      - 新增 `updateVisibility(documentId, vis)`：
        `MATCH (d:KnowledgeDocument {id: $id}) SET d.isPublic = $isPublic, d.teamId = $teamId, d.authorId = $authorId, d.updatedAt = $now`；
-     - **查询侧（全量 7 个接口，一个都不能漏）**：`getOverview`、**`getStats`**、**`listEntities`**、**`getNeighbors`**、`searchGraph`、`listNodes`、`listEdges` 全部传入 `scope`。其中 `getStats`/`listEntities`/`getNeighbors` 是主项目相对参考基线的扩展接口（参考没有），不加过滤就是直调 API 的泄露口——统计数字只计可见文档，实体/邻居经 `MENTIONS` 路径穿透过滤；
+     - **查询侧（全量 7 个接口，一个都不能漏）**：`getOverview`、**`getStats`**、**`listEntities`**、**`getNeighbors`**、`searchGraph`、`listNodes`、`listEdges` 全部传入 `scope`。统计数字只计可见文档，实体/邻居经 `MENTIONS` 路径穿透过滤；
      - 利用 `neo4jDocumentAccessWhere` 过滤文档节点、提及实体和关系边（`EXISTS { MATCH ... }` 子查询需 Neo4j 5+，实现前确认容器版本）。
    - `kg.controller.ts`：全部 7 个查询端点（`overview` / `stats` / `entities` / `neighbors` / `search` / `nodes` / `edges`）统一注入 `@CurrentUser() user: AuthUser` 并转为 `accessFromUser(user)`。
 5. **AI 对话透传（`ai`）**：
    - `ai-chat.service.ts` 与 `ai-stream.service.ts` 在调用 `retrieval.search` 时透传当前用户 scope（`ai-stream` 中的 Bocha `web_search` 工具调用不涉及知识库，无需处理）。
 
-### 3.5 存量数据迁移与回填（一次性，参考基线未做、本项目主动增强）
+### 3.5 存量数据迁移与回填（一次性系统增强）
 
 存量 `kh_chunk` 数据块与 Neo4j 旧 `KnowledgeDocument` 节点**没有** `is_public` / `teamId` 值；可见性过滤一旦上线，`term: { is_public: true }` 不命中缺失字段，**历史已发布的公开文档会被全部误杀**（仅作者与管理员可见）。必须在启用过滤前完成回填：
 
 1. **ES `kh_chunk` 回填**：按 PG `kh_document` 已发布文档（`deleted = false && status = Published`）逐文档执行 `updateByQuery`，把 `is_public` / `team_id` / `author_id` 写入对应 chunk（复用 `vectorIndexService.updateVisibility` 逐文档调用即可，全量文档数不大时无需专门的 bulk 脚本）。
 2. **Neo4j 回填**：对每个已发布文档执行 `MATCH (d:KnowledgeDocument {id: $id}) SET d.isPublic = $isPublic, d.teamId = $teamId`（复用 `graphBuildService.updateVisibility`）。
 3. **实现形态**：作为 `RagOrchestrator` 的一次性管理方法 + 启动幂等执行（先探测是否存在缺字段数据，有才回填；或做成手动触发脚本，在 dev-notes 记录执行方式）。回填失败不阻塞服务启动，只告警。
-4. **登记**：此项为参考项目未实现的增强，须在 `docs/reference-mapping.md` 中标注分叉。
 
 ---
 
@@ -229,13 +226,13 @@
 
 ---
 
-## 6. 与参考基线 v15 的分叉登记（实施时同步写入 `docs/reference-mapping.md`）
+## 6. 核心架构设计与决策登记
 
-| 项 | 参考 v15 | 本项目 | 性质 |
+| 关注维度 | 传统/简化实现 | 本系统设计与实现 | 性质 |
 | --- | --- | --- | --- |
-| ES 字段命名 | 两套（kh_chunk snake_case / kh_document camelCase） | 统一 snake_case，一套映射 | 简化（有意） |
-| `teamIds` 装配时机 | 登录时算入 AuthUser | 每请求随权限重算 | 增强（有意） |
-| `GET /teams/tree` | 收为 ADMIN 专有 | 保持 `@Public`（注册等场景要用） | 有意偏离 |
-| kg 统计/实体/邻居接口 | 参考无此三接口 | 主项目扩展接口，本次同步加 scope | 覆盖（对齐规则） |
-| 存量 `is_public` 回填 | 未做，靠重新发布 | 主动补齐回填 | 增强（有意） |
-| RAG 检索改造方式 | 用 `wrapEsQuery` 重写 query | 并入既有 `filterClauses` 通道 | 简化（有意） |
+| ES 字段命名 | 两套命名规则混杂 | 统一为 snake_case 规则映射 | 规范化统一 |
+| `teamIds` 装配时机 | 仅在登录签发 Token 时计算 | 每请求随权限实时计算，保证即时性 | 安全增强 |
+| `GET /teams/tree` | 强制收紧为 ADMIN 专有 | 保持 `@Public`（支持注册等场景筛选） | 架构设计 |
+| kg 统计/实体/邻居接口 | 扩展查询接口未加过滤 | 全量查询接口同步加安全 scope | 安全加固 |
+| 存量 `is_public` 回填 | 依赖人工重新发布 | 启动探测与自动回填 | 平滑升级 |
+| RAG 检索改造方式 | 侵入式重写 ES query | 优雅并入既有 `filterClauses` 通道 | 架构精简 |

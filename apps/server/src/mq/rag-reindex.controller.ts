@@ -14,11 +14,7 @@ import { RoleCode } from '../common/constants/roles.js';
 /**
  * 触发 RAG 重建索引
  *
- * 🔵 相对基线实现的新增：基线实现只有「发布后自动投递」，没有手动/批量触发入口，
- * 因此换 embedding 模型后无法重建存量向量（只能靠重新发布）。
- * 本项目按**方案 B** 保持 publish 同步，故需要一个显式的批量重建入口，
- * 否则「换模型后全量重索引」（TODO 第 3 项）无解。
- *
+ * 提供显式的手动批量重建入口，支持换 embedding 模型或修复索引后对存量文档进行异步全量/指定重建。
  * publish 的响应语义不变，仍是同步返回 `indexed/chunks`。
  */
 @Controller('rag')

@@ -6,9 +6,6 @@
 > - `apps/server/src/ai/web-search.service.spec.ts`：顺序、降级、空结果、合并错误、无 Key
 > - `apps/server/.env.example`：`WEB_SEARCH_PROVIDERS` / `TAVILY_API_KEY`
 > - `apps/web/src/components/ChatMessageParts.tsx`：联网卡展示实际 provider
->
-> **对应基线实现**：v17 仅 Bocha；本功能为主项目新增的可用性增强，不属于基线对齐
-> **分叉登记**：[docs/reference-mapping.md](../reference-mapping.md)
 
 ---
 

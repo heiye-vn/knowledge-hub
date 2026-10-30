@@ -11,9 +11,6 @@
 > - `apps/web/src/chat-message-utils.ts`：`graphHitToView` 命中转力导图节点/边
 > - `apps/web/src/components/ChatMessageParts.tsx`：GraphCard / GraphToolCard 过程卡
 > - `apps/web/src/components/ForceGraph.tsx`：`compact` 模式（对话画布内嵌）
->
-> **对应基线实现**：后端 `v18`；前端参考分支为 `v18`
-> **分叉总表**：[docs/reference-mapping.md](../reference-mapping.md) 第三节
 
 ---
 
@@ -87,12 +84,11 @@ classify：意图 + standalone_query + graph_queries（2~4 字短实体名，仅
 - **解法**：`GraphChatHit` 增加 `error` 字段；`retrieveForChat` catch 后返回
   `{...empty, error: message}`。流式工具层再包一层 try/catch 写 `data-graph`；
   非流式 catch 后置 `undefined`（当作没查到）。
-- **原因**：图谱是增强通道，Neo4j 抖动不应让整轮对话失败；但静默吞错（基线返回
-  空 hit 无任何标记）会让「没建图」和「查挂了」无法区分，排障时白白烧一轮 LLM。
+- **原因**：图谱是增强通道，Neo4j 抖动不应让整轮对话失败；但不能静默吞错（若仅返回空 hit 无任何标记）会让「无匹配图谱」和「服务异常」无法区分，影响排障与模型判断。
 - **如何验证**：`graph-chat-retrieval.spec.ts`、`ai-stream.service.spec.ts`（rejection →
   error/insufficient）、`ai-chat.service.spec.ts`（rejection → 回答不受影响）。
 
-### 2.7 图谱可见性比基线多两道闸
+### 2.7 图谱可见性多重安全防线
 
 - **发布状态**：`neo4jDocumentAccessWhere` 统一附加 `status = Published`，避免撤稿 / 归档清理失败时残留节点凭旧可见性字段回流。
 - **关系严格溯源**：建图时为每条 `RELATED_TO` 写入 `sourceChunkIds`；`neo4jRelationAccessWhere` 只沿来源块回查所属文档的可见性，不再用「两端实体共现」近似。无来源块的存量边不会返回。
@@ -141,19 +137,18 @@ classify：意图 + standalone_query + graph_queries（2~4 字短实体名，仅
 用原问题启动 `longMemory.search`，再 `await` 分类结果，两者重叠降低首字延迟；
 不能在分类后才发起记忆检索，否则白白多一次串行 RTT。
 
-## 四、 相对基线的有意分叉
+## 四、 核心架构设计与工程优化
 
-| 分叉点 | 基线 v18 | 本项目 |
+| 关注维度 | 传统/简化实现 | 本系统设计与工程优化 |
 | :--- | :--- | :--- |
-| 命中类型命名 | `GraphChatHit`（定义在 graph-build.service.ts） | 同名但放 `kg/types/kg.types.ts`；主项目 `GraphHit` 已被 `/kg/search` 契约占用，同名会撞 |
-| 纯函数归属 | 格式化/分词函数内联在 graph-build.service.ts | 抽到 `kg/chat-graph.ts` 独立单测（service 已 1000+ 行） |
-| 中文标点分词 | 只按 `[\s/]+` 拆 | 额外接受 `／、，,；;`（模型常写「发票、报销」） |
-| 失败可观测 | catch 返回空 hit，无任何标记 | `GraphChatHit.error` 字段 + 工具/服务两层 catch |
-| `mergeGraphHits` | 导出但全项目无人调用（死代码） | 不引入 |
-| 关系可见性 | 只校验两端实体各自可见 | 建图写 `sourceChunkIds`，查询严格沿来源块所属文档过滤（`neo4jRelationAccessWhere`） |
-| 图谱发布状态 | Cypher 不校验文档 `status` | 统一附加 `status = Published` |
-| 前端 tooltip | HTML 拼接未转义 | `escapeHtml` 转义节点名、类型、描述与关系 |
-| 非流式检索编排 | 基线与本项目均并行 | 沿用主项目 `RetrievalService` 基座与 `accessFromUser` scope（见 agentic-rag.md 分叉表） |
+| 命中类型命名 | 容易与既有图谱搜索契约冲突 | 独立归入 `kg/types/kg.types.ts`，与 `/kg/search` 契约严格隔离 |
+| 纯函数归属 | 格式化/分词内联在长文件服务中 | 抽离至 `kg/chat-graph.ts` 独立纯函数并配备单测 |
+| 中文标点分词 | 仅按基础空白或斜杠拆分 | 扩展支持全角/半角逗号、顿号、分号（如「发票、报销」） |
+| 失败可观测 | catch 后返回空，无任何标记 | `GraphChatHit.error` 显式字段 + 工具/服务两层 catch 兜底 |
+| 关系可见性 | 仅校验两端实体各自可见（容易越权穿透） | 建图写入 `sourceChunkIds`，查询严格沿来源块所属文档穿透过滤（`neo4jRelationAccessWhere`） |
+| 图谱发布状态 | Cypher 未校验文档发布状态 | 统一约束 `status = Published`，避免下线文档图谱回流 |
+| 前端 tooltip | HTML 字符串直接拼接未转义 | `escapeHtml` 严格转义节点名、类型、描述与关系，规避 XSS 风险 |
+| 非流式检索编排 | 裸并发 | 统一复用 `RetrievalService` 基座与 `accessFromUser` 安全 scope |
 
 ## 五、 验证结果
 

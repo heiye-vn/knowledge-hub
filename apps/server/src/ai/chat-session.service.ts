@@ -27,11 +27,11 @@ const AUTO_TITLE_LEN = 30;
  * 所有权收敛在 getOwned：查询条件同时带 id 与 userId，
  * 越权访问与不存在统一 404（不泄漏「会话存在但不是你的」）。
  *
- * 🟡 与基线实现的分叉：
- * - 删除会话不先删消息：kh_ai_message 外键 ON DELETE CASCADE，
- *   库里一条 DELETE 即可（基线在应用层手动删两表）。
+ * 【高可用与简化设计】
+ * - 删除会话不先删消息：kh_ai_message 外键配置 ON DELETE CASCADE，
+ *   数据库级一条 DELETE 自动级联清理。
  * - appendTurn 的落库为尽力而为：会话写入失败只记日志不抛错，
- *   回答已经生成，不能因持久化故障让用户拿不到答案（基线直接向上抛）。
+ *   回答已经生成，不能因持久化故障让用户拿不到答案。
  */
 @Injectable()
 export class ChatSessionService {

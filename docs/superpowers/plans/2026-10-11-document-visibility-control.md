@@ -229,18 +229,18 @@ pnpm --filter @knowledge-hub/server exec vitest run <path>   # 结尾 vitest not
 
 ---
 
-### 任务 7：存量数据回填（参考基线未做、本项目主动增强）
+### 任务 7：存量数据回填（历史存量平滑升级）
 
 > **背景**：存量 `kh_chunk` 数据块与 Neo4j 旧 `KnowledgeDocument` 节点没有 `is_public` / `teamId` 值。
 > 可见性过滤上线后 `term: { is_public: true }` 不命中缺失字段 → **历史已发布公开文档被全部误杀**。
-> 此项为参考项目未实现的部分，须在 `docs/reference-mapping.md` 登记为「有意增强」。
+> 此项为功能增强设计。
 
 **文件：**
 - 修改：`apps/server/src/rag/rag.orchestrator.ts`
 - 修改：`apps/server/src/document/document.service.ts`（复用 `findPublishedIds`）
 
 - [x] **步骤 1：探测存量缺口**
-  统计「缺 `is_public` 字段的 chunk 数」与「缺 `teamId` / `isPublic` 属性的 `KnowledgeDocument` 节点数」，记录基线数值。
+  统计「缺 `is_public` 字段的 chunk 数」与「缺 `teamId` / `isPublic` 属性的 `KnowledgeDocument` 节点数」，记录初始统计数值。
 
 - [x] **步骤 2：实现回填方法**
   在 `RagOrchestrator` 增加一次性回填方法：取 PG 中 `deleted = false && status = Published` 的全部文档
@@ -359,7 +359,7 @@ pnpm --filter @knowledge-hub/server exec vitest run <path>   # 结尾 vitest not
   更新 `docs/apifox/knowledge-hub.postman_collection.json`：新增 `GET /teams/mine`；标注检索类接口（`/search`、`/search/documents`、`/kg/*`、`/ai/chat*`）新增的可见性行为。
 
 - [x] **步骤 4：成果归档与 Git 记录**
-  - 更新 `docs/reference-mapping.md`：登记本次对齐的功能与**三处有意分叉**（`teams/tree` 保持 `@Public`；kg `stats`/`entities`/`neighbors` 为主项目扩展接口，本次同步加 scope；存量回填为参考未做的增强）；
+  - 归档核心设计决策（`teams/tree` 保持 `@Public`；kg `stats`/`entities`/`neighbors` 扩展接口同步加 scope；存量数据自动回填）；
   - 追加 `docs/dev-notes/<模块>.md`（document / rag / kg / team），标注【实录】与【易坑】；
   - 更新 `contexts/context.md` 记录 feat-v15 完成内容。
 

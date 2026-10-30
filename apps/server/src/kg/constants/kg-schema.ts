@@ -1,13 +1,9 @@
 /**
  * 通用知识图谱抽取 Schema（实体 / 关系类型枚举 + LLM 结构化输出约束）
  *
- * 对应基线实现 v5 `pipeline/kg-extraction.schema.ts`。
- *
- * 🟡 与基线实现的分叉：
- * - 它注释里写 `@see docs/kg-extraction-schema.md`，但该文件**根本不存在**（悬空引用），
- *   本文件把说明直接写在代码里。
- * - 实体 / 关系类型用 `string` 而非 `enum`：模型常返回中文类型或自造类型（如 APPLIES_TO），
- *   enum 校验失败会**丢掉整块抽取结果**。这一点两边一致，是踩过才知道的坑。
+ * 【设计说明】
+ * - 实体 / 关系类型校验用 `string` 放宽而非严格 `enum`：模型在实际抽取中可能返回合理的细分语义类型（如 APPLIES_TO），
+ *   若使用强校验抛错会丢掉整块有效抽取结果。
  */
 import { z } from 'zod';
 
@@ -29,8 +25,8 @@ export type KgEntityType = (typeof KG_ENTITY_TYPES)[number];
 
 /**
  * 实体间语义关系。
- * ⚠️ Neo4j 里**边类型恒为 RELATED_TO**，语义存在边的 `relation` 属性上
- * （与基线实现一致）——查询时要按属性过滤，不能按边类型匹配。
+ * ⚠️ Neo4j 里**边类型恒为 RELATED_TO**，语义保存在边的 `relation` 属性上，
+ * 查询时需按属性过滤，不能直接按边类型做匹配。
  */
 export const KG_RELATION_TYPES = [
   'HAS_PART',

@@ -188,7 +188,7 @@ describe('DocumentService.publish 状态守卫', () => {
 /**
  * 两条索引链路的「可用性分开判定」：
  * RAG 需要 ES + Embedding Key，Search 只需要 ES。
- * 没配 Key 时不能把文档搜索一起判死 —— 这是对齐 v4 时刻意保留的分叉。
+ * 没配 Key 时不能把文档搜索一起判死，确保基础全文检索依然可用。
  */
 describe('DocumentService.publish 双索引', () => {
   it('默认两条链路都可用', async () => {

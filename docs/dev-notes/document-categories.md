@@ -6,13 +6,11 @@
 
 ## 关键决策
 
-### 1. 只新增一个权限码 `document:category`
+### 1. 权限码收敛设计：仅新增 `document:category`
 
-基线实现为分类读/写和版本各加了一个权限码（`document:category` / `document:category:query` / `document:version`），
-但 `document:list` 已经是所有能看文档的人的必备权限，`document:edit` 是作者的必备权限。再拆两个码不会改变任何人的实际访问范围，
-只会让权限树多出两个永远无法独立生效的项。
+若为分类读/写和版本各拆细粒度权限码（如 `document:category:query`），由于 `document:list` 已经是文档浏览的必备权限，`document:edit` 是编辑必备权限，过度细分并不会带来实际隔离价值，反而在权限树中徒增冗余配置。
 
-主项目做法：
+本项目权限收敛原则：
 - 分类树：`@RequirePermission('document:list')`；
 - 分类增删改：`@RequirePermission('document:category')`（管理员由 Guard 短路）；
 - 版本读/回滚：`@RequirePermission('document:edit')` + 服务层 `canWriteDocument`。

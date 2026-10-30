@@ -2,8 +2,6 @@
 
 > **覆盖范围**：LLM 实体关系抽取、Neo4j 建图 / 删图 / 查询、BullMQ `kg.graph` 队列，
 > 以及发布 / 删除链路的接入。对应代码 `apps/server/src/kg/`。
-> 对照参考项目 knowledge-hub-backend v5（`pipeline/extraction.service.ts` +
-> `graph-build.service.ts` + `kg-extraction.schema.ts`）。
 
 ---
 
@@ -25,11 +23,11 @@
 
 ---
 
-## 二、【实录】实测揪出的三个真 bug（前两个参考项目也有）
+## 二、【实录】实测揪出的三个真 bug
 
 ### 1. 先截断实体、再校验关系 → 关系被整片误杀
 
-初版（与参考项目同逻辑）先按 `KG_MAX_ENTITIES=12` 截断实体，再用截断后的集合校验
+初版先按 `KG_MAX_ENTITIES=12` 截断实体，再用截断后的集合校验
 关系的 source/target。实测 qwen-plus 单块产出 24~40 个实体 → 引用「第 13 个之后实体」
 的关系全部被丢。**第一份测试文档关系数直接归 0**，第二份正常——典型的「测试数据不够
 多样性就发现不了」。
@@ -77,7 +75,7 @@ remove ────  双清 ES + 投递 KG 删除任务
   反向导入就是模块环，NestJS 虽有 `forwardRef` 但能不用就不用。
 - **建图复用 RAG 同款 `ChunkingService`**：图谱块与向量块共用 `chunkId`，
   将来「向量召回 → 反查图谱」能直接对上。
-- **图模型**（与参考项目一致）：
+- **图模型结构**：
   `(KnowledgeDocument)-[:HAS_CHUNK]->(DocumentChunk)-[:MENTIONS]->(KnowledgeEntity)`，
   实体间 `(e)-[:RELATED_TO {relation, weight, sourceChunkIds}]->(e)`。
   ⚠️ **边类型恒为 RELATED_TO**，语义在 `relation` 属性上，查询按属性过滤；
@@ -89,7 +87,7 @@ remove ────  双清 ES + 投递 KG 删除任务
 
 | 场景 | 手段 |
 |---|---|
-| 换 LLM 模型 / 修 bug 后全量重建 | `POST /kg/build`（不传 documentIds = BUILD_ALL，参考项目此消息类型无入口） |
+| 换 LLM 模型 / 修 bug 后全量重建 | `POST /kg/build`（不传 documentIds = 全量重建已发布文档） |
 | 建图失败 | BullMQ 重试（attempts=3，退避 30s→60s→120s）；失败明细汇总后抛错才触发重试 |
 | 单块失败 | 不中断其余块；**全部块失败才算整篇失败**（部分失败保留成果） |
 | 重复建图 | 先 `deleteForDocument` 再建 + MERGE 幂等，文档节点不翻倍（集成用例锁定） |
@@ -124,8 +122,7 @@ curl -s "localhost:3000/kg/neighbors?name=财务部"
 ## 已知局限与后续待办
 
 > 本节是**本模块**的局限清单；正式登记的待实施改进项在
-> [../TODO.md §4](../TODO.md#4-kgfeat-v5遗留项)（含触发条件与候选方案）。
-> 注意：**下列都不是参考项目 v5 的功能缺口**，v5 对齐本身已完成。
+> [../TODO.md §4](../TODO.md#4-知识图谱-kg-遗留项)（含触发条件与候选方案）。
 
 图谱的**对话检索**（`retrieveForChat`，feat-v18 Graph RAG）单记在
 [graph-rag.md](./graph-rag.md)。
@@ -138,5 +135,4 @@ curl -s "localhost:3000/kg/neighbors?name=财务部"
    后续可按 chunkId 比对，只重抽变更块。
 4. **关系类型不是边类型**：查询「谁负责什么」要按 `r.relation` 属性过滤而非边类型，
    Neo4j 索引帮不上忙；数据量大后需评估把高频关系提升为边类型。
-5. **apoc 插件已装未用**：与参考项目保持一致先装着；用到 `apoc.periodic.iterate`
-   做大批量写时再启用。
+5. **apoc 插件已装未用**：用到 `apoc.periodic.iterate` 做大批量写时再启用。

@@ -14,15 +14,12 @@ export interface IndexResult {
 /**
  * RAG 管线编排器：分块 → Embedding → ES kh_chunk
  *
- * 与基线实现 的 PipelineOrchestrator 同名同职责（分段一致）。
+ * 【职责与分层设计】
+ * `indexDocument(s)` 接收已加载完成的 `PipelineDocument`，数据加载职责留在调用方，
+ * 编排器纯粹负责流水线转换：分块 → 向量计算 → 写入 ES。
+ * 无论同步发布还是异步队列消费，均复用此纯净编排管线。
  *
- * 🟡 与基线实现的**实现层分叉**：
- * - 基线实现：`handleRagReindex(type, ids)` 自己按 ID 查 PG + Mongo 加载文档（因为消费 MQ 消息时只有 ID）
- * - 本项目：`indexDocument(s)` 接收已加载的 `PipelineDocument`，加载职责留在调用方
- *   理由：阶段一是同步调用，publish 时调用方手上已有完整文档，再查一遍是浪费；
- *   阶段二上 BullMQ 后，consumer 只需「按 ID 加载 → 调 indexDocuments」，复用同一段管线。
- *
- * 幂等：先按 document_id 删旧块，再以 chunkId 为 _id 覆盖写。
+ * 幂等性：先按 document_id 删旧块，再以 chunkId 为 _id 执行 upsert 覆盖写。
  */
 @Injectable()
 export class RagOrchestrator {
@@ -111,8 +108,7 @@ export class RagOrchestrator {
   /**
    * 删除某文档的全部向量块（文档下线 / 删除时调用）
    *
-   * ✅ 相对基线实现的改进（修其 P0）：基线实现文档软删除后**不清 ES 向量块**，
-   * 已删文档仍能被检索命中。这里在删除链路显式清理。
+   * 【索引生命周期同步】文档软删除后显式同步清理 ES 向量块，防止已下线文档被检索召回。
    * 注：ES 与 PG 无法共享事务，清理失败只记日志，检索侧还有兜底过滤（见 RetrievalService）。
    */
   async deleteDocument(documentId: string): Promise<void> {
@@ -132,7 +128,7 @@ export class RagOrchestrator {
   }
 
   /**
-   * 探测缺 is_public 字段的向量块数量（存量缺口基线统计）
+   * 探测缺 is_public 字段的向量块数量（存量数据缺口统计）
    */
   async countMissingVisibilityChunks(): Promise<number> {
     if (!this.esService.isEnabled()) return 0;

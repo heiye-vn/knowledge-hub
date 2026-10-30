@@ -8,9 +8,6 @@
 > - `apps/server/src/ai/chat-memory.util.ts`：消息提取 / 工作消息过滤 / PG 行转消息 / 改写上下文
 > - `apps/server/src/ai/ai-chat.service.ts`、`ai-stream.service.ts`：两条问答链路的记忆编排
 > - `apps/server/src/ai/chat-session.service.ts`：`listRecentMessages` + 删除会话时清记忆
->
-> **对应基线实现**：后端 `v16`（前端无改动）
-> **分叉总表**：[docs/reference-mapping.md](../reference-mapping.md) 第三节
 
 ---
 
@@ -63,14 +60,14 @@ v16 最初为 `{ standalone_query, need_retrieve }` 结构化输出；v17 起升
 长对话压缩在 Agent 侧 `summarizationMiddleware`（trigger 12 条 / keep 6 条 / compactLlm 关思考），
 只折叠本次调用的上下文，不改 Redis 窗口与 PG 历史；窗口本身仍按 20 条滑动。
 
-## 六、 相对基线的分叉
+## 六、 核心架构设计与工程优化
 
-- LLM 配置与 ai-chat / ai-stream 同源（`LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY`，`LLM_MODEL` 统一默认）
-- 短期记忆复用既有 `RedisService` 薄封装（基线新建独立连接）；key 前缀 `kh:chat` 与 `kh_auth` 同命名空间
-- 会话删除沿用「只删会话行 + 外键级联」，记忆清理放在删除成功之后（基线应用层删两张表）
+- **统一凭证回退链**：LLM 配置与系统整体对齐（`LLM_API_KEY → EMBEDDING_API_KEY → OPENAI_API_KEY`），模型参数全局收口。
+- **连接与命名空间收敛**：短期记忆复用全局 `RedisService` 客户端，统一 key 前缀 `kh:chat:*`。
+- **级联删除保障**：会话删除依托数据库外键 `ON DELETE CASCADE` 自动级联，记忆清理作为后置异步动作。
 
 ## 七、 已知局限与后续待办
 
 - Mem0 为 SaaS（可配 `MEM0_HOST` 自托管），企业内网未验证
-- 记忆抽取正确性依赖提示词，无程序化校验；建议固定语料回归（6 篇制度 PDF 场景见基线自测清单）
+- 记忆抽取正确性依赖提示词，无程序化校验；建议使用固定语料做定期回归评测
 - 改写每轮多一次 LLM 调用（约 1s）；高并发下可考虑先规则改写、再回落 LLM

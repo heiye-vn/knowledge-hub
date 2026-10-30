@@ -4,7 +4,7 @@
 > 全局 `JwtAuthGuard` + `RolesGuard`、文档模块接入（操作人自动填充 + 审核人从登录态取）。
 > **对应代码路径**：`apps/server/src/auth/`、`apps/server/src/user/`、
 > `src/common/constants/roles.ts`、`init-scripts/postgresql/01-init.sql`（用户段）。
-> 完成时间：2026-09-25。与参考项目 v7 的分叉登记见 [reference-mapping.md](../reference-mapping.md)。
+> 完成时间：2026-09-25。
 
 ---
 
@@ -12,8 +12,7 @@
 
 ### 1. 双令牌独立密钥【易错】
 
-基线实现 access / refresh **共用一个 `JWT_SECRET`**，仅靠 payload 里的 `type` 字段区分用途。
-本项目改为 `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` 两把独立密钥：
+系统采用 `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` 两把独立密钥隔离签名：
 
 - 任一把泄露不再殃及另一类令牌，可独立轮换；
 - JwtStrategy 用 access 密钥验签，refresh token 即使 type 字段没校验也过不了验签层，
@@ -47,7 +46,7 @@ refresh token 签发时带 `jti`（`crypto.randomUUID()`）。`POST /auth/logout
 - 审核工作台 4 端点（待办 / 待审数 / approve / reject）→ `ROLE_REVIEWER | ROLE_ADMIN`；
 - `GET /auth/reviewer-ids` → 同上；
 - **高危运维端点** `POST /kg/build`、`DELETE /kg/documents/:id`、`POST /rag/reindex` → `ROLE_ADMIN`
-  （全量重建 / 删图等于管理员操作，只要求登录等于全员可触发，基线实现未标）。
+  （全量重建 / 删图属于高危运维操作，必须显式约束仅管理员可触发）。
 
 `RolesGuard` 在 `JwtAuthGuard` 之后执行（同为 APP_GUARD，按 providers 声明顺序）；
 接口未标 `@Roles` 时放行——**角色是加法，登录是底座**，避免每加一个接口都要想角色。

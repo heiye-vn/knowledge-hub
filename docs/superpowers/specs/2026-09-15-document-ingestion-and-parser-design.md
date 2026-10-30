@@ -149,7 +149,7 @@ sequenceDiagram
 
 ## 6. 后续演进实施清单（Checklist）
 
-待基础教程学习与初版 CRUD 稳定后，可按以下步骤实施升级：
+待初版 CRUD 与基础骨架稳定后，可按以下步骤实施升级：
 
 - [ ] **Step 1: 数据库迁移**：为 PostgreSQL `kh_document` 表增加 `source_type`、`file_key`、`file_name`、`file_size`、`file_hash`、`parse_status`、`parse_error` 列。
 - [ ] **Step 2: 对象存储适配**：封装 `@knowledge-hub/storage` 或 NestJS `StorageService`，统一封装 RustFS / MinIO 的上传与预签名读取。

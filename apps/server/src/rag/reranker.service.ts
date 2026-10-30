@@ -13,24 +13,19 @@ interface DashScopeRerankResponse {
   code?: string;
 }
 
-/** 单条候选送进 rerank 的正文上限（参考实现同款，防超长拖慢打分） */
+/** 单条候选送进 rerank 的正文上限（防超长拖慢打分） */
 const MAX_DOCUMENT_CHARS = 2000;
 
 /**
  * 检索精排服务（Rerank，feat-v11）
  *
- * 对应基线实现 v11 `ai/reranker.service.ts`：对 RRF 粗融合后的候选块，
- * 用文本重排模型按「与 query 的相关性」精细打分重排。
+ * 对 RRF 粗融合后的候选分块，调用文本重排模型按与 query 的语义相关性打分重排。
  *
- * 🟡 与基线实现的分叉：
- * - **Key 回退链跟随主项目习惯**：`RERANK_API_KEY` → `LLM_API_KEY` →
- *   `EMBEDDING_API_KEY` → `OPENAI_API_KEY`（基线是 DASHSCOPE/OPENAI，主项目没有
- *   DASHSCOPE_API_KEY 变量，extraction 同款回退链）。
- * - **默认模型 qwen3.7-text-rerank**：与 embedding（qwen3.7-text-embedding-flash）
- *   同代，Key 额度共用。
- *
- * 降级设计（与基线一致）：未配置 / 调用失败 / 返回空结果 → 返回 null，
- * 由上层回退为 RRF 顺序，检索链路永不因精排挂掉。
+ * 【架构设计与降级策略】
+ * - **Key 回退链**：`RERANK_API_KEY` → `LLM_API_KEY` → `EMBEDDING_API_KEY` → `OPENAI_API_KEY`。
+ * - **默认模型**：`qwen3.7-text-rerank`，与 embedding 同代且共享凭证额度。
+ * - **平滑降级**：未配置 / 调用失败 / 返回空结果时返回 null，
+ *   自动回退为 RRF 融合排序，保证检索链路高可用。
  */
 @Injectable()
 export class RerankerService {
@@ -107,7 +102,7 @@ export class RerankerService {
         return null;
       }
 
-      // 索引越界的条目直接丢弃（防御异常响应，基线同款）
+      // 索引越界的条目直接丢弃（防御上游模型的异常响应）
       const reranked = results
         .filter((item) => item.index >= 0 && item.index < candidates.length)
         .map((item) => ({

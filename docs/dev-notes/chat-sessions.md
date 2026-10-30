@@ -8,7 +8,7 @@
 > `ai/entities/ai-message.entity.ts`、`ai/chat.types.ts`、`ai/dto/session.dto.ts`、
 > `ai/ai-chat.service.ts`（接入点）、`ai/ai.controller.ts`、`init-scripts/postgresql/01-init.sql`
 >
-> **对应讲次**：第 62 讲（基线实现 v13）
+> **迭代版本**：feat-v13
 
 ---
 
@@ -50,9 +50,9 @@ kh_ai_session                    kh_ai_message
 - **越权 = 不存在**：`getOwned` 查询条件同时带 id 与 userId，
   越权访问和真不存在统一 404，不泄漏「会话存在但不是你的」。
 
-## 三、 🟡 与基线实现的分叉
+## 三、 核心架构设计与工程决策
 
-| 基线实现 | 本项目 | 理由 |
+| 常见/简化做法 | 本项目设计与优化 | 决策理由 |
 | :--- | :--- | :--- |
 | 删除会话先删消息再删会话（应用层两条 DELETE） | 只删会话行，消息交给外键 CASCADE | 库已经声明了级联，应用层再删一遍是重复防御 |
 | appendTurn 失败直接向上抛，**已生成的回答整单丢失** | 落库尽力而为：失败只记 error 日志，回答照常返回 | 回答的价值在生成之后，持久化故障不应让用户拿不到答案；落库缺失影响的是历史回看 |
@@ -74,13 +74,9 @@ kh_ai_session                    kh_ai_message
 - **URL 即会话态**：`/chat?session=<id>`。无参数 = 新会话（首问由服务端建会话后
   `navigate(replace)` 回填 id）；切换会话拉历史消息映射成气泡。
 - **「仅检索」不落会话**：走 `/search` 纯检索，与 `/ai/chat` 分道，避免检索调试污染历史。
-- **历史消息复用溯源组件**：`AnswerWithCitations` + `SourceCiteList`（主项目自研，
-  比基线的 antd List 直拼更完整）。会话栏删除图标 `stopPropagation` 防误触。
+- **历史消息复用溯源组件**：`AnswerWithCitations` + `SourceCiteList`（自主研发，支持交互式引用溯源）。会话栏删除图标 `stopPropagation` 防误触。
 
-**StrictMode 保留（🟡 分叉）**：基线实现为绕开 dev 环境 effect 双调用，
-直接**删除了 StrictMode**。主项目保留它，改为把加载逻辑写成幂等 +
-`cancelled` 守卫（参考实现本身也写了守卫，删 StrictMode 属多余）。
-删掉 StrictMode 会失去一整类问题的 dev 期暴露，代价远大于适配成本。
+**坚持保留 StrictMode**：为了避免 dev 环境下 useEffect 双调用而粗暴移除 React StrictMode 会失去许多潜在并发问题的暴露机会。本项目坚持保留 StrictMode，通过在数据加载中编写幂等的 `cancelled` 守卫函数，从工程规范上优雅解决双调用竞争。
 
 ## 六、 已知局限与后续待办
 

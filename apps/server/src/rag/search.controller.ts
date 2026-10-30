@@ -9,11 +9,8 @@ import { accessFromUser } from '../document/document-access.js';
 /**
  * 知识检索接口
  *
- * ✅ 相对基线实现的补齐：基线实现没有检索接口（向量写进 ES 却无法被查询）。
- * 支持三种 mode，便于对比「纯向量 / 纯关键词 / 混合」的实际效果。
- *
- * 鉴权（feat-v11 起）：search 权限码——基线 v11 的 /rag/search 同款收紧，
- * 此前为裸 JWT。路由保持 /search（基线是 /rag/search，分叉已登记）。
+ * 支持 vector（纯向量）/ keyword（纯关键词）/ hybrid（混合）三种模式。
+ * 权限要求：拥有 `search` 权限码。
  */
 @Controller('search')
 export class SearchController {

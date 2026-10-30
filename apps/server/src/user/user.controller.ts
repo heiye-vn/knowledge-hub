@@ -28,9 +28,9 @@ import type { AuthUser } from '../auth/auth-user.interface.js';
  * - /users/me、/users/me/stats、/users/password/change：登录即可；
  * - 其余：需 system:user 权限码。
  *
- * 【分叉】参考项目在权限码之外还叠了 @Roles(ADMIN)，导致 RolesGuard 先拦掉
- * 非管理员、权限码比对永远走不到；这里只保留权限码，
- * 使「给某人直接授 system:user」的临时授权路径真正可用。
+ * 【权限设计原则】切勿在权限码之外叠加 @Roles(ADMIN)，否则 RolesGuard 先拦截
+ * 非管理员，导致权限码比对分支永远无法执行；此处只保留权限码，
+ * 使「给某人直接授予 system:user 权限码」的细粒度授权路径真正可用。
  *
  * 【易错】路由声明顺序：具名路由（page、:id/permissions）必须放在 :id 之前，
  * 否则会被 :id 吞掉。

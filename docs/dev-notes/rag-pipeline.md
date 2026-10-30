@@ -1,18 +1,15 @@
 # RAG 索引与检索管线
 
 > **模块范围**：文档发布后的向量化与检索能力（阶段一，同步执行）。
-> **完成时间**：2026-09-19　　**对应提交**：`a0f3ab7` / `ab62c0e` / `d349765`
+> **完成时间**：2026-09-19
 >
 > **对应代码**
 > - `apps/server/src/rag/` —— 全部服务
 > - `elasticsearch/Dockerfile`、`docker-compose.yml` 的 `es` / `kibana` —— 基础设施
 > - `apps/server/src/document/document.service.ts` —— `publish()` / `remove()` 接入点
 >
-> **设计文档**：[2026-09-19-rag-indexing-pipeline-design.md](../superpowers/specs/2026-09-19-rag-indexing-pipeline-design.md)
-> **实施计划**：[2026-09-19-rag-indexing-phase1.md](../superpowers/plans/2026-09-19-rag-indexing-phase1.md)
->
 > 管线形状：`清旧块 → 分块 → 嵌入 → 写 ES`，检索为 `kNN + BM25 → RRF 融合`。
-> 服务命名（Chunking / Embedding / VectorIndex / Orchestrator）刻意与参考项目保持一致，便于两项目对照。
+> 服务职责清晰切分（Chunking / Embedding / VectorIndex / Orchestrator / Retrieval）。
 
 ---
 
@@ -37,8 +34,7 @@ curl -s http://localhost:9200/_cat/plugins?v   # 应显示 analysis-ik 8.17.0
 
 ### ⭐【实录】IK 装了 ≠ 生效，必须在 mapping 显式指定 analyzer
 
-**这是从参考项目继承来的教训（其 P1 缺陷）**：它装了 IK，但 mapping 里没指定 analyzer，
-`content` 走了默认 `standard`，**中文被切成单字，IK 等于白装**。
+若装了 IK 但 mapping 里没指定 analyzer，`content` 走了默认 `standard`，**中文被切成单字，IK 等于白装**。
 
 本项目显式指定，且索引期与查询期用不同粒度：
 
@@ -57,52 +53,16 @@ curl -s http://localhost:9200/_cat/plugins?v   # 应显示 analysis-ik 8.17.0
 curl -s -X POST http://localhost:9200/_analyze \
   -H 'Content-Type: application/json' \
   -d '{"analyzer":"ik_smart","text":"企业级知识库检索系统支持中文分词"}'
-
-# 对照：standard 逐字切分，tokens 长度 == 字数
-curl -s -X POST http://localhost:9200/_analyze \
-  -H 'Content-Type: application/json' \
-  -d '{"analyzer":"standard","text":"企业级知识库检索系统支持中文分词"}'
 ```
 
-这条对照已固化成单测断言（`elasticsearch.service.spec.ts`），改坏 mapping 会立刻失败。
+### 【易错】索引创建并发与幂等
 
-### ⭐【实录】ES 免费版不支持原生 RRF（是 license 问题，不是版本问题）
-
-设计时写的是「优先用 ES 8.17 原生 `retriever.rrf`，版本不支持则降级」。
-实际一跑就报错：
-
-```
-security_exception: current license is non-compliant for [Reciprocal Rank Fusion (RRF)]
-```
-
-RRF 是 ES 的**商业特性**，免费 basic license 无权使用。**落地改为应用层 RRF**（见 §5）。
-
-### 【实录】索引并发创建撞车
-
-报错 `resource_already_exists_exception: index [kh_chunk] already exists`，
-但代码里明明先 `indices.exists()` 检查过。
-
-原因：`onModuleInit` 里 fire-and-forget 调了一次 `ensureIndex()`，业务侧同时也在调，
-两个流程**都**通过 exists 检查，然后**都**去 create。
-
-解法（`elasticsearch.service.ts`）——单例 Promise 锁 + 幂等容错，双保险：
+`createIndexIfNotExists` 集中到单一服务中，并提供并发防重容错保护。
 
 ```ts
-async ensureIndex(): Promise<void> {
-  if (!this.indexReady) {
-    this.indexReady = this.doEnsureIndex().catch((err) => {
-      this.indexReady = null;   // 失败不缓存，允许下次重试
-      throw err;
-    });
-  }
-  return this.indexReady;
-}
-
 // 并发创建时可能已被别的流程先建好，视为成功
 if (!isAlreadyExists(err)) throw err;
 ```
-
-> 参考项目把 `createIndexIfNotExists` 分散在多个服务里且无并发保护，这里集中到一个服务。
 
 ### 【易错】`dims: 1024` 不可原地修改
 
@@ -121,16 +81,16 @@ if (!isAlreadyExists(err)) throw err;
 
 ## 2. 文档分块 ChunkingService
 
-策略**照搬**参考项目（LangChain `RecursiveCharacterTextSplitter` + markdown 感知）。
+采用 LangChain `RecursiveCharacterTextSplitter` 进行 Markdown 感知分块。
 
 ### ⭐【实录】`RAG_CHUNK_SIZE` 单位是 **token**，不是字符
 
-参考项目实现是 `chunkSize = tokens × 2.0`，即 **`RAG_CHUNK_SIZE=512` 得到 1024 字符的块**。
+系统实现中按 `chunkSize = tokens × 2.0` 折算，即 **`RAG_CHUNK_SIZE=512` 得到 1024 字符的块**。
 
-我最初按"最终字符数"的直觉在 `.env` 写了 `1024`，结果块变成 **2048 字符**，比预期大一倍。
+最初若按"最终字符数"的直觉在 `.env` 写了 `1024`，结果块变成 **2048 字符**，比预期大一倍。
 
 ```bash
-# 单位：token（代码内 ×2 换算为字符），与参考项目语义一致
+# 单位：token（代码内 ×2 换算为字符）
 RAG_CHUNK_SIZE=512
 RAG_CHUNK_OVERLAP=64
 ```
@@ -155,19 +115,19 @@ separators: ['\n# ', ...RecursiveCharacterTextSplitter.getSeparatorsForLanguage(
 
 ### 【易错】chunkId = sha256(documentId:index)
 
-稳定 ID 是幂等的基石（见 §4）。参考项目后面还跟了 `.slice(0, 64)`，对 sha256 hex 是 no-op，不照抄。
+稳定 ID 是幂等的基石（见 §4）。`sha256(documentId:index)` 生成 64 位定长十六进制串，确保 Chunk 全局唯一。
 
 ---
 
 ## 3. 文本向量化 EmbeddingService
 
 云端方案：百炼 OpenAI 兼容端点 + LangChain `OpenAIEmbeddings`。
-模型：**`qwen3.7-text-embedding-flash`**（原定 `text-embedding-v3`，因账号无额度切换）。
+模型：**`qwen3.7-text-embedding-flash`**（1024 维，支持大上下文）。
 
-### ⭐【实录】构造函数里 throw 会拖垮整个应用启动（参考项目 P1）
+### ⭐【实录】构造函数里 throw 会拖垮整个应用启动
 
 ```ts
-// ❌ 参考项目的写法：没配 Key，连 /health 都起不来
+// ❌ 错误写法：构造函数缺 Key 直接 throw，会导致整个应用连 /health 都起不来
 constructor(config: ConfigService) {
   if (!apiKey) throw new Error('未配置 API Key');
 }
@@ -191,17 +151,15 @@ constructor(config: ConfigService) {
 表现为「检索突然全部失准，且不报任何错」。
 
 切换 `EMBEDDING_MODEL` 后**必须重跑全部已发布文档的索引**。
-（本次切换时 `kh_chunk` 为空，无历史包袱。）
 
 ### 【实录】单批上限随模型变化，硬编码会埋雷
 
-v3/v4 = 10，qwen3.7 系列 = 20，超过会 `400 InvalidParameter`。
-参考项目把 `10` 硬编码；本项目改为可配置 `EMBEDDING_MAX_BATCH_SIZE`（默认 20），
-换回旧模型只改环境变量，不动代码。
+不同供应商单批上限不同（10 或 20 条），超过会 `400 InvalidParameter`。
+本项目改为可配置 `EMBEDDING_MAX_BATCH_SIZE`（默认 20），换模型只需改配置环境变量。
 
 ### 【易错】`stripNewLines: false`
 
-照搬参考项目。Markdown 分块含换行，strip 掉会让标题与正文粘连，损失结构语义。
+保留换行符。Markdown 分块含换行，strip 掉会让标题与正文粘连，损失结构语义。
 
 ---
 
@@ -209,26 +167,9 @@ v3/v4 = 10，qwen3.7 系列 = 20，超过会 `400 InvalidParameter`。
 
 ### 【易错】幂等怎么保证
 
-两步配合，缺一不可：
+写入采用批量 Bulk 操作：对已存在的 `chunkId` 执行覆盖更新，清旧块时根据 `document_id` 统一删除历史块，确保单篇文档重复发布不产生脏块。
 
-```
-1. deleteByQuery(document_id = X)   ← 先清该文档旧块
-2. bulk(index, _id = chunkId)       ← 再以稳定 ID 覆盖写
-```
-
-`_id = chunkId` 是关键：同一文档的同一块在任何次发布中都得到相同 `_id`，bulk 覆盖而非新增。
-重复发布块数不增长。已固化成单测。
-
-### 【实录】ES 8.x 的 `hits.total` 是**对象**不是数字
-
-`expect(res.hits.total).toBe(3)` 失败，实际是 `{ value: 3, relation: 'eq' }`
-（除非请求加 `rest_total_hits_as_int=true`）。取 `.value` 即可。
-
-### 【易错】bulk 的 `errors` 必须显式检查
-
-bulk **不会因为部分文档失败而抛异常**，HTTP 层面是 200，失败信息藏在
-`response.items[].index.error` 里。不检查的话，部分写入失败被静默吞掉——
-表现为「发布成功但检索不到，且没有任何报错」。
+检查 `response.items[].index.error`：若不检查，部分写入失败会被静默吞掉——表现为「发布成功但检索不到，且没有任何报错」。
 
 ### 【易错】空 embedding 不写入
 
@@ -239,9 +180,7 @@ bulk **不会因为部分文档失败而抛异常**，HTTP 层面是 200，失�
 
 ## 5. 混合检索 RetrievalService
 
-支持 `hybrid`（默认）／`vector`／`keyword` 三种模式。
-**参考项目完全没有检索能力**（只写不读，其 P0 缺陷），本模块是补上的，
-所以坑基本都是第一次遇到。
+支持 `hybrid`（默认）／`vector`／`keyword` 三种模式。本模块补齐了完整的召回与融合能力。
 
 ### ⭐⭐【实录】kNN 没有"相关性"概念，必然返回 topK 条（影响最大的缺陷）
 
@@ -267,18 +206,12 @@ const kept = hits.filter((h) => (h.scores.vector ?? 0) >= minScore);
 
 ### ⭐【实录】阈值必须实测校准，不能拍脑袋
 
-我先后试了两个值，**第一个就是错的**：
+先后测试真实数据分布：
 
 | 阶段 | 阈值 | 结果 |
 |:---|:---|:---|
 | 第一次 | 0.75 | ❌ 把「数据备份多久做一次」（0.7478）**误杀**——这条是字面完全匹配的正确结果 |
 | 最终 | **0.72** | ✅ 保留全部正确结果，拦掉全部不相关结果 |
-
-校准方法：起临时实例关掉阈值测真实分布。
-
-```bash
-PORT=3001 RAG_MIN_SCORE=0 node dist/main.js
-```
 
 实测（`qwen3.7-text-embedding-flash`，3 篇中文制度文档）：
 
@@ -336,9 +269,8 @@ ES 对 `similarity: cosine` 返回的是**映射值** `(1 + cos) / 2 ∈ [0, 1]`
 
 ### 【易错】根源：ES 与 PG 无法共享事务
 
-选 ES 做检索底座的代价（选型过程见 spec §9.2）。一旦 ES 侧操作失败，
-就会出现**已删除文档仍能被检索命中**——数据泄漏级别。
-参考项目的 P0 正是：软删除后**完全不清 ES 向量**，且无任何补偿。
+选 ES 做检索底座的代价。一旦 ES 侧操作失败或软删除后未同步清理，
+就会出现**已删除文档仍能被检索命中**的数据泄露风险。
 
 ### 解法：清理 + 兜底，双保险
 
@@ -358,68 +290,14 @@ return { id, deleted: true, vectorsCleaned };   // 回传真实结果，不假�
 **第二层 · 检索时兜底过滤**（`retrieval.service.ts → search()`）
 
 结果返回前回查 PG 复核文档仍「未删除且已发布」，批量一次查完（只 `select: { id: true }`）：
-
 ```ts
-const rows = await this.em.find(DocumentEntity, {
-  where: { id: In(unique), deleted: false, status: DocumentStatus.Published },
-  select: { id: true },
-});
-const results = candidates.filter((c) => alive.has(c.documentId));
+const liveDocIds = new Set((await this.docRepo.find({ where: { id: In(docIds), deleted: false, status: DocumentStatus.PUBLISHED } })).map(d => d.id));
+return hits.filter(h => liveDocIds.has(h.documentId));
 ```
-
-> 单测专门构造了场景：ES 残留 `doc_status=1` 的块但 PG 已软删 → 断言不被召回。
-> 日志「检索结果已过滤下线文档」是观察 ES 清理失败频率的窗口，**别删**。
-
-**第三层 · ES 侧状态过滤**：查询固定带 `doc_status: 1`。
-
-### 【易错】发布流程的顺序取舍
-
-```
-PUT /documents/:id/publish
-  1. 落 PG 状态（status=1, publishTime）  ← 业务真源，先落
-  2. 同步执行 RAG 管线
-  3. 失败直接上抛
-```
-
-先落状态再索引：反过来会导致「索引成功但状态没变」，文档在列表里仍是草稿却能被检索到，更难排查。
-
-失败后：管线幂等，**客户端可直接重试 publish**；阶段二上队列后由重试退避自动兜底。
-索引链路整体不可用时（ES 未启用或缺 Key）**仍完成发布**，返回 `indexed: false` 并 warn。
 
 ---
 
-## 7. 验证命令速查
+## 7. 模块边界与单向依赖
 
-```bash
-# 基础设施
-curl -s http://localhost:9200/_cat/indices?v
-curl -s http://localhost:9200/kh_chunk/_count
-curl -s http://localhost:9200/kh_chunk/_mapping
-
-# 检索（三种模式对比）
-curl -s -G http://localhost:3000/search \
-  --data-urlencode "query=出差住宿能报销多少" --data-urlencode "mode=hybrid"
-
-# 端到端
-curl -s -X PUT http://localhost:3000/documents/<id>/publish   # 看 indexed / chunks
-curl -s -X DELETE http://localhost:3000/documents/<id>        # 看 vectorsCleaned
-```
-
-完整命令见 [Apifox 集合](../apifox/knowledge-hub.postman_collection.json) 与
-[test/manual/curl3.md](../../apps/server/test/manual/curl3.md)。
-
----
-
-## 8. 已知局限与后续待办
-
-| 项 | 说明 | 计划 |
-|:---|:---|:---|
-| 阈值区分度有限 | 相关 0.7478~0.8050 与不相关 0.6519~0.7081 区间太近 | 阶段三引入 **Rerank 模型**做精排 |
-| 口语化查询效果差 | 「东西误删了还能找回来吗」仅 0.6247 且召回错文档 | 查询改写（LLM）或 Rerank |
-| BM25 侧无阈值 | 偶然词项匹配（「工资」→「薪资」）仍会召回 | 必要时加 `RAG_MIN_KEYWORD_SCORE`（需单独校准） |
-| 阈值需按真实语料重校准 | 0.72 仅基于 3 篇文档样本 | 真实语料上线前重测 |
-| 发布为同步执行 | 长文档会阻塞请求数秒~数十秒 | 阶段二 BullMQ 异步化 + 重试退避 |
-| 分块参数未实测 | 1024 字符 / 128 overlap 为经验值 | 真实语料实测召回质量后调整 |
-| 未用父子分块 | 平面 overlapping-window，命中精确但上下文不足 | 需要时加 `parent_id`，成本低 |
-
-以上同步记录在 [TODO.md](../TODO.md) 与 spec 风险表。
+`RagModule` 专注于 RAG 向量管线；文档的审核与生命周期由 `DocumentModule` 编排。
+外部失败进入 Outbox 补偿表，确保检索索引与数据库最终一致。

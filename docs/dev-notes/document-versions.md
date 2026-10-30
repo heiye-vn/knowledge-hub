@@ -18,9 +18,9 @@
 
 ### 2. 正文与快照同事务
 
-基线实现正文在 Mongo、版本表在 PG，跨库无法原子。主项目正文在 `kh_document_content`，与版本表同库：
+正文存储于 `kh_document_content`，与版本表同在 PostgreSQL 库中：
 `update()` 里用 `em.transaction` 包住「行锁读正文 → 改正文 → 写快照 → 改元数据」，
-唯一键 `(document_id, version)` 用 `orIgnore` 兜底并发重复写。
+单库事务保证原子性，唯一键 `(document_id, version)` 兜底并发重复写入。
 
 【实录】把正文更新和版本插入拆成两次非事务写入时，第二次失败会留下「内容已改、历史丢失」，
 而且没有补偿入口能反推旧正文。必须同事务。

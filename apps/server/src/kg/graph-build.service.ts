@@ -35,7 +35,7 @@ import {
 /** 单篇建图最多参与的块数：按实测单块 19~57s，30 块 ≈ 10~30 分钟（并发 3 后 ≈ 4~10 分钟） */
 const DEFAULT_MAX_CHUNKS = 30;
 
-/** 图谱全景空骨架：Neo4j 不可用 / 查询异常时静默降级返回，前端渲染空画布（对齐基线 v12） */
+/** 图谱全景空骨架：Neo4j 不可用 / 查询异常时静默降级返回，前端渲染空画布 */
 function emptyOverview(): GraphOverview {
   return {
     nodes: [],
@@ -59,8 +59,6 @@ function emptyOverview(): GraphOverview {
 /**
  * KG 知识图谱构建（Neo4j）
  *
- * 对应基线实现 v5 `pipeline/graph-build.service.ts`。
- *
  * 图模型：
  * ```
  * (KnowledgeDocument)-[:HAS_CHUNK]->(DocumentChunk)-[:MENTIONS]->(KnowledgeEntity)
@@ -68,15 +66,13 @@ function emptyOverview(): GraphOverview {
  * ```
  * ⚠️ 实体间**边类型恒为 RELATED_TO**，语义在 `relation` 属性上。
  *
- * ✅ 相对基线实现的改进：
- * - **启动即建唯一约束**（基线实现没建）：`KnowledgeEntity.name` / `DocumentChunk.chunkId` /
- *   `KnowledgeDocument.id` 没有约束时 MERGE 靠全表扫描，图越大越慢。
- * - **批量抽取（extractBatch，并发 `KG_EXTRACT_CONCURRENCY`）**：基线实现串行逐块调用，
- *   实测单块 19~57s，100 块的文档串行就是小时级。
- * - **块数上限 `KG_MAX_CHUNKS`**：超长文档按序截断，防止单篇建图跑小时级。
- * - **写图用 UNWIND 批量**：基线实现逐条 `session.run`，一块 30 实体就是 60+ 次往返。
- * - **全部块抽取失败视为整篇失败并抛错**：基线实现单块失败只打日志，
- *   图静默不完整且无感知。部分失败保留成果并计数返回。
+ * 【核心性能与可靠性设计】
+ * - **启动即建唯一约束**：`KnowledgeEntity.name` / `DocumentChunk.chunkId` /
+ *   `KnowledgeDocument.id` 建立唯一索引约束，防止 MERGE 退化为全表扫描。
+ * - **批量并发抽取（`extractBatch`）**：支持多块并行 LLM 抽取，大幅提升抽取吞吐。
+ * - **块数上限 `KG_MAX_CHUNKS`**：超长文档按序截断，防止单篇耗时不可控。
+ * - **写图使用 UNWIND 批量写入**：一条 Cypher 提交整个批次，消除频繁往返开销。
+ * - **全部块抽取失败视为整篇失败并抛错**：触发异步队列重试，防止生成残缺知识图谱。
  *
  * 降级：Neo4j 不可用时跳过写入（不抛错阻断发布）。
  */
@@ -802,7 +798,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
    * 返回包含文档节点、实体节点、标签节点及关联边的完整拓扑，
    * 同时带出规模统计、高频实体、最新文档列表，直接供前端力导向图呈现。
    *
-   * 容错对齐基线：Neo4j 不可用或查询异常时静默降级返回空骨架，
+   * 容错兜底：Neo4j 不可用或查询异常时静默降级返回空骨架，
    * 前端可正常渲染空画布，不因图库故障白屏。
    */
   async getOverview(params: {
@@ -1086,7 +1082,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** 唯一约束：没有它 MERGE 退化为全表扫描，图越大建图越慢（基线实现踩坑） */
+  /** 唯一约束：没有约束时 MERGE 会退化为全表扫描，导致图越大建图越慢 */
   private async ensureConstraints(): Promise<void> {
     if (!this.constraintsReady) {
       this.constraintsReady = this.doEnsureConstraints().catch((err) => {

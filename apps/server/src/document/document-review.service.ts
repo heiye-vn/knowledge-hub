@@ -48,8 +48,8 @@ export class DocumentReviewService {
   /**
    * 插入一条待审记录（review_result 留空表示待审）
    *
-   * 🔴 修基线实现缺陷：其「同一文档只能有一条待审」只在应用层 findOne 判空，
-   * 并发提审会插进两条。本项目加部分唯一索引 uq_kh_document_review_pending
+   * 【并发安全防护】为防止并发提审出现重复审核单，
+   * 增加部分唯一索引 uq_kh_document_review_pending
    * 由数据库兜底，并把唯一冲突翻译成 400 业务异常。
    */
   async createPendingReview(

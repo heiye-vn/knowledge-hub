@@ -12,9 +12,7 @@ import { TaskStatusService } from './task-status.service.js';
 /**
  * 异步队列模块（BullMQ + Redis）
  *
- * 对应基线实现 `mq/mq.module.ts`（RabbitMQ，且是 @Global）。
- * 🟡 分叉：本项目不设 @Global —— 只有控制器和 Worker 用得到队列，
- * 显式导入比全局注入更容易看清依赖。
+ * 不设全局 `@Global()`，通过显式模块导入保持清晰的依赖边界。
  *
  * 组成：
  * - `RagReindexPublisher`：投递重建任务（含重试/退避的 defaultJobOptions）

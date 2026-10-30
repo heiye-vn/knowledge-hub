@@ -44,7 +44,7 @@ Thumbs.db
 # Docker 本地数据卷
 volumes/
 
-# 内部对照与演进文档（本地参考，不上传远程仓库）
+# 本地开发演进记录（不上传远程仓库）
 docs/reference-mapping.md
 docs/dev-notes/reference-project-alignment.md
 

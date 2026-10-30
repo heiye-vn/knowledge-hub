@@ -18,10 +18,7 @@ import { describeError, logThrottled, waitUntilReady } from './mq-error.util.js'
 /**
  * RAG 重建索引任务的「生产者」
  *
- * 职责对应基线实现 `mq/document-pipeline.publisher.ts`：把重建任务投递到队列。
- * 区别：基线实现是发布后自动投递（异步化 publish），本项目按**方案 B** 保持 publish 同步，
- * 队列只服务于「批量重建」（典型场景：换 embedding 模型后全量重索引）。
- *
+ * 把重建任务投递到 BullMQ 队列。服务于「批量重建」与模型升级等异步重建场景。
  * 降级：Redis 不可用时 `isAvailable()` 返回 false，不阻断应用启动。
  */
 @Injectable()

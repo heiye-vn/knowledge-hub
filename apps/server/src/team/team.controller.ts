@@ -23,11 +23,11 @@ import type { AuthUser } from '../auth/auth-user.interface.js';
 /**
  * 团队管理接口。
  *
- * 【分叉·修参考项目 403 bug】参考项目在类上标 @Roles(ADMIN)、
- * 又给 tree 标 @Public——@Public 跳过 JWT 后 request.user 为空，
- * RolesGuard 取到类级角色声明照样比对，公开接口实际返回 403。
- * 本项目：tree 只标 @Public、类上不标任何角色声明，公开语义真正生效；
- * 管理接口全部走 system:team 权限码。
+ * 【权限设计防坑】切勿在控制器类上标 @Roles(ADMIN) 又给 tree 标 @Public：
+ * @Public 跳过 JWT 之后 request.user 为空，若类级别存在角色声明，
+ * RolesGuard 取到类级角色仍会进行比对，导致公开接口实际返回 403。
+ * 正确做法：tree 只标 @Public、类级别不标任何角色声明，确保公开语义真实生效；
+ * 管理类接口细粒度挂载 system:team 权限码。
  *
  * 【易错】路由顺序：具名路由（tree/page/mine）必须声明在 :id 之前。
  */

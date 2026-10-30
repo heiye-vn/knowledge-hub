@@ -18,18 +18,12 @@ import { describeError, logThrottled, waitUntilReady } from './mq-error.util.js'
 /**
  * RAG 重建索引任务的「消费者」（BullMQ Worker）
  *
- * 职责对应基线实现 `mq/document-pipeline.consumer.ts` → `PipelineOrchestrator.handleRagReindex`。
- * 相同点：按文档 ID 批量加载 → 走同一条管线（清旧块 → 分块 → 嵌入 → 写 ES）。
+ * 按文档 ID 批量加载 → 统一复用 RAG 索引管线（清旧块 → 分块 → 向量化 → 写 ES）。
  *
- * 🔴 相对基线实现的修复：
- * - 基线实现失败即 `nack(requeue=false)`，消息永久丢失且无感知；
- *   这里失败会抛出 → BullMQ 按 attempts + 指数退避自动重试（配置在 Publisher 的 defaultJobOptions）。
- * - 基线实现单篇失败只打日志就继续，整体仍算成功；
- *   这里把失败明细汇总后抛出，让整批重试（`indexDocuments` 内部单篇失败已隔离，重试是幂等的）。
- *
- * 🟡 实现层分叉：加载文档的动作放在 Worker（调用 `DocumentService.loadForIndex`），
- * 而不是像基线实现那样放进 Orchestrator —— 本项目 Orchestrator 接收已加载的 `PipelineDocument`，
- * 保持「编排器不管数据源」的职责边界。
+ * 【重试与职责边界】
+ * - 失败明细汇总后抛出 → 由 BullMQ 结合 attempts 与指数退避自动重试。
+ * - 加载文档职责内聚在 Worker（调用 `DocumentService.loadForIndex`），Orchestrator 仅接收
+ *   已加载组装好的 `PipelineDocument`，保持编排器与持久层解耦。
  */
 @Injectable()
 export class RagReindexWorker implements OnModuleInit, OnModuleDestroy {

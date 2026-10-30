@@ -40,14 +40,8 @@ export class KgBuildDto {
 /**
  * KG 知识图谱接口
  *
- * 🔵 **相对基线实现的新增**：
- * - 基线实现 v5 只写了图、没有查询接口（`src/graph/graph.controller.ts` 要到 v10 才有），
- *   本项目在 feat-v5 直接补齐，避免第三次「只写不读」。
- * - 基线实现的 `BUILD_ALL` 消息类型**没有任何投递入口**（死代码）；
- *   本项目 `POST /kg/build` 不传 documentIds 即全量重建。
- * - feat-v12：新增 `GET /kg/overview` 全景图谱接口供前端力导向图呈现。
- *
- * 触发时机：publish 自动投递单篇建图；此处提供手动批量入口。
+ * 提供图谱构建触发、图谱拓扑查询与全景图谱接口（供前端力导向图呈现）。
+ * 触发时机：publish 自动投递单篇建图；此处提供手动批量与全量重建入口。
  */
 @Controller('kg')
 export class KgController {

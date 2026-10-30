@@ -19,7 +19,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 /**
  * 权限管理接口。
  *
- * 【分叉】不标 @Roles(ADMIN)，仅用 @RequirePermission 权限码控制——
+ * 【权限控制设计】不标 @Roles(ADMIN)，仅用 @RequirePermission 权限码控制——
  * 权限码要真正生效，就不能再用角色做前置拦截（否则 RolesGuard 先 403，
  * 「给非管理员直接授权 system:permission」的路径永远走不到）。
  * 管理员由 PermissionsGuard 的 ADMIN 短路保证访问，无需显式绑定权限。
