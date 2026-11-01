@@ -16,9 +16,11 @@ function totalOf(res: { hits?: { total?: unknown } }): number {
   return typeof total === 'number' ? total : (total?.value ?? 0);
 }
 
+const esNode = process.env.ELASTICSEARCH_NODE || 'http://localhost:7520';
+
 async function isEsUp(): Promise<boolean> {
   try {
-    const res = await fetch('http://localhost:9200/_cluster/health', {
+    const res = await fetch(`${esNode}/_cluster/health`, {
       signal: AbortSignal.timeout(3000),
     });
     return res.ok;
@@ -52,7 +54,7 @@ function makeChunks(documentId: string, count: number): DocumentChunk[] {
   }));
 }
 
-describe.skipIf(!esUp)('VectorIndexService（集成，依赖 localhost:9200）', () => {
+describe.skipIf(!esUp)('VectorIndexService（集成，依赖本地 ES）', () => {
   const documentId = 'vitest-doc-0001';
   let esService: ElasticsearchService;
   let service: VectorIndexService;

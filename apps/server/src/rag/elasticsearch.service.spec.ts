@@ -7,10 +7,12 @@ import {
 } from './constants/kh-chunk.mapping.js';
 import { ElasticsearchService } from './elasticsearch.service.js';
 
+const esNode = process.env.ELASTICSEARCH_NODE || 'http://localhost:7520';
+
 /** 本地 ES 是否可达；不可达则跳过集成用例（纯单测仍会执行） */
 async function isEsUp(): Promise<boolean> {
   try {
-    const res = await fetch('http://localhost:9200/_cluster/health', {
+    const res = await fetch(`${esNode}/_cluster/health`, {
       signal: AbortSignal.timeout(3000),
     });
     return res.ok;
@@ -60,14 +62,14 @@ describe('buildKhChunkIndexBody', () => {
   });
 });
 
-describe.skipIf(!esUp)('ElasticsearchService（集成，依赖 localhost:9200）', () => {
+describe.skipIf(!esUp)('ElasticsearchService（集成，依赖本地 ES）', () => {
   let service: ElasticsearchService;
 
   beforeAll(async () => {
     service = new ElasticsearchService(
       fakeConfig({
         ELASTICSEARCH_ENABLED: 'true',
-        ELASTICSEARCH_NODE: 'http://localhost:9200',
+        ELASTICSEARCH_NODE: esNode,
         ELASTICSEARCH_INDEX: KH_CHUNK_INDEX,
         EMBEDDING_DIMENSION: String(KH_CHUNK_EMBEDDING_DIMS),
       }),

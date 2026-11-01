@@ -102,7 +102,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn('Neo4j 已禁用（NEO4J_ENABLED=false），KG 功能不可用');
       return;
     }
-    const uri = this.config.get('NEO4J_URI', 'bolt://localhost:7687');
+    const uri = this.config.get('NEO4J_URI', 'bolt://localhost:7587');
     const user = this.config.get('NEO4J_USER', 'neo4j');
     const password = this.config.get('NEO4J_PASSWORD', '');
 

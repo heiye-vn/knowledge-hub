@@ -45,7 +45,7 @@ export class ElasticsearchService implements OnModuleInit {
 
     const node = this.config.get<string>(
       'ELASTICSEARCH_NODE',
-      'http://localhost:9200',
+      'http://localhost:7520',
     );
     this.indexName = this.config.get<string>(
       'ELASTICSEARCH_INDEX',

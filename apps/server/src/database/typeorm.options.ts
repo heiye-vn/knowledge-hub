@@ -20,7 +20,7 @@ export function buildTypeOrmOptions(
   return {
     type: 'postgres',
     host: get('POSTGRES_HOST', 'localhost'),
-    port: Number(get('POSTGRES_PORT', '5432')),
+    port: Number(get('POSTGRES_PORT', '7532')),
     username: get('POSTGRES_USER', 'user'),
     password: get('POSTGRES_PASSWORD', '123456'),
     database: get('POSTGRES_DB', 'knowledge_hub'),

@@ -16,9 +16,11 @@ import { SearchIndexService } from './search-index.service.js';
  * 纯函数用例（mapping 断言）始终执行，保证 CI 无容器也能跑。
  */
 
+const esNode = process.env.ELASTICSEARCH_NODE || 'http://localhost:7520';
+
 async function isEsUp(): Promise<boolean> {
   try {
-    const res = await fetch('http://localhost:9200/_cluster/health', {
+    const res = await fetch(`${esNode}/_cluster/health`, {
       signal: AbortSignal.timeout(3000),
     });
     return res.ok;
@@ -83,7 +85,7 @@ describe.skipIf(!esUp)('SearchIndexService 集成（需要本地 ES + IK）', ()
   let service: SearchIndexService;
 
   beforeAll(async () => {
-    client = new Client({ node: 'http://localhost:9200' });
+    client = new Client({ node: esNode });
     const es = {
       isEnabled: () => true,
       getClient: () => client,

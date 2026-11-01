@@ -48,7 +48,7 @@ export class RustfsDriver implements StorageDriver, OnModuleInit {
 
     const endpoint = this.config.get<string>(
       'RUSTFS_ENDPOINT',
-      'http://localhost:9000',
+      'http://localhost:7500',
     );
     const accessKey = this.config.get<string>(
       'RUSTFS_ACCESS_KEY',

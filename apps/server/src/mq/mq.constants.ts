@@ -19,7 +19,7 @@ export const KG_GRAPH_QUEUE = 'kg.graph';
 
 /** Redis 连接默认值 */
 export const DEFAULT_REDIS_HOST = 'localhost';
-export const DEFAULT_REDIS_PORT = 6379;
+export const DEFAULT_REDIS_PORT = 7579;
 
 /**
  * Worker 并发数。

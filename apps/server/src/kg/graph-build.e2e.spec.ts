@@ -42,9 +42,11 @@ function realConfig(): ConfigService {
   } as unknown as ConfigService;
 }
 
+const neo4jHttpUrl = process.env.NEO4J_HTTP_URL || 'http://localhost:7574';
+
 async function isNeo4jUp(): Promise<boolean> {
   try {
-    const res = await fetch('http://localhost:7474', {
+    const res = await fetch(neo4jHttpUrl, {
       signal: AbortSignal.timeout(3000),
     });
     return res.ok;

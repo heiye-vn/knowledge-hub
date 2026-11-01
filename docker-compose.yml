@@ -9,7 +9,7 @@ services:
         POSTGRES_PASSWORD: 123456
         POSTGRES_DB: knowledge_hub
       ports:
-        - "5432:5432"
+        - "7532:5432"
       volumes:
         - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/postgres:/var/lib/postgresql/data
         - ./init-scripts/postgresql:/docker-entrypoint-initdb.d
@@ -34,7 +34,7 @@ services:
       timeout: 20s
       retries: 3
     ports:
-      - "8088:80"
+      - "7588:80"
     depends_on:
       - postgres
 
@@ -45,7 +45,7 @@ services:
     container_name: knowledge_hub_elasticsearch
     restart: unless-stopped
     ports:
-      - "9200:9200"
+      - "7520:9200"
     environment:
       - discovery.type=single-node            # 单节点运行（开发环境）
       - xpack.security.enabled=false          # 关闭安全认证，免密码访问
@@ -68,7 +68,7 @@ services:
     container_name: knowledge_hub_kibana
     restart: unless-stopped
     ports:
-      - "5601:5601"
+      - "7561:5601"
     environment:
       - ELASTICSEARCH_HOSTS=http://es:9200
     volumes:
@@ -83,8 +83,8 @@ services:
     container_name: knowledge_hub_rustfs
     restart: unless-stopped
     ports:
-      - "9000:9000" # S3 API
-      - "9001:9001" # Console
+      - "7500:9000" # S3 API
+      - "7501:9001" # Console
     environment:
       RUSTFS_VOLUMES: /data/rustfs0
       RUSTFS_ADDRESS: 0.0.0.0:9000
@@ -111,7 +111,7 @@ services:
     container_name: knowledge_hub_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "7579:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/redis:/data
@@ -123,14 +123,14 @@ services:
       start_period: 10s
 
   # MailHog（本地开发邮件捕获）— 激活 / 重置密码等验证邮件的收件箱
-  # SMTP 1025 / Web 8025：应用把邮件发到这里，浏览器打开 8025 查看，零真实发信
+  # SMTP 7525 / Web 7585：应用把邮件发到这里，浏览器打开 7585 查看，零真实发信
   mailhog:
     image: mailhog/mailhog:latest
     container_name: knowledge_hub_mailhog
     restart: unless-stopped
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "7525:1025"
+      - "7585:8025"
 
   # Neo4j（KG 知识图谱存储）— feat-v5：实体关系建图
   # 不是发布链路的强依赖：NEO4J_ENABLED=false 时应用照常启动，仅图谱不可用
@@ -140,8 +140,8 @@ services:
     container_name: knowledge_hub_neo4j
     restart: unless-stopped
     ports:
-      - "7474:7474" # Web 管理界面（http://localhost:7474）
-      - "7687:7687" # Bolt 协议（代码连接）
+      - "7574:7474" # Web 管理界面（http://localhost:7574）
+      - "7587:7687" # Bolt 协议（代码连接）
     environment:
       - NEO4J_AUTH=neo4j/12345678               # 账号：neo4j  密码：12345678
       - NEO4J_PLUGINS=["apoc"]                  # 安装必备插件

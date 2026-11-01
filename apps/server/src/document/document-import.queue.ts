@@ -29,7 +29,7 @@ export class DocumentImportQueue implements OnModuleInit, OnModuleDestroy {
     if (this.config.get('REDIS_ENABLED', 'true') === 'false') return;
     const connection = {
       host: this.config.get<string>('REDIS_HOST', 'localhost'),
-      port: Number(this.config.get('REDIS_PORT', 6379)),
+      port: Number(this.config.get('REDIS_PORT', 7579)),
     };
     const timeout = Number(this.config.get('REDIS_CONNECT_TIMEOUT_MS', 5000));
     try {
