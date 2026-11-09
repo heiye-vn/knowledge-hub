@@ -7,7 +7,9 @@ import { AiStreamService } from './ai-stream.service.js';
 import { ChatSessionService } from './chat-session.service.js';
 import { ChatShortMemoryService } from './chat-short-memory.service.js';
 import { ChatLongMemoryService } from './chat-long-memory.service.js';
+import { ChatMemoryMirrorService } from './chat-memory-mirror.service.js';
 import { ChatQueryRewriteService } from './chat-query-rewrite.service.js';
+import { ChatHistoryCompressor } from './chat-history-compressor.service.js';
 import { WebSearchService } from './web-search.service.js';
 import { AiController } from './ai.controller.js';
 
@@ -20,6 +22,8 @@ import { AiController } from './ai.controller.js';
  * web_search 工具无 Key 时自动降级为纯知识库问答。
  *
  * 短期记忆复用全局薄封装的 RedisService（RedisModule 非全局，需显式导入）。
+ * ChatMemoryMirrorService 默认关闭（CHAT_MEMORY_MIRROR_ENABLED），
+ * 关闭时不产生任何写入。
  */
 @Module({
   imports: [RagModule, KgModule, RedisModule],
@@ -30,7 +34,9 @@ import { AiController } from './ai.controller.js';
     ChatSessionService,
     ChatShortMemoryService,
     ChatLongMemoryService,
+    ChatMemoryMirrorService,
     ChatQueryRewriteService,
+    ChatHistoryCompressor,
     WebSearchService,
   ],
 })

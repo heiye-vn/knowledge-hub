@@ -100,6 +100,10 @@
     {
       "key": "shareSig",
       "value": ""
+    },
+    {
+      "key": "memoryId",
+      "value": ""
     }
   ],
   "item": [
@@ -3715,6 +3719,81 @@
               }
             },
             "description": "需 ROLE_ADMIN。userIds 不传或空数组 = 发给所有启用用户；服务端按 500 条分批 INSERT。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "长期记忆治理（feat-v22）",
+      "item": [
+        {
+          "name": "我的长期记忆（分页）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/memory?layer=user&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "memory"
+              ]
+            },
+            "description": "查询当前用户的长期记忆。layer=user（默认）返回跨会话画像：身份、岗位、回答偏好、持久约束；layer=session 必须同时传 sessionId，否则缺少 run_id 过滤条件，返回空页而不是全量。返回 {items, total, page, pageSize}，items[].layer 标识归属层。未配置 MEM0_API_KEY 时返回空页而非报错，便于前端统一渲染空态。"
+          }
+        },
+        {
+          "name": "删除单条长期记忆",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/memory/{{memoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "memory",
+                "{{memoryId}}"
+              ]
+            },
+            "description": "按 memoryId 删除一条长期记忆。归属校验在服务端完成（先 get 再比对 userId），越权与不存在统一 404，不泄漏「这条记忆存在但不是你的」。Mem0 未启用时返回 503。删除后立即影响下一轮问答的记忆注入，已发生的会话记录不受影响。"
+          }
+        },
+        {
+          "name": "清空我的全部长期记忆",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/memory",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "memory"
+              ]
+            },
+            "description": "清空当前用户的全部长期记忆，含 user 层画像与各会话的 session 层上下文。语义刻意定为「全清」：Mem0 的 deleteAll 无法表达「只删 runId 为空」，自行分页筛 runId 会因删除导致页码偏移而漏删，因此不提供「只清画像」入口。不可恢复，调用前需二次确认。Mem0 未启用时返回 503。"
           }
         }
       ]

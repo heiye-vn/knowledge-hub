@@ -29,6 +29,10 @@ import {
   type ChatRoutePlan,
 } from './chat-query-rewrite.service.js';
 import {
+  ChatHistoryCompressor,
+  HISTORY_SUMMARY_INSTRUCTION,
+} from './chat-history-compressor.service.js';
+import {
   retrieveAndGrade,
   type GradedRetrieve,
   type RetrieveEval,
@@ -124,6 +128,7 @@ export class AiStreamService {
     private readonly longMemory: ChatLongMemoryService,
     private readonly queryRewrite: ChatQueryRewriteService,
     private readonly graph: GraphBuildService,
+    private readonly compressor: ChatHistoryCompressor,
   ) {
     const apiKey =
       config.get<string>('LLM_API_KEY') ||
@@ -430,10 +435,11 @@ export class AiStreamService {
       middleware: [
         summarizationMiddleware({
           model: this.compactLlm,
-          trigger: { messages: 12 },
-          keep: { messages: 6 },
-          summaryPrompt:
-            '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
+          // 阈值与非流式 ChatHistoryCompressor 共用同一组配置，
+          // 避免同一会话在 /ai/chat 与 /ai/chat/stream 上表现不一致
+          trigger: this.compressor.trigger,
+          keep: this.compressor.keep,
+          summaryPrompt: `${HISTORY_SUMMARY_INSTRUCTION}\n\n待摘要的对话：\n{messages}\n\n摘要：`,
         }),
         modelCallLimitMiddleware({ runLimit: 8, exitBehavior: 'end' }),
       ],
@@ -541,7 +547,6 @@ export class AiStreamService {
     const topK = dto.topK ?? 5;
     let persistSessionId = dto.sessionId;
     const persistSources: ChatSource[] = [];
-    let persistHistory: BaseMessage[] = [];
 
     // 归属校验与默认标题覆盖都必须在流外：execute 内抛错只会降级成 SSE error
     // 事件（HTTP 200）；touchTitle 内部 getOwned，越权仍是 HTTP 404
@@ -586,7 +591,6 @@ export class AiStreamService {
             });
 
             const history = await this.loadWorkingHistory(user.userId, sessionId);
-            persistHistory = history;
 
             writer.write({
               type: 'data-status',
@@ -692,7 +696,6 @@ export class AiStreamService {
           await this.shortMemory.appendTurn(
             user.userId,
             persistSessionId,
-            persistHistory,
             question,
             finalAnswer,
           );
@@ -728,13 +731,14 @@ export class AiStreamService {
       this.shortMemory.windowSize,
     );
     const history = dbRowsToMessages(rows);
-    if (history.length) {
-      await this.shortMemory.save(userId, sessionId, history);
-      this.logger.log(
-        `短期记忆从库回填：sessionId=${sessionId}, n=${history.length}`,
-      );
-    }
-    return history;
+    if (!history.length) return history;
+    // save 返回实际落库窗口（条数 + token 预算都已收紧），本轮直接用它，
+    // 否则模型拿到的是未裁剪的历史，预算闸只在下一轮才生效。
+    const window = await this.shortMemory.save(userId, sessionId, history);
+    this.logger.log(
+      `短期记忆从库回填：sessionId=${sessionId}, n=${window.length}`,
+    );
+    return window;
   }
 }
 

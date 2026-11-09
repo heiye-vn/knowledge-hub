@@ -50,7 +50,8 @@
 | [ai-streaming.md](./ai-streaming.md) | 功能模块 · AI 流式对话（SSE + useChat，feat-v14） | 2026-10-09 | **toUIMessageStream 要关 sendStart/Finish** 防双发；DTO 必须放行 useChat 附加字段否则 400；百炼思考内容要流上原位改写；vite 代理必须 timeout:0 |
 | [account-activation-governance.md](./account-activation-governance.md) | 功能模块 · 账号激活治理（重发激活邮件 / 未激活账号过期清理） | 2026-10-05 | **公开端点凭密码证明归属**防邮件轰炸；TTL 反推冷却、发信失败回滚 token；清理前核对所有 `email_verified=0` 写入点防误删；QueryBuilder update 需手动带 `updatedAt` |
 | [document-visibility.md](./document-visibility.md) | 功能模块 · 文档检索可见性控制（feat-v15） | 2026-10-11 | **存量回填防误杀**；ES 过滤必须挂 filter 上下文；Cypher 实体要沿 MENTIONS 穿透；就地更新与重建互斥 |
-| [chat-memory.md](./chat-memory.md) | 功能模块 · 对话记忆与检索改写（feat-v16） | 2026-10-19 | **短期窗口只存 user/assistant 原文**；Redis 只是热缓存、PG 才是真源；改写后的 query 必须继续带可见性 scope；Mem0 只从用户提问抽事实；摘要压缩在 Agent 中间件而非存储层 |
+| [chat-memory.md](./chat-memory.md) | 功能模块 · 对话记忆与检索改写（feat-v16，feat-v22 加固） | 2026-11-09 | **覆盖写会丢并发轮次**→改 List 追加；条数管不住长回答，需 token 预算双闸；user 层永久累积必须设注入上限；Mem0 `delete` 不校验归属；`deleteAll` 无法只删 runId 为空 |
+| [mem0-selfhost.md](./mem0-selfhost.md) | 基础设施 · Mem0 自托管契约验证（feat-v22） | 2026-11-09 | **`AND` 组合过滤是唯一静默出错项**（不支持会把长期画像当会话上下文）；10 条能力逐条给判据；切换前必跑 `test/manual/mem0-contract.md` |
 | [agentic-rag.md](./agentic-rag.md) | 功能模块 · Agentic RAG（feat-v17） | 2026-10-24 | **路由 fail-closed、评估 fail-open**；不切题命中必须在数据层清空；检索上限用闭包计数；内部结构化输出必须隔离 callbacks；多段 `data-sources` 取最后一个非空 |
 | [web-search-fallback.md](./web-search-fallback.md) | 功能模块 · 联网搜索多提供商降级 | 2026-10-24 | **按配置顺序逐个尝试**；只启用有 Key 的提供商；错误才降级、空结果不降级；双失败返回合并错误；前端展示实际 provider |
 | [graph-rag.md](./graph-rag.md) | 功能模块 · Graph RAG（图谱进对话，feat-v18） | 2026-10-25 | **实体匹配禁 CONTAINS**（短词必命中长标题）；Neo4j session 非并发安全；`parallel_tool_calls` 要显式开；图谱空命中不等于库里没有；关系必须写 `sourceChunkIds` 严格溯源；mention 边超阈值降级；力导图 layoutAnimation 不能关 |

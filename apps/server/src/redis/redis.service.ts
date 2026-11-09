@@ -138,4 +138,68 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     );
     return Number(result);
   }
+
+  /** 读取 List 全部元素，保持插入顺序 */
+  async listRange(key: string): Promise<string[]> {
+    this.assertAvailable();
+    return this.client!.lrange(key, 0, -1);
+  }
+
+  /**
+   * 追加元素到窗口 List，裁剪到最近 maxLen 条并刷新 TTL（单条 Lua 原子）。
+   *
+   * 相比「读窗口 → 拼接 → 整体覆盖写」，追加写不会因为两个请求共享同一份
+   * 过期快照而互相覆盖。裁剪与续期同一批执行，避免进程中断留下无 TTL 的键。
+   */
+  async appendListWindow(
+    key: string,
+    values: string[],
+    maxLen: number,
+    ttlSeconds: number,
+  ): Promise<number> {
+    this.assertAvailable();
+    if (!values.length) return 0;
+    const result = await this.client!.eval(
+      "for i = 1, #ARGV - 2 do redis.call('RPUSH', KEYS[1], ARGV[i]) end\n" +
+        "redis.call('LTRIM', KEYS[1], -tonumber(ARGV[#ARGV - 1]), -1)\n" +
+        "redis.call('EXPIRE', KEYS[1], tonumber(ARGV[#ARGV]))\n" +
+        'return redis.call("LLEN", KEYS[1])',
+      1,
+      key,
+      ...values,
+      Math.max(1, Math.floor(maxLen)),
+      Math.max(1, Math.floor(ttlSeconds)),
+    );
+    return Number(result);
+  }
+
+  /**
+   * 用给定元素整体替换窗口 List（回填 / 预算收敛场景）。
+   * 空数组等价于删键：留一个空 List 会让下次读取命中空窗口而不回源数据库。
+   */
+  async replaceListWindow(
+    key: string,
+    values: string[],
+    maxLen: number,
+    ttlSeconds: number,
+  ): Promise<number> {
+    this.assertAvailable();
+    if (!values.length) {
+      await this.client!.del(key);
+      return 0;
+    }
+    const result = await this.client!.eval(
+      "redis.call('DEL', KEYS[1])\n" +
+        "for i = 1, #ARGV - 2 do redis.call('RPUSH', KEYS[1], ARGV[i]) end\n" +
+        "redis.call('LTRIM', KEYS[1], -tonumber(ARGV[#ARGV - 1]), -1)\n" +
+        "redis.call('EXPIRE', KEYS[1], tonumber(ARGV[#ARGV]))\n" +
+        'return redis.call("LLEN", KEYS[1])',
+      1,
+      key,
+      ...values,
+      Math.max(1, Math.floor(maxLen)),
+      Math.max(1, Math.floor(ttlSeconds)),
+    );
+    return Number(result);
+  }
 }

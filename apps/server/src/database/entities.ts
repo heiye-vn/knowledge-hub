@@ -1,3 +1,4 @@
+import { AiMemoryEntity } from '../ai/entities/ai-memory.entity.js';
 import { AiMessageEntity } from '../ai/entities/ai-message.entity.js';
 import { AiSessionEntity } from '../ai/entities/ai-session.entity.js';
 import { DocumentContentEntity } from '../document/entities/document-content.entity.js';
@@ -51,5 +52,6 @@ export const ENTITIES = [
   TeamMemberEntity,
   AiSessionEntity,
   AiMessageEntity,
+  AiMemoryEntity,
   IndexOutboxEntity,
 ];

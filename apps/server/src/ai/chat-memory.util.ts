@@ -4,6 +4,7 @@ import {
   type BaseMessage,
 } from '@langchain/core/messages';
 import type { AiMessageEntity } from './entities/ai-message.entity.js';
+import { estimateContextTokens } from './context-budget.js';
 
 /** 提取消息纯文本：兼容字符串与多段 content（文本段拼接） */
 export function messageText(message: BaseMessage): string {
@@ -40,6 +41,34 @@ export function dbRowsToMessages(rows: AiMessageEntity[]): BaseMessage[] {
     if (row.role === 'assistant') out.push(new AIMessage(text));
   }
   return out;
+}
+
+/**
+ * 按估算 token 预算裁剪历史：从最新往前累加，超预算即停。
+ *
+ * 条数上限（maxMessages）管不住长回答——20 条 3000 字的对话能撑出六万字。
+ * 这里复用检索侧的 UTF-8 字节估算（同一套预算单位，不引入 tokenizer 依赖）。
+ * 最后一条强制保留：本轮问题再长也要进模型，否则窗口会被裁成空数组。
+ */
+export function fitMessagesToBudget(
+  messages: BaseMessage[],
+  maxEstimatedTokens: number,
+): BaseMessage[] {
+  if (messages.length <= 1) return messages;
+  if (!Number.isFinite(maxEstimatedTokens) || maxEstimatedTokens <= 0) {
+    return messages.slice(-1);
+  }
+  const kept: BaseMessage[] = [];
+  let used = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const cost = estimateContextTokens(messageText(message));
+    const isLatest = index === messages.length - 1;
+    if (!isLatest && used + cost > maxEstimatedTokens) break;
+    kept.push(message);
+    used += cost;
+  }
+  return kept.reverse();
 }
 
 /**
