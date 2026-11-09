@@ -122,11 +122,7 @@ export default function MemoryPage() {
         }}
       >
         <h2 style={{ margin: 0 }}>我的长期记忆</h2>
-        <Button
-          danger
-          onClick={() => setConfirm({ open: true, kind: 'all' })}
-          disabled={!total && layer === 'user'}
-        >
+        <Button danger onClick={() => setConfirm({ open: true, kind: 'all' })}>
           清空全部
         </Button>
       </div>
