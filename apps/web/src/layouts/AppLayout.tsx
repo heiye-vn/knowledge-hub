@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   ApartmentOutlined,
   BellOutlined,
+  BulbOutlined,
   ClusterOutlined,
   FileTextOutlined,
   HomeOutlined,
@@ -187,6 +188,7 @@ export default function AppLayout() {
         title: '个人中心',
         items: [
           { key: '/profile', icon: <UserOutlined />, label: '账号资料' },
+          { key: '/profile/memory', icon: <BulbOutlined />, label: '我的记忆' },
           { key: '/notifications', icon: <BellOutlined />, label: '消息通知' },
         ],
       }

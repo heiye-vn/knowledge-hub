@@ -5,6 +5,7 @@ import AppLayout from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
+import MemoryPage from './pages/MemoryPage'
 import DocumentsPage from './pages/DocumentsPage'
 import DocumentEditPage from './pages/DocumentEditPage'
 import DocumentDetailPage from './pages/DocumentDetailPage'
@@ -133,6 +134,14 @@ export default function App() {
           element={
             <Perm code="profile">
               <ProfilePage />
+            </Perm>
+          }
+        />
+        <Route
+          path="profile/memory"
+          element={
+            <Perm code="profile">
+              <MemoryPage />
             </Perm>
           }
         />
