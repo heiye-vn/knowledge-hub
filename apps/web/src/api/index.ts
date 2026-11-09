@@ -16,6 +16,7 @@ import type {
   GraphOverview,
   ImportTaskView,
   LoginResult,
+  MemoryItem,
   NotificationItem,
   PageResult,
   PermissionNode,
@@ -186,6 +187,29 @@ export const aiApi = {
   renameSession: (id: string, title: string) =>
     patch<ChatSession>(`/ai/sessions/${id}`, { title }),
   removeSession: (id: string) => del<{ message: string }>(`/ai/sessions/${id}`),
+}
+
+/**
+ * 长期记忆治理（feat-v22）
+ *
+ * session 层必须带 sessionId：后端拿不到 run_id 过滤条件时会返回空页，
+ * 而不是退化成「该用户全部记忆」——漏传只会少看，不会看到别人的或跨层的。
+ */
+export const memoryApi = {
+  list: (layer: 'user' | 'session', page = 1, pageSize = 20, sessionId?: string) => {
+    const params = new URLSearchParams({
+      layer,
+      page: String(page),
+      pageSize: String(pageSize),
+    })
+    if (sessionId) params.set('sessionId', sessionId)
+    return get<PageResult<MemoryItem>>(`/ai/memory?${params.toString()}`)
+  },
+  /** Mem0 的记忆 id 是外部字符串，必须转义后再拼进路径 */
+  remove: (id: string) =>
+    del<{ message: string }>(`/ai/memory/${encodeURIComponent(id)}`),
+  /** 清空全部（含各会话上下文），不可恢复 */
+  clearAll: () => del<{ message: string }>('/ai/memory'),
 }
 
 export const graphApi = {

@@ -123,6 +123,15 @@ export interface ChatSession {
   updatedAt: string
 }
 
+/** 长期记忆条目（Mem0 抽取事实，feat-v22 治理接口返回） */
+export interface MemoryItem {
+  id: string
+  memory: string
+  layer: 'user' | 'session'
+  createdAt: string | null
+  updatedAt: string | null
+}
+
 /** AI 会话消息（kh_ai_message，assistant 消息带引用溯源） */
 export interface ChatMessage {
   id: string

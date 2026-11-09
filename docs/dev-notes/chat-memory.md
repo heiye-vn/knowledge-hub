@@ -11,6 +11,7 @@
 > - `apps/server/src/ai/ai-chat.service.ts`、`ai-stream.service.ts`：两条问答链路的记忆编排
 > - `apps/server/src/ai/chat-session.service.ts`：`listRecentMessages` + 删除会话时清记忆
 > - `apps/server/src/ai/ai.controller.ts`：记忆治理接口（列表 / 删单条 / 全清）
+> - `apps/web/src/pages/MemoryPage.tsx`、`apps/web/src/api/index.ts`（`memoryApi`）：治理页与前端 API 封装
 > - `apps/server/eval/datasets/memory-extraction-20.json`、`src/ai/eval/run-memory-experiment.ts`：判定口径离线评测
 
 ---
@@ -158,6 +159,11 @@ Mem0 的 `add` 是增量 upsert 语义（内部去重与冲突更新），项目
 | GET | `/ai/memory?layer=user&page=1&pageSize=20` | 分页；`layer=session` 必须带 `sessionId`，否则返回空页 |
 | DELETE | `/ai/memory/:memoryId` | 删单条；越权与不存在统一 404 |
 | DELETE | `/ai/memory` | 清空全部（含各会话上下文） |
+
+前端入口：个人中心 → 我的记忆（`/profile/memory`，路由守卫沿用 `profile` 权限码）。
+两层分 tab 展示；「会话上下文」tab 必须先选会话 —— 这与后端「缺 sessionId 返回空页」是同一个安全默认。
+删除与清空均二次确认，清空文案明确写「聊天记录不受影响，但助手会忘记偏好与约束」，
+避免用户误以为会丢聊天记录。
 
 ### 【易错】Mem0 的 delete 不校验归属
 
