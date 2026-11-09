@@ -1,0 +1,147 @@
+{
+  "name": "memory-extraction-20",
+  "description": "长期记忆分类器判定回归集。核心红线是「知识库与助手事实不得写成用户画像」：带 kb-fact-trap / doc-fact-trap 标签的样本期望两层均为 false，一旦被判 true 即视为污染。",
+  "verifiedAt": "2026-11-09",
+  "cases": [
+    {
+      "id": "m01",
+      "tag": "identity",
+      "question": "我是成都研发中心的后端",
+      "answerSnippet": "了解，后续按后端场景说明。",
+      "expect": { "writeUser": true, "writeSession": false }
+    },
+    {
+      "id": "m02",
+      "tag": "preference",
+      "question": "以后回答短一点，别写那么多",
+      "answerSnippet": "好的，之后尽量简洁。",
+      "expect": { "writeUser": true, "writeSession": false }
+    },
+    {
+      "id": "m03",
+      "tag": "constraint",
+      "question": "我不吃辣，团建订餐注意一下",
+      "answerSnippet": "已记录，会避开辣味。",
+      "expect": { "writeUser": true, "writeSession": false }
+    },
+    {
+      "id": "m04",
+      "tag": "identity",
+      "question": "我们团队叫基础架构组，我负责网关",
+      "answerSnippet": "明白，网关相关的问题按这个背景回答。",
+      "expect": { "writeUser": true, "writeSession": false }
+    },
+    {
+      "id": "m05",
+      "tag": "preference",
+      "question": "技术问题尽量带一段示例代码",
+      "answerSnippet": "好的，之后会附示例。",
+      "expect": { "writeUser": true, "writeSession": false }
+    },
+    {
+      "id": "m06",
+      "tag": "identity",
+      "question": "我是新来的，叫我小李就行",
+      "answerSnippet": "你好小李。",
+      "expect": { "writeUser": true, "writeSession": false }
+    },
+    {
+      "id": "m07",
+      "tag": "session-task",
+      "question": "这次先看差旅制度第三节",
+      "answerSnippet": "好，先看第三节。",
+      "expect": { "writeUser": false, "writeSession": true }
+    },
+    {
+      "id": "m08",
+      "tag": "session-task",
+      "question": "我在写 Q3 复盘文档，下一步补数据",
+      "answerSnippet": "需要补哪部分数据？",
+      "expect": { "writeUser": false, "writeSession": true }
+    },
+    {
+      "id": "m09",
+      "tag": "session-task",
+      "question": "本轮只关心住宿标准，交通不用管",
+      "answerSnippet": "好，只看住宿。",
+      "expect": { "writeUser": false, "writeSession": true }
+    },
+    {
+      "id": "m10",
+      "tag": "session-task",
+      "question": "这次排查登录超时，先看网关日志",
+      "answerSnippet": "可以从网关日志入手。",
+      "expect": { "writeUser": false, "writeSession": true }
+    },
+    {
+      "id": "m11",
+      "tag": "chitchat",
+      "question": "好的谢谢",
+      "answerSnippet": "不客气。",
+      "expect": { "writeUser": false, "writeSession": false }
+    },
+    {
+      "id": "m12",
+      "tag": "chitchat",
+      "question": "嗯",
+      "answerSnippet": "还有什么可以帮你？",
+      "expect": { "writeUser": false, "writeSession": false }
+    },
+    {
+      "id": "m13",
+      "tag": "chitchat",
+      "question": "明白了",
+      "answerSnippet": "好的。",
+      "expect": { "writeUser": false, "writeSession": false }
+    },
+    {
+      "id": "m14",
+      "tag": "kb-query",
+      "question": "年假多少天？",
+      "answerSnippet": "需要你补充入职年限，我再查对应条款。",
+      "expect": { "writeUser": false, "writeSession": false }
+    },
+    {
+      "id": "m15",
+      "tag": "kb-query",
+      "question": "帮我总结一下这份文档",
+      "answerSnippet": "这份文档共四节，主要讲采购流程。",
+      "expect": { "writeUser": false, "writeSession": false }
+    },
+    {
+      "id": "m16",
+      "tag": "kb-fact-trap",
+      "question": "年假多少天？",
+      "answerSnippet": "根据《员工手册》第 12 条：入职满一年享有 5 天年假，满三年 10 天，满五年 15 天。",
+      "expect": { "writeUser": false, "writeSession": false }
+    },
+    {
+      "id": "m17",
+      "tag": "kb-fact-trap",
+      "question": "差旅报销找谁审批？",
+      "answerSnippet": "差旅报销由部门负责人审批，财务部王经理复核，5 个工作日内到账。",
+      "expect": { "writeUser": false, "writeSession": false }
+    },
+    {
+      "id": "m18",
+      "tag": "kb-fact-trap",
+      "question": "VPN 怎么连？",
+      "answerSnippet": "使用 FortiClient，服务器地址 vpn.corp.example.com，账号为工号，首次登录需绑定 MFA。",
+      "expect": { "writeUser": false, "writeSession": false }
+    },
+    {
+      "id": "m19",
+      "tag": "kb-fact-trap",
+      "question": "出差住宿标准是多少？",
+      "answerSnippet": "一线城市住宿上限 600 元/晚，二线 400 元/晚，超标部分自理。",
+      "expect": { "writeUser": false, "writeSession": false }
+    },
+    {
+      "id": "m20",
+      "tag": "doc-fact-trap",
+      "question": "这个项目的检索链路用了什么？",
+      "answerSnippet": "知识库采用 PostgreSQL + Elasticsearch 混合检索，向量模型为 text-embedding-v3，另接 Neo4j 存图谱。",
+      "expect": { "writeUser": false, "writeSession": false }
+    }
+  ]
+}

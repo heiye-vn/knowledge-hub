@@ -9,6 +9,7 @@
     "test:server": "pnpm --filter @knowledge-hub/server test",
     "test:web": "pnpm --filter @knowledge-hub/web test",
     "eval:rag": "pnpm --filter @knowledge-hub/server eval:rag",
+    "eval:memory": "pnpm --filter @knowledge-hub/server eval:memory",
     "typecheck:server": "pnpm --filter @knowledge-hub/server typecheck",
     "dev:web": "pnpm --filter @knowledge-hub/web dev",
     "build:web": "pnpm --filter @knowledge-hub/web build",
