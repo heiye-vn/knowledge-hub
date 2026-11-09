@@ -7,6 +7,7 @@ import { ChatShortMemoryService } from './chat-short-memory.service.js';
 import { ChatLongMemoryService } from './chat-long-memory.service.js';
 import { ChatQueryRewriteService } from './chat-query-rewrite.service.js';
 import { WebSearchService } from './web-search.service.js';
+import type { ChatHistoryCompressor } from './chat-history-compressor.service.js';
 import type { GraphBuildService } from '../kg/graph-build.service.js';
 import type { GraphChatHit } from '../kg/types/kg.types.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
@@ -75,6 +76,15 @@ function makeSessions(
     } as unknown as ChatSessionService,
     appendTurn: appendTurnFn as unknown as ReturnType<typeof vi.fn>,
   };
+}
+
+/** 压缩器 fake：默认原样返回历史，压缩行为本身由 chat-history-compressor.spec 覆盖 */
+function makeCompressor() {
+  return {
+    maybeCompress: vi.fn(async (history: unknown[]) => history),
+    trigger: { messages: 12 },
+    keep: { messages: 6 },
+  } as unknown as ChatHistoryCompressor;
 }
 
 function makeMemoryFakes() {
@@ -163,6 +173,7 @@ function makeService(
     fakes.queryRewrite,
     webSearch,
     graph,
+    makeCompressor(),
   ) as AiChatService & {
     appendTurn: ReturnType<typeof vi.fn>;
     fakes: ReturnType<typeof makeMemoryFakes>;
@@ -215,6 +226,7 @@ describe('AiChatService（mock 检索与 LLM）', () => {
       queryRewrite,
       makeWebSearch(),
       makeGraph(),
+      makeCompressor(),
     );
 
     const res = await service.chat('   ');
@@ -398,6 +410,7 @@ describe('AiChatService（mock 检索与 LLM）', () => {
       queryRewrite,
       makeWebSearch(),
       makeGraph(),
+      makeCompressor(),
     );
 
     const res = await service.chat('问题');
@@ -631,7 +644,6 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     expect(service.fakes.shortMemory.appendTurn).toHaveBeenCalledWith(
       USER.userId,
       '9001',
-      expect.any(Array),
       '问题',
       '知识库里没有相关内容。',
     );
@@ -651,7 +663,6 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     expect(service.fakes.shortMemory.appendTurn).toHaveBeenCalledWith(
       USER.userId,
       '9001',
-      expect.any(Array),
       '问题',
       '结论 [1]。',
     );

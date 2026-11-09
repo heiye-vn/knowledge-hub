@@ -9,6 +9,7 @@ import type { ChatSessionService } from './chat-session.service.js';
 import type { ChatShortMemoryService } from './chat-short-memory.service.js';
 import type { ChatLongMemoryService } from './chat-long-memory.service.js';
 import type { GraphBuildService } from '../kg/graph-build.service.js';
+import type { ChatHistoryCompressor } from './chat-history-compressor.service.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
 import type { SearchHit } from '../rag/types/rag.types.js';
 
@@ -165,6 +166,11 @@ function makeService(withKey = true) {
     longMemory,
     queryRewrite,
     graph,
+    {
+      maybeCompress: async (history: unknown[]) => history,
+      trigger: { messages: 12 },
+      keep: { messages: 6 },
+    } as unknown as ChatHistoryCompressor,
   );
   return {
     service,

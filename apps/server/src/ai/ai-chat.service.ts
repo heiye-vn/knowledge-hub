@@ -20,6 +20,7 @@ import {
   ChatQueryRewriteService,
   type ChatIntent,
 } from './chat-query-rewrite.service.js';
+import { ChatHistoryCompressor } from './chat-history-compressor.service.js';
 import { retrieveUntilRelevant } from './agentic-retrieve.js';
 import { WebSearchService, type WebSearchResult } from './web-search.service.js';
 import { formatGraphSystemText } from '../kg/chat-graph.js';
@@ -80,6 +81,7 @@ export class AiChatService {
     private readonly queryRewrite: ChatQueryRewriteService,
     private readonly webSearch: WebSearchService,
     private readonly graph: GraphBuildService,
+    private readonly compressor: ChatHistoryCompressor,
   ) {
     const apiKey =
       config.get<string>('LLM_API_KEY') ||
@@ -195,6 +197,8 @@ export class AiChatService {
               return undefined;
             })
         : Promise.resolve(undefined);
+    // 历史压缩与检索并行：仅超过 trigger 条时才真的调模型，短会话同步返回。
+    const compressedHistoryP = this.compressor.maybeCompress(history);
     const [retrieved, graphHit] = await Promise.all([kbP, graphP]);
     let hits: SearchHit[] = [];
     let kbInsufficient = false;
@@ -299,7 +303,6 @@ export class AiChatService {
         await this.shortMemory.appendTurn(
           user.userId,
           session.id,
-          history,
           trimmed,
           empty.answer,
         );
@@ -324,6 +327,7 @@ export class AiChatService {
     }
 
     const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+    const compressedHistory = await compressedHistoryP;
     const graphMsg = graphHit ? formatGraphSystemText(graphHit) : '';
     const parts: string[] = [];
     if (hits.length) parts.push(`知识库资料：\n${this.buildContext(hits)}`);
@@ -342,7 +346,7 @@ export class AiChatService {
         ),
         ...(memoryMsg ? [memoryMsg] : []),
         ...(graphMsg ? [new SystemMessage(graphMsg)] : []),
-        ...history,
+        ...compressedHistory,
         new HumanMessage(userTurn),
       ],
       langfuseHandler ? { callbacks: [langfuseHandler] } : undefined,
@@ -366,7 +370,6 @@ export class AiChatService {
       await this.shortMemory.appendTurn(
         user.userId,
         session.id,
-        history,
         trimmed,
         answer,
       );
@@ -397,13 +400,14 @@ export class AiChatService {
       this.shortMemory.windowSize,
     );
     const history = dbRowsToMessages(rows);
-    if (history.length) {
-      await this.shortMemory.save(userId, sessionId, history);
-      this.logger.log(
-        `短期记忆从库回填：sessionId=${sessionId}, n=${history.length}`,
-      );
-    }
-    return history;
+    if (!history.length) return history;
+    // save 返回实际落库窗口（条数 + token 预算都已收紧），本轮直接用它，
+    // 否则模型拿到的是未裁剪的历史，预算闸只在下一轮才生效。
+    const window = await this.shortMemory.save(userId, sessionId, history);
+    this.logger.log(
+      `短期记忆从库回填：sessionId=${sessionId}, n=${window.length}`,
+    );
+    return window;
   }
 
   /**

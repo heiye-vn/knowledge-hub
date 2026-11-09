@@ -3,6 +3,7 @@ import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages
 import {
   compactRewriteContext,
   dbRowsToMessages,
+  fitMessagesToBudget,
   isWorkingMessage,
   messageText,
 } from './chat-memory.util.js';
@@ -57,5 +58,48 @@ describe('chat-memory.util（工作窗口与改写上下文）', () => {
 
   it('空历史返回空上下文（改写器据此回退原问题）', () => {
     expect(compactRewriteContext([])).toBe('');
+  });
+});
+
+describe('fitMessagesToBudget（token 预算闸）', () => {
+  /** 每条 10 个汉字 = 30 个 UTF-8 字节（估算单位与检索侧一致） */
+  const chunk = '字'.repeat(10);
+  const makeFour = () => [
+    new HumanMessage(`一${chunk}`),
+    new AIMessage(`二${chunk}`),
+    new HumanMessage(`三${chunk}`),
+    new AIMessage(`四${chunk}`),
+  ];
+
+  it('预算充足时原样返回', () => {
+    const messages = makeFour();
+    expect(fitMessagesToBudget(messages, 1000)).toHaveLength(4);
+  });
+
+  it('超预算时从最早一条开始丢弃，保留时间上连续的尾部', () => {
+    const messages = makeFour();
+    // 每条 33 字节，预算 100 → 只能容纳最近 3 条
+    const kept = fitMessagesToBudget(messages, 100);
+    expect(kept).toHaveLength(3);
+    expect(kept.map((m) => m.content)).toEqual([
+      messages[1].content,
+      messages[2].content,
+      messages[3].content,
+    ]);
+  });
+
+  it('最后一条即使单条超预算也必须保留（本轮问题不能丢）', () => {
+    const messages = [new HumanMessage('旧问'), new AIMessage(`${'长'.repeat(500)}`)];
+    const kept = fitMessagesToBudget(messages, 10);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].content).toBe(messages[1].content);
+  });
+
+  it('空数组与非正预算的边界', () => {
+    expect(fitMessagesToBudget([], 100)).toEqual([]);
+    const single = [new HumanMessage('唯一一条')];
+    expect(fitMessagesToBudget(single, 100)).toEqual(single);
+    expect(fitMessagesToBudget(single, 0)).toEqual(single);
+    expect(fitMessagesToBudget(single, Number.NaN)).toEqual(single);
   });
 });
