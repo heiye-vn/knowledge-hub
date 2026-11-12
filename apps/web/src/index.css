@@ -335,6 +335,27 @@ body,
   background: linear-gradient(165deg, #dce9ff 0%, #eaf2ff 45%, #f4f8ff 100%);
 }
 
+.kh-login-logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.kh-login-logo img {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: block;
+}
+
+.kh-login-logo span {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1b2a41;
+  letter-spacing: 0.5px;
+}
+
 .kh-login-brand-copy {
   text-align: left;
   align-self: flex-start;

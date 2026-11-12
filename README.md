@@ -1,4 +1,8 @@
-# Knowledge Hub 知识库与智能问答系统
+<p align="center">
+  <img src="design/brand/kbase-A-512.png" alt="Knowledge Hub 品牌标识" width="112" />
+</p>
+
+<h1 align="center">Knowledge Hub 知识库与智能问答系统</h1>
 
 面向企业知识管理场景的 RAG 知识库系统：支持多格式文档解析、审核发布、混合检索、知识图谱与流式 AI 问答，前后端一体化交付。
 
