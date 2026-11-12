@@ -38,6 +38,7 @@
 | [kg-graph.md](./kg-graph.md) | 功能模块 · KG 知识图谱（LLM 抽取 + Neo4j） | 2026-09-20 | **实测揪出三个真 bug**：先截断后校验误杀关系、跨块关系补不回、同形异码（⼯ U+2F2F）；单块抽取实测 19~57s，KG 必须异步 |
 | [storage-single-postgres.md](./storage-single-postgres.md) | 功能模块 · 存储切换（PG+Mongo → 单 PG） | 2026-09-20 | **em.update() 不更新 @UpdateDateColumn**；并行 Edit 同一文件会互相覆盖；为一个集合养一整套数据库得不偿失 |
 | [document-review-status.md](./document-review-status.md) | 功能模块 · 文档审核与四状态流转 | 2026-09-24 | **索引唯一入口是 Published**；审核流水与状态同事务、索引放事务外（失败可用 reindex 兜底）；待审唯一性必须下沉到部分唯一索引 |
+| [kh-icons.md](./kh-icons.md) | 功能模块 · kh-icons 图标体系接入 | 2026-11-12 | **AntD Menu iconSize=fontSize=14**（自定义 SVG 超 14 会顶破 min-width）；过程条节点换图标要按中心重算坐标；`extFromName` 未知回退 md 导致图片被标成 MD |
 | [image-document-parser.md](./image-document-parser.md) | 功能模块 · 图片文档多模态解析（VLM Qwen3.8-Flash） | 2026-09-24 | **VLM vs PaddleOCR**；Base64 避开内网访问壁垒；`VLM_API_KEY` 严格隔离；单测 Mock 保证 **0 Token 消耗** |
 | [document-import-mineru.md](./document-import-mineru.md) | 功能模块 · 文档导入（MinerU 扫描件 + 持久化异步任务） | 2026-10-28 | **云端 MinerU 是 HTTP 服务**；扫描件显式 OCR；POST 无幂等键不可盲目重提；资源加密 + 鉴权读取；上下文保留完整块 |
 | [dual-storage-mode.md](./dual-storage-mode.md) | 功能模块 · 对象存储双模式（阿里云 OSS 与本地 RustFS） | 2026-09-24 | **零额外依赖（复用 S3 SDK）**；Virtual-Hosted 规范直链与 CDN；门面路由与历史代理兼容 |

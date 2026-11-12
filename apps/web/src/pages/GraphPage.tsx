@@ -2,9 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as echarts from 'echarts'
 import {
-  ApartmentOutlined,
   DownloadOutlined,
-  FileTextOutlined,
   FullscreenExitOutlined,
   InfoCircleOutlined,
   SearchOutlined,
@@ -31,6 +29,8 @@ import { ApiError } from '../api/client'
 import type { GraphOverview, GraphViewNode } from '../types'
 import { formatTime } from '../utils'
 import { ForceGraph, type ForceGraphRef } from '../components/ForceGraph'
+import { KhIcon } from '../components/icons'
+import { KhEmpty } from '../components/KhEmpty'
 
 const { RangePicker } = DatePicker
 
@@ -200,7 +200,10 @@ export default function GraphPage() {
           <div className="kh-graph-canvas">
             {!loading && !nodes.length ? (
               <div className="kh-graph-empty">
-                <Empty description="暂无你有权限的图谱数据。发布文档后会写入 Neo4j，或尝试放宽筛选条件。" />
+                <KhEmpty
+                  icon="graph"
+                  description="暂无你有权限的图谱数据。发布文档后会写入 Neo4j，或尝试放宽筛选条件。"
+                />
               </div>
             ) : (
               <ForceGraph
@@ -212,16 +215,16 @@ export default function GraphPage() {
               />
             )}
 
-            {/* 图例 */}
+            {/* 图例：形状 + 颜色 + 线型三重编码，色弱 / 打印场景仍可区分 */}
             <div className="kh-graph-legend">
               <span>
-                <i style={{ background: '#1677ff' }} /> 文档
+                <KhIcon name="documents" size={12} color="#1677ff" /> 文档
               </span>
               <span>
-                <i style={{ background: '#52c41a' }} /> 实体/概念
+                <KhIcon name="concept" size={12} color="#52c41a" /> 实体/概念
               </span>
               <span>
-                <i style={{ background: '#722ed1' }} /> 标签
+                <KhIcon name="tag" size={12} color="#722ed1" /> 标签
               </span>
               <span>
                 <span className="kh-legend-line kh-legend-blue" /> 提及
@@ -278,8 +281,19 @@ export default function GraphPage() {
         <div className="kh-graph-side">
           {/* 卡片 1：数据规模 */}
           <div className="kh-graph-card">
-            <h4>
-              <ApartmentOutlined style={{ marginRight: 6, color: '#1677ff' }} />
+            <h4
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                margin: '0 0 10px',
+              }}
+            >
+              <KhIcon
+                name="graph"
+                size={14}
+                color="#1677ff"
+                style={{ marginRight: 6 }}
+              />
               图谱规模概览
             </h4>
             <div className="kh-graph-stats">
@@ -356,7 +370,7 @@ export default function GraphPage() {
                           marginBottom: 2,
                         }}
                       >
-                        <FileTextOutlined />
+                        <KhIcon name="documents" size={14} />
                         <span
                           style={{
                             overflow: 'hidden',
