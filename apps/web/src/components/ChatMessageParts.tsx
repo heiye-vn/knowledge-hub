@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { getToolName, isToolUIPart } from 'ai'
 import { AnswerMarkdown, SourceCiteList } from './SourceCiteList'
 import { ForceGraph } from './ForceGraph'
+import { KhIcon, type KhIconName } from './icons'
 import {
   citedSources,
   graphHitToView,
@@ -254,6 +255,21 @@ function renderProcessParts(
   return <div className="kh-trace">{nodes}</div>
 }
 
+/**
+ * 过程条节点 → 图标映射：形状承担主语义，颜色（index.css 的 .kh-trace-* 系列）
+ * 退为辅助编码。pending 的呼吸动画继续由 CSS 驱动。
+ */
+const NODE_ICON: Record<string, KhIconName | undefined> = {
+  intent: 'intent',
+  kb: 'retrieve',
+  eval: 'evaluate',
+  rewrite: 'rewrite',
+  web: 'web',
+  think: 'think',
+  graph: 'graph',
+  status: 'processing',
+}
+
 function TraceItem({
   kind,
   tone,
@@ -263,9 +279,12 @@ function TraceItem({
   tone?: string
   children: ReactNode
 }) {
+  const icon = NODE_ICON[kind]
   return (
     <div className={`kh-trace-item kh-trace-${kind}${tone ? ` ${tone}` : ''}`}>
-      <span className="kh-trace-node" aria-hidden />
+      <span className="kh-trace-node" aria-hidden>
+        {icon ? <KhIcon name={icon} size={12} /> : null}
+      </span>
       <div className="kh-trace-card">{children}</div>
     </div>
   )

@@ -121,6 +121,15 @@ export default function LoginPage() {
     <div className="kh-login">
       <div className="kh-login-brand">
         <div className="kh-login-brand-copy">
+          <div className="kh-login-logo">
+            <img
+              src="/brand/kbase-A-512.png"
+              alt="Knowledge Hub 品牌标识"
+              width={64}
+              height={64}
+            />
+            <span>Knowledge Hub</span>
+          </div>
           <h1>企业智能知识库系统</h1>
           <p>构建企业知识中枢，赋能智能决策与高效协作</p>
           <p>让知识管理更简单，知识价值最大化</p>

@@ -12,7 +12,6 @@ import { DefaultChatTransport } from 'ai'
 import { DeleteOutlined, DownOutlined, PlusOutlined } from '@ant-design/icons'
 import {
   Button,
-  Empty,
   Input,
   Select,
   Space,
@@ -23,6 +22,7 @@ import { aiApi } from '../api'
 import { API_BASE, ApiError, fetchWithAuthRefresh } from '../api/client'
 import { getAccessToken } from '../auth'
 import { ChatMessageParts } from '../components/ChatMessageParts'
+import { KhEmpty } from '../components/KhEmpty'
 import { historyToUIMessages, type KhUIMessage } from '../chat-message-utils'
 import type { ChatMessage, ChatSession, SearchMode } from '../types'
 import { formatTime } from '../utils'
@@ -329,10 +329,7 @@ export default function ChatPage() {
         </Button>
         <div className="kh-chat-session-list">
           {sessions.length === 0 ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="还没有会话"
-            />
+            <KhEmpty icon="chat" size={36} description="还没有会话" />
           ) : (
             sessions.map((s) => (
               <div

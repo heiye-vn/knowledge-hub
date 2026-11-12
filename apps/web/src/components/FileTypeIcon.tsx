@@ -8,18 +8,27 @@ const ICONS: Record<string, { bg: string; label: string; fontSize: number }> = {
   pptx: { bg: '#FB8C00', label: 'P', fontSize: 11 },
   txt: { bg: '#78909C', label: 'T', fontSize: 11 },
   md: { bg: '#5C6BC0', label: 'MD', fontSize: 7 },
+  png: { bg: '#26A69A', label: 'IMG', fontSize: 7 },
+  jpg: { bg: '#26A69A', label: 'IMG', fontSize: 7 },
+  jpeg: { bg: '#26A69A', label: 'IMG', fontSize: 7 },
+  webp: { bg: '#26A69A', label: 'IMG', fontSize: 7 },
+  svg: { bg: '#26A69A', label: 'SVG', fontSize: 6 },
 }
 
-const FALLBACK = { bg: '#90A4AE', label: 'DOC', fontSize: 7 }
+const FALLBACK = { bg: '#90A4AE', label: 'FILE', fontSize: 6 }
 
-/** 从文件名 / 标题截取后缀；没有或无法识别时按 md */
+/**
+ * 从文件名 / 标题截取后缀。
+ * 无后缀（在线新建的文档）按 md；后缀无法识别时回退中性 file 徽标，
+ * 避免上传的图片等文件被误标成 MD（上传区支持 PNG / JPG / JPEG / WEBP）。
+ */
 export function extFromName(name?: string | null) {
   if (!name) return 'md'
   const base = name.split(/[/\\]/).pop() || name
   const idx = base.lastIndexOf('.')
   if (idx <= 0 || idx === base.length - 1) return 'md'
   const ext = base.slice(idx + 1).toLowerCase()
-  return ext in ICONS ? ext : 'md'
+  return ext in ICONS ? ext : 'file'
 }
 
 export function fileTypeLabel(name?: string | null) {
@@ -27,10 +36,13 @@ export function fileTypeLabel(name?: string | null) {
   if (key === 'doc') return 'DOCX'
   if (key === 'xls') return 'XLSX'
   if (key === 'ppt') return 'PPTX'
+  if (key === 'png' || key === 'jpg' || key === 'jpeg' || key === 'webp') {
+    return 'IMG'
+  }
   return key.toUpperCase()
 }
 
-/** 按文件名后缀画圆角色块图标（PDF / W / X / P） */
+/** 按文件名后缀画圆角色块图标（PDF / W / X / IMG / FILE） */
 export function FileTypeIcon({
   name,
   size = 22,

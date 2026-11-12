@@ -1,13 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  ClockCircleOutlined,
-  FolderOutlined,
-  SearchOutlined,
-} from '@ant-design/icons'
+import { ClockCircleOutlined, SearchOutlined } from '@ant-design/icons'
 import {
   Button,
-  Empty,
   Input,
   Pagination,
   Select,
@@ -26,6 +21,8 @@ import {
   safeHighlight,
 } from '../utils'
 import { FileTypeIcon } from '../components/FileTypeIcon'
+import { KhIcon } from '../components/icons'
+import { KhEmpty } from '../components/KhEmpty'
 
 export default function SearchPage() {
   const navigate = useNavigate()
@@ -147,7 +144,7 @@ export default function SearchPage() {
       ) : null}
 
       {!items.length && elapsed !== null ? (
-        <Empty description="没有匹配的文档" />
+        <KhEmpty icon="empty" description="没有匹配的文档" />
       ) : null}
 
       {items.map((hit) => {
@@ -178,8 +175,14 @@ export default function SearchPage() {
                 />
               ) : null}
               <div className="kh-hit-meta">
-                <span>
-                  <FolderOutlined /> 来自文档库
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <KhIcon name="documents" size={12} /> 来自文档库
                 </span>
                 <span>
                   <ClockCircleOutlined /> 更新时间: {formatTime(hit.publishTime)}

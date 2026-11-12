@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { EditOutlined } from '@ant-design/icons'
 import {
   Button,
   Checkbox,
@@ -8,6 +9,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   message,
 } from 'antd'
 import { categoryApi, documentApi } from '../api'
@@ -23,6 +25,7 @@ import {
   getVisibilityMeta,
 } from '../utils'
 import { FileTypeIcon, fileTypeLabel } from '../components/FileTypeIcon'
+import { KhIcon } from '../components/icons'
 import { DocumentImports } from '../components/DocumentImports'
 
 export default function DocumentsPage() {
@@ -188,30 +191,46 @@ export default function DocumentsPage() {
               const writable =
                 can(user, 'document:edit') && canWriteDocument(row, user)
               return (
-                <Space>
+                <Space size={12}>
                   {writable ? (
-                    <a onClick={() => navigate(`/documents/${row.id}/edit`)}>
-                      编辑
-                    </a>
+                    <Tooltip title="编辑文档">
+                      <a
+                        onClick={() => navigate(`/documents/${row.id}/edit`)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <EditOutlined /> 编辑
+                      </a>
+                    </Tooltip>
                   ) : null}
                   {writable && row.status === 0 ? (
-                    <a
-                      onClick={async () => {
-                        try {
-                          await documentApi.publish(row.id)
-                          message.success('已提交发布')
-                          void load()
-                        } catch (error) {
-                          message.error(
-                            error instanceof ApiError
-                              ? error.message
-                              : '发布失败',
-                          )
-                        }
-                      }}
-                    >
-                      发布
-                    </a>
+                    <Tooltip title="提交发布（触发 RAG 索引重建）">
+                      <a
+                        onClick={async () => {
+                          try {
+                            await documentApi.publish(row.id)
+                            message.success('已提交发布')
+                            void load()
+                          } catch (error) {
+                            message.error(
+                              error instanceof ApiError
+                                ? error.message
+                                : '发布失败',
+                            )
+                          }
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <KhIcon name="publish" size={14} /> 发布
+                      </a>
+                    </Tooltip>
                   ) : null}
                 </Space>
               )

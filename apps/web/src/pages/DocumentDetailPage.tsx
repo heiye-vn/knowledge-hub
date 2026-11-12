@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Button,
-  Empty,
   Popconfirm,
   Space,
   Spin,
@@ -10,9 +9,17 @@ import {
   Typography,
   message,
 } from 'antd'
+import {
+  ArrowLeftOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  RollbackOutlined,
+} from '@ant-design/icons'
 import { DocumentMarkdown } from '../components/DocumentMarkdown'
 import DocumentEngagement from '../components/DocumentEngagement'
 import { SourceFileAction } from '../components/SourceFileAction'
+import { KhIcon } from '../components/icons'
+import { KhEmpty } from '../components/KhEmpty'
 import { documentApi } from '../api'
 import { ApiError } from '../api/client'
 import type { DocumentItem } from '../types'
@@ -68,9 +75,14 @@ export default function DocumentDetailPage() {
   if (!doc) {
     return (
       <div className="kh-page">
-        <Empty description={forbidden ? '无权查看该文档' : '文档不存在或已删除'}>
-          <Button onClick={() => navigate('/documents')}>返回列表</Button>
-        </Empty>
+        <KhEmpty
+          icon={forbidden ? 'locked' : 'empty'}
+          description={forbidden ? '无权查看该文档' : '文档不存在或已删除'}
+        >
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/documents')}>
+            返回列表
+          </Button>
+        </KhEmpty>
       </div>
     )
   }
@@ -82,17 +94,33 @@ export default function DocumentDetailPage() {
   return (
     <div className="kh-page">
       <Space style={{ marginBottom: 12 }} wrap>
-        <Button onClick={() => navigate('/documents')}>返回列表</Button>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate('/documents')}
+        >
+          返回列表
+        </Button>
         <SourceFileAction fileUrl={doc.fileUrl} fileName={doc.fileName ?? doc.title} />
         {writable ? (
-          <Button onClick={() => navigate(`/documents/${id}/edit`)}>编辑</Button>
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => navigate(`/documents/${id}/edit`)}
+          >
+            编辑
+          </Button>
         ) : null}
         {writable ? (
-          <Button onClick={() => navigate(`/documents/${id}/versions`)}>版本</Button>
+          <Button
+            icon={<KhIcon name="version" size={16} />}
+            onClick={() => navigate(`/documents/${id}/versions`)}
+          >
+            版本
+          </Button>
         ) : null}
         {writable && (doc.status === 0 || doc.status === 2) ? (
           <Button
             type="primary"
+            icon={<KhIcon name="publish" size={16} />}
             onClick={async () => {
               try {
                 setDoc(await documentApi.publish(id))
@@ -110,6 +138,7 @@ export default function DocumentDetailPage() {
         {can(user, 'document:edit') && doc.status === 1 ? (
           <>
             <Button
+              icon={<RollbackOutlined />}
               onClick={async () => {
                 try {
                   setDoc(await documentApi.saveDraft(id))
@@ -124,6 +153,7 @@ export default function DocumentDetailPage() {
               下架编辑
             </Button>
             <Button
+              icon={<KhIcon name="archive" size={16} />}
               onClick={async () => {
                 try {
                   setDoc(await documentApi.archive(id))
@@ -154,7 +184,9 @@ export default function DocumentDetailPage() {
               }
             }}
           >
-            <Button danger>删除</Button>
+            <Button danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
           </Popconfirm>
         ) : null}
       </Space>
