@@ -1,20 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  ApartmentOutlined,
+  AuditOutlined,
   BellOutlined,
-  BulbOutlined,
-  ClusterOutlined,
-  FileTextOutlined,
-  HomeOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  MessageOutlined,
-  ReadOutlined,
   SafetyCertificateOutlined,
-  SearchOutlined,
-  SettingOutlined,
-  StarOutlined,
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons'
@@ -25,10 +16,17 @@ import { clearAuth, updateUser, useAuth } from '../auth'
 import type { TeamItem } from '../types'
 import { can, displayName, isAdmin, isReviewer } from '../utils'
 import { BrandLogo } from '../components/BrandLogo'
+import { KhIcon } from '../components/icons'
 
 const { Header, Sider, Content } = Layout
 
 type MenuItem = NonNullable<MenuProps['items']>[number]
+
+/**
+ * 导航图标 14px：与 AntD Menu 的 iconSize（= fontSize，默认 14）严格对齐。
+ * 本套图标内容区为 20/24，14px 下实际内容约 11.7px，AntD 图标约 12.0px，视觉等重。
+ */
+const NAV_ICON = 14
 
 export default function AppLayout() {
   const user = useAuth()
@@ -89,30 +87,34 @@ export default function AppLayout() {
 
   const topItems = useMemo(() => {
     const items: MenuItem[] = [
-      { key: '/dashboard', label: '首页大盘', icon: <HomeOutlined /> },
+      {
+        key: '/dashboard',
+        label: '首页大盘',
+        icon: <KhIcon name="home" size={NAV_ICON} />,
+      },
     ]
     if (can(user, 'document:list')) {
       items.push({
         key: '/documents',
         label: '文档管理',
-        icon: <FileTextOutlined />,
+        icon: <KhIcon name="documents" size={NAV_ICON} />,
       })
     }
     if (can(user, 'search')) {
       items.push({
         key: '/search',
         label: '文档搜索',
-        icon: <SearchOutlined />,
+        icon: <KhIcon name="search" size={NAV_ICON} />,
       })
       items.push({
         key: '/chat',
         label: 'AI智能问答',
-        icon: <MessageOutlined />,
+        icon: <KhIcon name="chat" size={NAV_ICON} />,
       })
       items.push({
         key: '/graph',
         label: '知识图谱',
-        icon: <ClusterOutlined />,
+        icon: <KhIcon name="graph" size={NAV_ICON} />,
       })
     }
     if (can(user, 'profile')) {
@@ -133,7 +135,7 @@ export default function AppLayout() {
       items.push({
         key: '/admin/users',
         label: '系统管理',
-        icon: <SettingOutlined />,
+        icon: <KhIcon name="admin" size={NAV_ICON} />,
       })
     }
     return items
@@ -142,18 +144,26 @@ export default function AppLayout() {
   const side = useMemo(() => {
     if (topKey === '/documents') {
       const items: MenuItem[] = [
-        { key: '/documents', icon: <ReadOutlined />, label: '全部文档' },
-        { key: '/favorites', icon: <StarOutlined />, label: '我的收藏' },
+        {
+          key: '/documents',
+          icon: <KhIcon name="documents" size={NAV_ICON} />,
+          label: '全部文档',
+        },
+        {
+          key: '/favorites',
+          icon: <KhIcon name="favorite" size={NAV_ICON} />,
+          label: '我的收藏',
+        },
         {
           key: '/documents/new',
-          icon: <FileTextOutlined />,
+          icon: <KhIcon name="new-doc" size={NAV_ICON} />,
           label: '新建文档',
         },
       ]
       if (isReviewer(user)) {
         items.push({
           key: '/admin/reviews',
-          icon: <BellOutlined />,
+          icon: <AuditOutlined />,
           label: '审核工作台',
         })
       }
@@ -163,7 +173,11 @@ export default function AppLayout() {
       return {
         title: '文档搜索',
         items: [
-          { key: '/search', icon: <SearchOutlined />, label: '全文检索' },
+          {
+            key: '/search',
+            icon: <KhIcon name="search" size={NAV_ICON} />,
+            label: '全文检索',
+          },
         ],
       }
     }
@@ -171,7 +185,11 @@ export default function AppLayout() {
       return {
         title: 'AI智能问答',
         items: [
-          { key: '/chat', icon: <MessageOutlined />, label: '知识问答' },
+          {
+            key: '/chat',
+            icon: <KhIcon name="chat" size={NAV_ICON} />,
+            label: '知识问答',
+          },
         ],
       }
     }
@@ -179,7 +197,11 @@ export default function AppLayout() {
       return {
         title: '知识图谱',
         items: [
-          { key: '/graph', icon: <ApartmentOutlined />, label: '全景图谱' },
+          {
+            key: '/graph',
+            icon: <KhIcon name="graph" size={NAV_ICON} />,
+            label: '全景图谱',
+          },
         ],
       }
     }
@@ -188,7 +210,11 @@ export default function AppLayout() {
         title: '个人中心',
         items: [
           { key: '/profile', icon: <UserOutlined />, label: '账号资料' },
-          { key: '/profile/memory', icon: <BulbOutlined />, label: '我的记忆' },
+          {
+            key: '/profile/memory',
+            icon: <KhIcon name="memory" size={NAV_ICON} />,
+            label: '我的记忆',
+          },
           { key: '/notifications', icon: <BellOutlined />, label: '消息通知' },
         ],
       }
@@ -219,7 +245,7 @@ export default function AppLayout() {
       if (isAdmin(user) || can(user, 'document:category')) {
         adminItems.push({
           key: '/admin/categories',
-          icon: <ApartmentOutlined />,
+          icon: <KhIcon name="tag" size={NAV_ICON} />,
           label: '分类管理',
         })
       }
@@ -238,7 +264,11 @@ export default function AppLayout() {
     return {
       title: '首页大盘',
       items: [
-        { key: '/dashboard', icon: <HomeOutlined />, label: '工作概览' },
+        {
+          key: '/dashboard',
+          icon: <KhIcon name="home" size={NAV_ICON} />,
+          label: '工作概览',
+        },
       ],
     }
   }, [topKey, user])

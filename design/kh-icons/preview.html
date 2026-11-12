@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Knowledge Hub Icons · 图标规范与预览</title>
+<style>
+  :root {
+    --bg: #0c0e12;
+    --bg-soft: #12151b;
+    --card: #161a21;
+    --card-hover: #1c212a;
+    --line: #262c37;
+    --line-soft: #1e232c;
+    --text: #e8ebf1;
+    --text-2: #a8b0c0;
+    --text-3: #6b7484;
+    --brand: #1677ff;
+    --brand-soft: rgba(22, 119, 255, 0.14);
+    --ok: #52c41a;
+    --warn: #faad14;
+    --danger: #ff4d4f;
+    --purple: #9254de;
+    --grid: rgba(255, 255, 255, 0.07);
+    --art: #101318;
+    --icon-size: 28px;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+  body[data-bg="light"] {
+    --bg: #f2f4f7;
+    --bg-soft: #ffffff;
+    --card: #ffffff;
+    --card-hover: #ffffff;
+    --line: #e3e6eb;
+    --line-soft: #eef0f3;
+    --text: #1b1f26;
+    --text-2: #5a6270;
+    --text-3: #8b93a1;
+    --grid: rgba(0, 0, 0, 0.07);
+    --art: #f7f9fc;
+    --shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  .shell { display: flex; min-height: 100vh; }
+
+  /* ── 侧栏 ─────────────────────────────── */
+  .side {
+    width: 232px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    padding: 26px 18px 32px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--bg-soft);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--brand); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .brand-name { font-size: 14px; font-weight: 650; letter-spacing: 0.2px; }
+  .brand-sub { font-size: 11px; color: var(--text-3); margin-bottom: 22px; }
+  .nav-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 1.2px;
+    color: var(--text-3); text-transform: uppercase; margin: 20px 0 8px;
+  }
+  .nav a {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px; margin: 1px 0; border-radius: 6px;
+    color: var(--text-2); text-decoration: none; font-size: 13px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .nav a:hover { background: var(--card-hover); color: var(--text); }
+  .nav a .count { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .side-foot {
+    margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line-soft);
+    font-size: 11px; color: var(--text-3); line-height: 1.8;
+  }
+
+  /* ── 主区 ─────────────────────────────── */
+  main { flex: 1; min-width: 0; padding: 34px 40px 80px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  .hero h1 { margin: 0 0 8px; font-size: 26px; font-weight: 680; letter-spacing: -0.2px; }
+  .hero p { margin: 0; color: var(--text-2); font-size: 13.5px; max-width: 760px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--card);
+    font-size: 11.5px; color: var(--text-2);
+  }
+  .chip b { color: var(--text); font-weight: 600; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
+
+  /* ── 工具栏 ───────────────────────────── */
+  .toolbar {
+    position: sticky; top: 0; z-index: 9;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    margin: 26px 0 4px; padding: 12px 0;
+    background: linear-gradient(var(--bg) 72%, transparent);
+  }
+  .field {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; padding: 0 11px; height: 34px;
+  }
+  .field svg { color: var(--text-3); flex-shrink: 0; }
+  .field input {
+    border: 0; outline: 0; background: transparent; color: var(--text);
+    font-size: 13px; width: 190px; font-family: inherit;
+  }
+  .field input::placeholder { color: var(--text-3); }
+  .seg {
+    display: flex; align-items: center; gap: 2px; padding: 3px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    height: 34px;
+  }
+  .seg span { font-size: 11px; color: var(--text-3); padding: 0 6px; }
+  .seg button {
+    border: 0; background: transparent; color: var(--text-2);
+    font-size: 12px; padding: 4px 9px; border-radius: 5px; cursor: pointer;
+    font-family: inherit; font-variant-numeric: tabular-nums;
+    transition: background 0.15s, color 0.15s;
+  }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+  .tgl {
+    border: 1px solid var(--line); background: var(--card); color: var(--text-2);
+    height: 34px; padding: 0 12px; border-radius: 8px; cursor: pointer;
+    font-size: 12px; font-family: inherit; display: inline-flex;
+    align-items: center; gap: 7px; transition: all 0.15s;
+  }
+  .tgl:hover { color: var(--text); }
+  .tgl.on { background: var(--brand-soft); border-color: rgba(22, 119, 255, 0.35); color: var(--brand); }
+
+  /* ── 分组 ─────────────────────────────── */
+  section.group { margin-top: 34px; scroll-margin-top: 70px; }
+  .sec-head {
+    display: flex; align-items: baseline; gap: 10px;
+    padding-bottom: 10px; margin-bottom: 16px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .sec-head h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: 0.2px; }
+  .sec-head span { font-size: 11.5px; color: var(--text-3); }
+  .sec-head .en {
+    margin-left: auto; font-size: 10.5px; color: var(--text-3);
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
+    gap: 10px;
+  }
+  .card {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 0; padding: 0;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; cursor: pointer; overflow: hidden;
+    text-align: center; font-family: inherit;
+    transition: border-color 0.15s, background 0.15s, transform 0.15s;
+    box-shadow: var(--shadow);
+  }
+  .card:hover { border-color: rgba(22, 119, 255, 0.5); background: var(--card-hover); transform: translateY(-1px); }
+  .card:active { transform: translateY(0); }
+  .art {
+    width: 100%; height: calc(var(--icon-size) * 2.9);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text); background: var(--art);
+    border-bottom: 1px solid var(--line-soft);
+    position: relative;
+  }
+  .art svg { width: var(--icon-size); height: var(--icon-size); display: block; }
+  .art .safe { display: none; position: absolute; inset: 0; pointer-events: none; }
+  body[data-grid="on"] .art .safe { display: block; }
+  .safe::before {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(to right, var(--grid) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+    background-size: calc(var(--icon-size) / 6) calc(var(--icon-size) / 6);
+  }
+  .safe::after {
+    content: ""; position: absolute;
+    top: calc(var(--icon-size) / 12); bottom: calc(var(--icon-size) / 12);
+    left: calc(var(--icon-size) / 12); right: calc(var(--icon-size) / 12);
+    border: 1px dashed rgba(22, 119, 255, 0.35);
+  }
+  .meta { padding: 9px 8px 11px; width: 100%; }
+  .meta .zh { display: block; font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.5; }
+  .meta .key {
+    display: block; font-size: 10.5px; color: var(--text-3); margin-top: 2px;
+    letter-spacing: 0.2px; line-height: 1.4;
+  }
+  .card:hover .meta .key { color: var(--brand); }
+
+  /* ── 规范区 ───────────────────────────── */
+  .spec { margin-top: 46px; padding-top: 26px; border-top: 1px solid var(--line); }
+  .spec h2 { font-size: 15px; margin: 0 0 4px; }
+  .spec > p { color: var(--text-2); font-size: 13px; margin: 0 0 22px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .panel {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 18px;
+  }
+  .panel h3 {
+    margin: 0 0 12px; font-size: 12px; font-weight: 650;
+    color: var(--text-2); letter-spacing: 0.3px;
+  }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed var(--line-soft); font-size: 12.5px; }
+  .kv:last-child { border-bottom: 0; }
+  .kv span { color: var(--text-2); }
+  .kv b { font-weight: 500; color: var(--text); font-family: ui-monospace, monospace; font-size: 12px; }
+  .sizes { display: flex; align-items: flex-end; gap: 18px; padding: 14px 0 4px; }
+  .sizes figure { margin: 0; text-align: center; }
+  .sizes figcaption { font-size: 10px; color: var(--text-3); margin-top: 6px; }
+  .colors { display: flex; flex-direction: column; gap: 9px; }
+  .colors div { display: flex; align-items: center; gap: 9px; font-size: 12.5px; }
+  .sw { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+  .colors em { color: var(--text-3); font-style: normal; font-size: 11px; margin-left: auto; }
+
+  pre {
+    margin: 0; padding: 13px 15px; border-radius: 8px;
+    background: var(--art); border: 1px solid var(--line-soft);
+    color: var(--text-2); font-size: 11.5px; line-height: 1.75;
+    overflow-x: auto;
+  }
+  pre .k { color: var(--brand); }
+  pre .s { color: var(--ok); }
+
+  /* ── Demo ─────────────────────────────── */
+  .demo {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 18px 20px;
+  }
+  .demo-note { font-size: 11.5px; color: var(--text-3); margin-bottom: 14px; }
+  .trace { display: flex; flex-direction: column; gap: 0; }
+  .trace-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 0; font-size: 12.5px; color: var(--text-2);
+  }
+  .trace-row i {
+    width: 18px; height: 18px; display: inline-flex;
+    align-items: center; justify-content: center; color: var(--brand);
+    flex-shrink: 0;
+  }
+  .trace-row i svg { width: 15px; height: 15px; }
+  .trace-row b { color: var(--text); font-weight: 500; }
+  .trace-row s { text-decoration: none; color: var(--text-3); font-size: 11px; margin-left: 4px; }
+  .trace-row .ok { color: var(--ok); }
+  .trace-line { width: 1px; height: 8px; background: var(--line); margin-left: 8.5px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 34px; transform: translate(-50%, 14px);
+    background: #1c212a; color: #fff; border: 1px solid #2f3643;
+    padding: 9px 16px; border-radius: 8px; font-size: 12.5px;
+    opacity: 0; pointer-events: none; transition: all 0.2s ease;
+    z-index: 99; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  body[data-bg="light"] .toast { background: #1b1f26; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 860px) {
+    .side { display: none; }
+    main { padding: 24px 18px 60px; }
+    .two { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body data-bg="dark" data-grid="off">
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
+          <path d="M16 12.6V8.6M19.1 17.8l3.9 2.2M12.9 17.8L9 20" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>
+          <circle cx="16" cy="16" r="3.4" fill="#fff"/>
+          <circle cx="16" cy="7.2" r="2" fill="#69b1ff"/>
+          <circle cx="24.8" cy="21.2" r="2" fill="#69b1ff"/>
+          <circle cx="7.2" cy="21.2" r="2" fill="#69b1ff"/>
+          <circle cx="16" cy="7.2" r="1.15" fill="#fff"/>
+          <circle cx="24.8" cy="21.2" r="1.15" fill="#fff"/>
+          <circle cx="7.2" cy="21.2" r="1.15" fill="#fff"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">KH Icons</div>
+      </div>
+    </div>
+    <div class="brand-sub">企业知识库 · 图标规范 v1.0</div>
+    <div class="nav-label">图标分组</div>
+    <nav class="nav" id="nav"></nav>
+    <div class="nav-label">规范</div>
+    <nav class="nav">
+      <a href="#spec">基础规格</a>
+      <a href="#usage">落地方式</a>
+      <a href="#demo">Agent 链路示例</a>
+    </nav>
+    <div class="side-foot">
+      24 × 24 网格<br />
+      1.6 描边 · currentColor<br />
+      点击卡片复制组件代码
+    </div>
+  </aside>
+
+  <main>
+    <div class="wrap">
+      <header class="hero">
+        <h1>Knowledge Hub 图标系统</h1>
+        <p>
+          面向「企业知识库 + Agentic RAG 问答」产品的一套线性图标。同一网格、同一描边、同一圆角半径，
+          重点补足 <b>AI 推理链路</b> 这一现有图标库（Ant Design 通用图标）覆盖不到的语义。
+        </p>
+        <div class="chips">
+          <span class="chip"><span class="dot"></span><b id="c-total">29</b> 枚图标</span>
+          <span class="chip">网格 <b>24 × 24</b></span>
+          <span class="chip">描边 <b>1.6</b></span>
+          <span class="chip">内容区 <b>20 × 20</b></span>
+          <span class="chip">命名 <b class="mono">kh-&lt;semantic&gt;</b></span>
+          <span class="chip">授权色 <b>currentColor</b></span>
+        </div>
+      </header>
+
+      <div class="toolbar">
+        <label class="field">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.6" cy="10.6" r="6.4"/><path d="M15.2 15.2 20.8 20.8"/></svg>
+          <input id="q" type="search" placeholder="搜索名称 / 关键词 / 用途" />
+        </label>
+        <div class="seg" id="size-seg">
+          <span>尺寸</span>
+          <button data-size="16">16</button>
+          <button data-size="20">20</button>
+          <button data-size="28" class="on">28</button>
+          <button data-size="36">36</button>
+          <button data-size="48">48</button>
+        </div>
+        <button class="tgl" id="bg-tgl">切换背景</button>
+        <button class="tgl" id="grid-tgl">24 网格</button>
+      </div>
+
+      <div id="groups"></div>
+
+      <section class="spec" id="spec">
+        <h2>基础规格</h2>
+        <p>所有图标共享同一套几何约束，保证在任意尺寸下视觉重量一致。</p>
+        <div class="two">
+          <div class="panel">
+            <h3>几何与描边</h3>
+            <div class="kv"><span>画布</span><b>24 × 24</b></div>
+            <div class="kv"><span>内容安全区</span><b>20 × 20（留 2px）</b></div>
+            <div class="kv"><span>描边宽度</span><b>1.6（不随尺寸缩放）</b></div>
+            <div class="kv"><span>端点 / 拐角</span><b>round / round</b></div>
+            <div class="kv"><span>最小圆角</span><b>1.2</b></div>
+            <div class="kv"><span>实心点缀</span><b>≤ 1 处 / 图标</b></div>
+          </div>
+          <div class="panel">
+            <h3>尺寸档位</h3>
+            <div class="sizes">
+              <figure><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 10.4 12 3.8l8.2 6.6"/><path d="M5.8 9.2v10a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6v-10"/><path d="M9.4 17.8v-3.4M12 17.8v-6.2M14.6 17.8v-1.8"/></svg><figcaption>14 · 过程条</figcaption></figure>
+              <figure><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 10.4 12 3.8l8.2 6.6"/><path d="M5.8 9.2v10a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6v-10"/><path d="M9.4 17.8v-3.4M12 17.8v-6.2M14.6 17.8v-1.8"/></svg><figcaption>16 · 菜单</figcaption></figure>
+              <figure><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 10.4 12 3.8l8.2 6.6"/><path d="M5.8 9.2v10a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6v-10"/><path d="M9.4 17.8v-3.4M12 17.8v-6.2M14.6 17.8v-1.8"/></svg><figcaption>20 · 按钮</figcaption></figure>
+              <figure><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 10.4 12 3.8l8.2 6.6"/><path d="M5.8 9.2v10a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6v-10"/><path d="M9.4 17.8v-3.4M12 17.8v-6.2M14.6 17.8v-1.8"/></svg><figcaption>24 · 导航</figcaption></figure>
+              <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 10.4 12 3.8l8.2 6.6"/><path d="M5.8 9.2v10a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6v-10"/><path d="M9.4 17.8v-3.4M12 17.8v-6.2M14.6 17.8v-1.8"/></svg><figcaption>32 · 页头</figcaption></figure>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>颜色语义</h3>
+            <div class="colors">
+              <div><span class="sw" style="background:#1677ff"></span>默认 / 可交互<em>#1677ff</em></div>
+              <div><span class="sw" style="background:#52c41a"></span>成功 / 通过 / 已发布<em>#52c41a</em></div>
+              <div><span class="sw" style="background:#faad14"></span>处理中 / 待审核<em>#faad14</em></div>
+              <div><span class="sw" style="background:#ff4d4f"></span>失败 / 危险操作<em>#ff4d4f</em></div>
+              <div><span class="sw" style="background:#8c8c8c"></span>次要 / 禁用<em>#8c8c8c</em></div>
+              <div><span class="sw" style="background:#9254de"></span>图谱 / 标签<em>#9254de</em></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>使用约束</h3>
+            <div class="kv"><span>同一行图标尺寸</span><b>必须一致</b></div>
+            <div class="kv"><span>图标与文字间距</span><b>6 / 8 px</b></div>
+            <div class="kv"><span>纯图标按钮</span><b>必须带 Tooltip</b></div>
+            <div class="kv"><span>禁止</span><b>改描边 / 加投影 / 拉伸</b></div>
+            <div class="kv"><span>禁用态</span><b>color 降为 #bfbfbf</b></div>
+            <div class="kv"><span>与 AntD 图标共存</span><b>同尺寸同粗细即可</b></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="spec" id="usage">
+        <h2>落地方式</h2>
+        <p>三种引入方式共用同一份几何数据；改图标只需改 <code class="mono">icons.mjs</code> 后重新构建。</p>
+        <div class="two">
+          <div class="panel">
+            <h3>React 组件（推荐）</h3>
+            <pre>&lt;<span class="k">KhIcon</span> name=<span class="s">"retrieve"</span> size={16} /&gt;
+&lt;<span class="k">KhIcon</span> name=<span class="s">"success"</span> color=<span class="s">"#52c41a"</span> /&gt;</pre>
+          </div>
+          <div class="panel">
+            <h3>SVG Sprite</h3>
+            <pre>&lt;svg width=<span class="s">"24"</span> height=<span class="s">"24"</span>&gt;
+  &lt;use href=<span class="s">"/icons.svg#kh-retrieve"</span> /&gt;
+&lt;/svg&gt;</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="spec" id="demo">
+        <h2>Agent 链路示例</h2>
+        <p>这是本套图标最核心的增量：把原本只有文字的推理过程，变成可扫读的状态时间线。</p>
+        <div class="demo">
+          <div class="demo-note">14–15px 下的实际观感（模拟知识问答的过程条）</div>
+          <div class="trace" id="trace"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast">已复制</div>
+
+<script id="kh-icon-data" type="application/json">{"meta":{"name":"Knowledge Hub Icons","prefix":"kh","version":"1.0.0","grid":24,"strokeWidth":1.6,"colorPrimary":"#1677ff"},"groups":{"nav":"导航与模块","agent":"Agent 链路","doc":"文档操作","state":"状态反馈","graph":"图谱语义","collab":"协作"},"icons":[{"name":"home","zh":"首页大盘","group":"nav","use":"顶栏「首页大盘」、侧栏「工作概览」","keywords":["home","dashboard","首页","大盘","概览"],"shapes":[{"t":"p","d":"M3.8 10.4 12 3.8l8.2 6.6"},{"t":"p","d":"M5.8 9.2v10a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6v-10"},{"t":"p","d":"M9.4 17.8v-3.4M12 17.8v-6.2M14.6 17.8v-1.8"}]},{"name":"documents","zh":"文档管理","group":"nav","use":"顶栏「文档管理」、侧栏「全部文档」","keywords":["document","file","文档","文件","知识"],"shapes":[{"t":"p","d":"M13.6 3.2H6.4A2.2 2.2 0 0 0 4.2 5.4v13.2a2.2 2.2 0 0 0 2.2 2.2h11.2a2.2 2.2 0 0 0 2.2-2.2V8.6L13.6 3.2Z"},{"t":"p","d":"M13.6 3.2v5.4h6.2"},{"t":"p","d":"M8.2 12.6h8M8.2 16.2h5.6"}]},{"name":"search","zh":"全文检索","group":"nav","use":"顶栏「文档搜索」、搜索框前缀","keywords":["search","find","检索","搜索","查询"],"shapes":[{"t":"c","cx":10.6,"cy":10.6,"r":6.4},{"t":"p","d":"M15.2 15.2 20.8 20.8"},{"t":"p","d":"M8.2 9.4h4.8M8.2 12.2h3.4"}]},{"name":"chat","zh":"AI 智能问答","group":"nav","use":"顶栏「AI智能问答」、侧栏「知识问答」、对话空状态","keywords":["chat","ask","ai","问答","对话","智能"],"shapes":[{"t":"p","d":"M3.8 7.6A3.4 3.4 0 0 1 7.2 4.2h9.6a3.4 3.4 0 0 1 3.4 3.4v6.2a3.4 3.4 0 0 1-3.4 3.4H10.6L6.2 20.6v-3.4h.2A3.4 3.4 0 0 1 3.8 13.8V7.6Z"},{"t":"f","d":"M12 7.4c.42 1.98 1.5 3.06 3.48 3.48-1.98.42-3.06 1.5-3.48 3.48-.42-1.98-1.5-3.06-3.48-3.48 1.98-.42 3.06-1.5 3.48-3.48Z"}]},{"name":"graph","zh":"知识图谱","group":"nav","use":"顶栏「知识图谱」、侧栏「全景图谱」","keywords":["graph","network","图谱","网络","拓扑"],"shapes":[{"t":"c","cx":12,"cy":11.6,"r":2.6},{"t":"c","cx":12,"cy":4.4,"r":1.9},{"t":"c","cx":5.4,"cy":16.8,"r":1.9},{"t":"c","cx":18.6,"cy":16.8,"r":1.9},{"t":"p","d":"M12 6.3v2.7"},{"t":"p","d":"M10.1 13.4 6.8 15.5"},{"t":"p","d":"M13.9 13.4 17.2 15.5"}]},{"name":"memory","zh":"长期记忆","group":"nav","use":"侧栏「我的记忆」、记忆层级标签","keywords":["memory","chip","记忆","画像","上下文"],"shapes":[{"t":"p","d":"M8.4 6.4h7.2a2 2 0 0 1 2 2v7.2a2 2 0 0 1-2 2H8.4a2 2 0 0 1-2-2V8.4a2 2 0 0 1 2-2Z"},{"t":"p","d":"M9.6 6.4V3.4M14.4 6.4V3.4M9.6 17.6v3M14.4 17.6v3M6.4 9.6H3.4M6.4 14.4H3.4M17.6 9.6h3M17.6 14.4h3"},{"t":"f","d":"M12 9.2c.3 1.4 1 2.1 2.4 2.4-1.4.3-2.1 1-2.4 2.4-.3-1.4-1-2.1-2.4-2.4 1.4-.3 2.1-1 2.4-2.4Z"}]},{"name":"admin","zh":"系统管理","group":"nav","use":"顶栏「系统管理」、权限相关标题","keywords":["admin","system","shield","系统","管理","权限"],"shapes":[{"t":"p","d":"M12 3.4 19 6.2v6.2c0 3.9-2.8 7.1-7 8.5-4.2-1.4-7-4.6-7-8.5V6.2l7-2.8Z"},{"t":"p","d":"M9.2 12.2l2 2 3.6-4"}]},{"name":"intent","zh":"意图识别","group":"agent","use":"过程条「意图识别」节点","keywords":["intent","target","意图","识别","目标"],"shapes":[{"t":"c","cx":12,"cy":12,"r":8.6},{"t":"c","cx":12,"cy":12,"r":4.2},{"t":"fc","cx":12,"cy":12,"r":1.5}]},{"name":"retrieve","zh":"知识库检索","group":"agent","use":"过程条「知识库」节点、「已检索可见文档」","keywords":["retrieve","rag","knowledge","检索","召回","知识库"],"shapes":[{"t":"p","d":"M5 7.4h5.2l3.2 3.2v8.4a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6V9A1.6 1.6 0 0 1 5 7.4Z"},{"t":"p","d":"M10.2 7.4v3.2h3.2"},{"t":"c","cx":17,"cy":7.9,"r":3.1},{"t":"p","d":"M19.2 10.1 21.2 12.1"}]},{"name":"evaluate","zh":"检索评估","group":"agent","use":"过程条「检索评估」节点、切题/不足徽标","keywords":["evaluate","score","gauge","评估","评分","切题"],"shapes":[{"t":"p","d":"M3.8 17.6A8.2 8.2 0 0 1 20.2 17.6"},{"t":"p","d":"M12 17.6 15.6 12.4"},{"t":"fc","cx":12,"cy":17.6,"r":1.4}]},{"name":"rewrite","zh":"查询改写","group":"agent","use":"过程条「改写」节点、「已改写检索词」","keywords":["rewrite","loop","改写","重写","再检索"],"shapes":[{"t":"p","d":"M4.6 12a7.4 7.4 0 0 1 12.6-5.2"},{"t":"p","d":"M17.4 3.4v3.5h-3.5"},{"t":"p","d":"M19.4 12a7.4 7.4 0 0 1-12.6 5.2"},{"t":"p","d":"M6.6 20.6v-3.5h3.5"}]},{"name":"web","zh":"联网搜索","group":"agent","use":"过程条「联网」节点、公开信息搜索卡","keywords":["web","globe","联网","互联网","公开信息"],"shapes":[{"t":"c","cx":12,"cy":12,"r":7.6},{"t":"p","d":"M12 4.4c2.9 2.5 2.9 12.7 0 15.2M12 4.4c-2.9 2.5-2.9 12.7 0 15.2"},{"t":"p","d":"M5 9.2h14M5 14.8h14"}]},{"name":"think","zh":"思考过程","group":"agent","use":"过程条「思考过程」折叠块","keywords":["think","reasoning","bulb","思考","推理"],"shapes":[{"t":"p","d":"M12 3.6A5.8 5.8 0 0 0 8.6 14.1c.7.5 1.1 1.3 1.1 2.1h4.6c0-.8.4-1.6 1.1-2.1A5.8 5.8 0 0 0 12 3.6Z"},{"t":"p","d":"M9.9 17.8h4.2M10.7 20.2h2.6"},{"t":"f","d":"M12 7.6c.28 1.34.96 2.02 2.3 2.3-1.34.28-2.02.96-2.3 2.3-.28-1.34-.96-2.02-2.3-2.3 1.34-.28 2.02-.96 2.3-2.3Z"}]},{"name":"answer","zh":"生成回答","group":"agent","use":"过程条「生成」阶段、回答正文标记","keywords":["answer","generate","回答","生成","正文"],"shapes":[{"t":"p","d":"M3.8 7.6A3.4 3.4 0 0 1 7.2 4.2h9.6a3.4 3.4 0 0 1 3.4 3.4v6.2a3.4 3.4 0 0 1-3.4 3.4H10.6L6.2 20.6v-3.4h.2A3.4 3.4 0 0 1 3.8 13.8V7.6Z"},{"t":"p","d":"M7.6 8.8h8.8M7.6 12.4h6"}]},{"name":"cite","zh":"引用溯源","group":"agent","use":"引用卡片标题、「查看原文」前置图标","keywords":["cite","link","source","引用","溯源","出处"],"shapes":[{"t":"p","d":"M10.2 13.8a3.8 3.8 0 0 0 5.4 0l2.6-2.6a3.8 3.8 0 0 0-5.4-5.4l-1.5 1.5"},{"t":"p","d":"M13.8 10.2a3.8 3.8 0 0 0-5.4 0l-2.6 2.6a3.8 3.8 0 0 0 5.4 5.4l1.5-1.5"}]},{"name":"new-doc","zh":"新建文档","group":"doc","use":"侧栏「新建文档」、工作台新建入口","keywords":["new","create","plus","新建","创建","空白"],"shapes":[{"t":"r","x":3.8,"y":3.8,"w":16.4,"h":16.4,"rx":2.4,"dash":"2.8 2.8"},{"t":"p","d":"M12 8.2v7.6M8.2 12h7.6"}]},{"name":"upload","zh":"上传导入","group":"doc","use":"文档导入区主图标、「上传文件」按钮","keywords":["upload","import","上传","导入","解析"],"shapes":[{"t":"p","d":"M12 15.6V4.6"},{"t":"p","d":"M7.6 9 12 4.6 16.4 9"},{"t":"p","d":"M4.6 15.4v2.8a2.4 2.4 0 0 0 2.4 2.4h10a2.4 2.4 0 0 0 2.4-2.4v-2.8"}]},{"name":"version","zh":"版本历史","group":"doc","use":"详情页「版本」按钮、版本列表","keywords":["version","layers","版本","历史","层"],"shapes":[{"t":"p","d":"M12 3.6 3.8 8l8.2 4.4L20.2 8 12 3.6Z"},{"t":"p","d":"M3.8 12.2 12 16.6l8.2-4.4"},{"t":"p","d":"M3.8 16.2 12 20.6l8.2-4.4"}]},{"name":"publish","zh":"发布上线","group":"doc","use":"「发布」按钮（触发 RAG 索引的唯一入口）","keywords":["publish","release","launch","发布","上线","生效"],"shapes":[{"t":"p","d":"M12 3.8v10.8"},{"t":"p","d":"M7.4 8.4 12 3.8l4.6 4.6"},{"t":"p","d":"M4.2 20.4h15.6"}]},{"name":"archive","zh":"归档","group":"doc","use":"「归档」按钮、归档态文档筛选","keywords":["archive","box","归档","封存","下线"],"shapes":[{"t":"r","x":3.6,"y":4.4,"w":16.8,"h":3.6,"rx":1.2},{"t":"p","d":"M5.2 8.2v9.6a2.2 2.2 0 0 0 2.2 2.2h9.2a2.2 2.2 0 0 0 2.2-2.2V8.2"},{"t":"p","d":"M10 12.4h4"}]},{"name":"favorite","zh":"收藏","group":"doc","use":"侧栏「我的收藏」、收藏态切换","keywords":["favorite","star","收藏","星标","关注"],"shapes":[{"t":"p","d":"M12 3.8l2.5 5.1 5.6.8-4.1 4 1 5.6-5-2.6-5 2.6 1-5.6-4.1-4 5.6-.8L12 3.8Z"}]},{"name":"success","zh":"成功 / 通过","group":"state","use":"审核通过、操作成功、导入完成","keywords":["success","check","ok","成功","通过","完成"],"shapes":[{"t":"c","cx":12,"cy":12,"r":8.4},{"t":"p","d":"M8.2 12.3l2.7 2.7 5-5.4"}]},{"name":"processing","zh":"处理中","group":"state","use":"导入任务「处理中」、流式生成中、排队态","keywords":["processing","loading","pending","处理中","加载","等待"],"shapes":[{"t":"p","d":"M12 4.6a7.4 7.4 0 1 0 7.4 7.4"},{"t":"fc","cx":12,"cy":12,"r":1.6}]},{"name":"failed","zh":"失败 / 警告","group":"state","use":"导入失败、检索失败、表单校验错误","keywords":["failed","error","warn","失败","错误","警告"],"shapes":[{"t":"c","cx":12,"cy":12,"r":8.4},{"t":"p","d":"M12 7.6v5.4"},{"t":"fc","cx":12,"cy":16.4,"r":0.95}]},{"name":"empty","zh":"空状态","group":"state","use":"无结果、无会话、无导入记录的品牌空状态","keywords":["empty","none","null","空","无结果","暂无"],"shapes":[{"t":"r","x":4.2,"y":3.8,"w":15.6,"h":16.4,"rx":2.2,"dash":"2.6 2.6"},{"t":"p","d":"M9.6 9.8a2.4 2.4 0 1 1 3.5 2.15c-.7.35-1.1.9-1.1 1.65"},{"t":"fc","cx":12,"cy":16.2,"r":0.9}]},{"name":"locked","zh":"权限受限","group":"state","use":"403 无权查看、仅自己可见的私有文档","keywords":["lock","private","权限","无权","私有","受限"],"shapes":[{"t":"p","d":"M8.2 10.4V7.8a3.8 3.8 0 0 1 7.6 0v2.6"},{"t":"r","x":5.2,"y":10.4,"w":13.6,"h":9.8,"rx":2.2},{"t":"fc","cx":12,"cy":14.9,"r":1.1},{"t":"p","d":"M12 16v1.8"}]},{"name":"concept","zh":"实体 / 概念","group":"graph","use":"图谱图例「实体/概念」、热门知识点条目","keywords":["concept","entity","实体","概念","知识点"],"shapes":[{"t":"c","cx":12,"cy":12,"r":8.4},{"t":"f","d":"M12 8.4c.42 1.98 1.5 3.06 3.48 3.48-1.98.42-3.06 1.5-3.48 3.48-.42-1.98-1.5-3.06-3.48-3.48 1.98-.42 3.06-1.5 3.48-3.48Z"}]},{"name":"tag","zh":"标签","group":"graph","use":"图谱图例「标签」、文档标签前置图标","keywords":["tag","label","标签","标记"],"shapes":[{"t":"p","d":"M20.4 12.6 12.6 20.4a2 2 0 0 1-2.8 0L3.6 13.6V4.8a1.2 1.2 0 0 1 1.2-1.2h8.8l6.8 6.8a2 2 0 0 1 0 2.2Z"},{"t":"fc","cx":8.4,"cy":8.4,"r":1.3}]},{"name":"share","zh":"分享","group":"collab","use":"文档分享、分享链接页标题","keywords":["share","link","分享","协作","分发"],"shapes":[{"t":"c","cx":17.8,"cy":5.8,"r":2.6},{"t":"c","cx":6.2,"cy":12,"r":2.6},{"t":"c","cx":17.8,"cy":18.2,"r":2.6},{"t":"p","d":"M8.4 10.8 15.4 7.2M8.4 13.2 15.4 16.8"}]}]}</script>
+<script>
+(function () {
+  var DATA = JSON.parse(document.getElementById('kh-icon-data').textContent);
+  var ICONS = DATA.icons;
+  var GROUPS = DATA.groups;
+  var SW = DATA.meta.strokeWidth;
+
+  function shape(s) {
+    var base = 'fill="none" stroke="currentColor" stroke-width="' + SW +
+      '" stroke-linecap="round" stroke-linejoin="round"';
+    if (s.t === 'p') return '<path d="' + s.d + '" ' + base + '/>';
+    if (s.t === 'c') return '<circle cx="' + s.cx + '" cy="' + s.cy + '" r="' + s.r + '" ' + base + '/>';
+    if (s.t === 'r') {
+      return '<rect x="' + s.x + '" y="' + s.y + '" width="' + s.w + '" height="' + s.h +
+        '" rx="' + s.rx + '"' + (s.dash ? ' stroke-dasharray="' + s.dash + '"' : '') + ' ' + base + '/>';
+    }
+    if (s.t === 'f') return '<path d="' + s.d + '" fill="currentColor" stroke="none"/>';
+    if (s.t === 'fc') return '<circle cx="' + s.cx + '" cy="' + s.cy + '" r="' + s.r + '" fill="currentColor" stroke="none"/>';
+    return '';
+  }
+
+  function svg(icon) {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true">' + icon.shapes.map(shape).join('') + '</svg>';
+  }
+
+  // 侧栏
+  var nav = document.getElementById('nav');
+  Object.keys(GROUPS).forEach(function (key) {
+    var n = ICONS.filter(function (i) { return i.group === key; }).length;
+    var a = document.createElement('a');
+    a.href = '#g-' + key;
+    a.innerHTML = '<span>' + GROUPS[key] + '</span><span class="count">' + n + '</span>';
+    nav.appendChild(a);
+  });
+
+  // 分组卡片
+  var host = document.getElementById('groups');
+  Object.keys(GROUPS).forEach(function (key) {
+    var list = ICONS.filter(function (i) { return i.group === key; });
+    if (!list.length) return;
+    var sec = document.createElement('section');
+    sec.className = 'group';
+    sec.id = 'g-' + key;
+    sec.innerHTML = '<div class="sec-head"><h2>' + GROUPS[key] +
+      '</h2><span>' + list.length + ' 枚</span><span class="en">' + key + '</span></div>' +
+      '<div class="grid"></div>';
+    var grid = sec.querySelector('.grid');
+    list.forEach(function (icon) {
+      var card = document.createElement('button');
+      card.className = 'card';
+      card.type = 'button';
+      card.title = icon.use;
+      card.setAttribute('data-search', (icon.name + ' ' + icon.zh + ' ' + icon.use + ' ' + icon.keywords.join(' ')).toLowerCase());
+      card.innerHTML = '<span class="art">' + svg(icon) + '<span class="safe"></span></span>' +
+        '<span class="meta"><span class="zh">' + icon.zh + '</span>' +
+        '<span class="key mono">' + icon.name + '</span></span>';
+      card.onclick = function () {
+        copy('<KhIcon name="' + icon.name + '" />', icon.zh);
+      };
+      grid.appendChild(card);
+    });
+    host.appendChild(sec);
+  });
+
+  document.getElementById('c-total').textContent = ICONS.length;
+
+  // 搜索
+  var q = document.getElementById('q');
+  q.oninput = function () {
+    var v = q.value.trim().toLowerCase();
+    document.querySelectorAll('.group').forEach(function (sec) {
+      var shown = 0;
+      sec.querySelectorAll('.card').forEach(function (card) {
+        var hit = !v || card.getAttribute('data-search').indexOf(v) > -1;
+        card.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+      });
+      sec.style.display = shown ? '' : 'none';
+    });
+  };
+
+  // 尺寸
+  document.getElementById('size-seg').onclick = function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    document.querySelectorAll('#size-seg button').forEach(function (x) { x.classList.remove('on'); });
+    b.classList.add('on');
+    document.documentElement.style.setProperty('--icon-size', b.getAttribute('data-size') + 'px');
+  };
+
+  // 背景 / 网格
+  document.getElementById('bg-tgl').onclick = function () {
+    var light = document.body.getAttribute('data-bg') === 'light';
+    document.body.setAttribute('data-bg', light ? 'dark' : 'light');
+  };
+  document.getElementById('grid-tgl').onclick = function () {
+    var on = document.body.getAttribute('data-grid') === 'on';
+    document.body.setAttribute('data-grid', on ? 'off' : 'on');
+    this.classList.toggle('on', !on);
+  };
+
+  // Agent 链路 demo
+  var steps = [
+    ['intent', '意图识别', '知识问答 · 允许知识库 / 图谱', ''],
+    ['retrieve', '知识库检索', '命中 5 个切片', 'ok'],
+    ['evaluate', '检索评估', '切题，无需改写', 'ok'],
+    ['think', '思考过程', '已完成', ''],
+    ['answer', '生成回答', '引用 [1] – [5]', 'ok']
+  ];
+  var trace = document.getElementById('trace');
+  steps.forEach(function (s, i) {
+    var icon = ICONS.filter(function (x) { return x.name === s[0]; })[0];
+    var row = document.createElement('div');
+    row.className = 'trace-row';
+    row.innerHTML = '<i>' + svg(icon) + '</i><b>' + s[1] + '</b><span>' + s[2] +
+      '</span><span class="' + (s[3] === 'ok' ? 'ok' : '') + '">' +
+      (s[3] === 'ok' ? '✓' : '') + '</span>';
+    trace.appendChild(row);
+    if (i < steps.length - 1) {
+      var line = document.createElement('div');
+      line.className = 'trace-line';
+      trace.appendChild(line);
+    }
+  });
+
+  // 复制
+  var toast = document.getElementById('toast');
+  var timer = null;
+  function copy(text, label) {
+    var done = function () {
+      toast.textContent = '已复制 ' + label + ' · ' + text;
+      toast.classList.add('show');
+      clearTimeout(timer);
+      timer = setTimeout(function () { toast.classList.remove('show'); }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(function () { fallback(text, done); });
+    } else {
+      fallback(text, done);
+    }
+  }
+  function fallback(text, done) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    done();
+  }
+})();
+</script>
+</body>
+</html>

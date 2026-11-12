@@ -1,0 +1,495 @@
+{
+  "name": "Knowledge Hub Icons",
+  "prefix": "kh",
+  "version": "1.0.0",
+  "grid": 24,
+  "strokeWidth": 1.6,
+  "colorPrimary": "#1677ff",
+  "generatedAt": "2026-11-12T08:08:47.674Z",
+  "count": 29,
+  "groups": {
+    "nav": "导航与模块",
+    "agent": "Agent 链路",
+    "doc": "文档操作",
+    "state": "状态反馈",
+    "graph": "图谱语义",
+    "collab": "协作"
+  },
+  "icons": [
+    {
+      "file": "svg/kh-home.svg",
+      "spriteId": "kh-home",
+      "name": "home",
+      "zh": "首页大盘",
+      "group": "nav",
+      "use": "顶栏「首页大盘」、侧栏「工作概览」",
+      "keywords": [
+        "home",
+        "dashboard",
+        "首页",
+        "大盘",
+        "概览"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-documents.svg",
+      "spriteId": "kh-documents",
+      "name": "documents",
+      "zh": "文档管理",
+      "group": "nav",
+      "use": "顶栏「文档管理」、侧栏「全部文档」",
+      "keywords": [
+        "document",
+        "file",
+        "文档",
+        "文件",
+        "知识"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-search.svg",
+      "spriteId": "kh-search",
+      "name": "search",
+      "zh": "全文检索",
+      "group": "nav",
+      "use": "顶栏「文档搜索」、搜索框前缀",
+      "keywords": [
+        "search",
+        "find",
+        "检索",
+        "搜索",
+        "查询"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-chat.svg",
+      "spriteId": "kh-chat",
+      "name": "chat",
+      "zh": "AI 智能问答",
+      "group": "nav",
+      "use": "顶栏「AI智能问答」、侧栏「知识问答」、对话空状态",
+      "keywords": [
+        "chat",
+        "ask",
+        "ai",
+        "问答",
+        "对话",
+        "智能"
+      ],
+      "shapeCount": 2
+    },
+    {
+      "file": "svg/kh-graph.svg",
+      "spriteId": "kh-graph",
+      "name": "graph",
+      "zh": "知识图谱",
+      "group": "nav",
+      "use": "顶栏「知识图谱」、侧栏「全景图谱」",
+      "keywords": [
+        "graph",
+        "network",
+        "图谱",
+        "网络",
+        "拓扑"
+      ],
+      "shapeCount": 7
+    },
+    {
+      "file": "svg/kh-memory.svg",
+      "spriteId": "kh-memory",
+      "name": "memory",
+      "zh": "长期记忆",
+      "group": "nav",
+      "use": "侧栏「我的记忆」、记忆层级标签",
+      "keywords": [
+        "memory",
+        "chip",
+        "记忆",
+        "画像",
+        "上下文"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-admin.svg",
+      "spriteId": "kh-admin",
+      "name": "admin",
+      "zh": "系统管理",
+      "group": "nav",
+      "use": "顶栏「系统管理」、权限相关标题",
+      "keywords": [
+        "admin",
+        "system",
+        "shield",
+        "系统",
+        "管理",
+        "权限"
+      ],
+      "shapeCount": 2
+    },
+    {
+      "file": "svg/kh-intent.svg",
+      "spriteId": "kh-intent",
+      "name": "intent",
+      "zh": "意图识别",
+      "group": "agent",
+      "use": "过程条「意图识别」节点",
+      "keywords": [
+        "intent",
+        "target",
+        "意图",
+        "识别",
+        "目标"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-retrieve.svg",
+      "spriteId": "kh-retrieve",
+      "name": "retrieve",
+      "zh": "知识库检索",
+      "group": "agent",
+      "use": "过程条「知识库」节点、「已检索可见文档」",
+      "keywords": [
+        "retrieve",
+        "rag",
+        "knowledge",
+        "检索",
+        "召回",
+        "知识库"
+      ],
+      "shapeCount": 4
+    },
+    {
+      "file": "svg/kh-evaluate.svg",
+      "spriteId": "kh-evaluate",
+      "name": "evaluate",
+      "zh": "检索评估",
+      "group": "agent",
+      "use": "过程条「检索评估」节点、切题/不足徽标",
+      "keywords": [
+        "evaluate",
+        "score",
+        "gauge",
+        "评估",
+        "评分",
+        "切题"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-rewrite.svg",
+      "spriteId": "kh-rewrite",
+      "name": "rewrite",
+      "zh": "查询改写",
+      "group": "agent",
+      "use": "过程条「改写」节点、「已改写检索词」",
+      "keywords": [
+        "rewrite",
+        "loop",
+        "改写",
+        "重写",
+        "再检索"
+      ],
+      "shapeCount": 4
+    },
+    {
+      "file": "svg/kh-web.svg",
+      "spriteId": "kh-web",
+      "name": "web",
+      "zh": "联网搜索",
+      "group": "agent",
+      "use": "过程条「联网」节点、公开信息搜索卡",
+      "keywords": [
+        "web",
+        "globe",
+        "联网",
+        "互联网",
+        "公开信息"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-think.svg",
+      "spriteId": "kh-think",
+      "name": "think",
+      "zh": "思考过程",
+      "group": "agent",
+      "use": "过程条「思考过程」折叠块",
+      "keywords": [
+        "think",
+        "reasoning",
+        "bulb",
+        "思考",
+        "推理"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-answer.svg",
+      "spriteId": "kh-answer",
+      "name": "answer",
+      "zh": "生成回答",
+      "group": "agent",
+      "use": "过程条「生成」阶段、回答正文标记",
+      "keywords": [
+        "answer",
+        "generate",
+        "回答",
+        "生成",
+        "正文"
+      ],
+      "shapeCount": 2
+    },
+    {
+      "file": "svg/kh-cite.svg",
+      "spriteId": "kh-cite",
+      "name": "cite",
+      "zh": "引用溯源",
+      "group": "agent",
+      "use": "引用卡片标题、「查看原文」前置图标",
+      "keywords": [
+        "cite",
+        "link",
+        "source",
+        "引用",
+        "溯源",
+        "出处"
+      ],
+      "shapeCount": 2
+    },
+    {
+      "file": "svg/kh-new-doc.svg",
+      "spriteId": "kh-new-doc",
+      "name": "new-doc",
+      "zh": "新建文档",
+      "group": "doc",
+      "use": "侧栏「新建文档」、工作台新建入口",
+      "keywords": [
+        "new",
+        "create",
+        "plus",
+        "新建",
+        "创建",
+        "空白"
+      ],
+      "shapeCount": 2
+    },
+    {
+      "file": "svg/kh-upload.svg",
+      "spriteId": "kh-upload",
+      "name": "upload",
+      "zh": "上传导入",
+      "group": "doc",
+      "use": "文档导入区主图标、「上传文件」按钮",
+      "keywords": [
+        "upload",
+        "import",
+        "上传",
+        "导入",
+        "解析"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-version.svg",
+      "spriteId": "kh-version",
+      "name": "version",
+      "zh": "版本历史",
+      "group": "doc",
+      "use": "详情页「版本」按钮、版本列表",
+      "keywords": [
+        "version",
+        "layers",
+        "版本",
+        "历史",
+        "层"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-publish.svg",
+      "spriteId": "kh-publish",
+      "name": "publish",
+      "zh": "发布上线",
+      "group": "doc",
+      "use": "「发布」按钮（触发 RAG 索引的唯一入口）",
+      "keywords": [
+        "publish",
+        "release",
+        "launch",
+        "发布",
+        "上线",
+        "生效"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-archive.svg",
+      "spriteId": "kh-archive",
+      "name": "archive",
+      "zh": "归档",
+      "group": "doc",
+      "use": "「归档」按钮、归档态文档筛选",
+      "keywords": [
+        "archive",
+        "box",
+        "归档",
+        "封存",
+        "下线"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-favorite.svg",
+      "spriteId": "kh-favorite",
+      "name": "favorite",
+      "zh": "收藏",
+      "group": "doc",
+      "use": "侧栏「我的收藏」、收藏态切换",
+      "keywords": [
+        "favorite",
+        "star",
+        "收藏",
+        "星标",
+        "关注"
+      ],
+      "shapeCount": 1
+    },
+    {
+      "file": "svg/kh-success.svg",
+      "spriteId": "kh-success",
+      "name": "success",
+      "zh": "成功 / 通过",
+      "group": "state",
+      "use": "审核通过、操作成功、导入完成",
+      "keywords": [
+        "success",
+        "check",
+        "ok",
+        "成功",
+        "通过",
+        "完成"
+      ],
+      "shapeCount": 2
+    },
+    {
+      "file": "svg/kh-processing.svg",
+      "spriteId": "kh-processing",
+      "name": "processing",
+      "zh": "处理中",
+      "group": "state",
+      "use": "导入任务「处理中」、流式生成中、排队态",
+      "keywords": [
+        "processing",
+        "loading",
+        "pending",
+        "处理中",
+        "加载",
+        "等待"
+      ],
+      "shapeCount": 2
+    },
+    {
+      "file": "svg/kh-failed.svg",
+      "spriteId": "kh-failed",
+      "name": "failed",
+      "zh": "失败 / 警告",
+      "group": "state",
+      "use": "导入失败、检索失败、表单校验错误",
+      "keywords": [
+        "failed",
+        "error",
+        "warn",
+        "失败",
+        "错误",
+        "警告"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-empty.svg",
+      "spriteId": "kh-empty",
+      "name": "empty",
+      "zh": "空状态",
+      "group": "state",
+      "use": "无结果、无会话、无导入记录的品牌空状态",
+      "keywords": [
+        "empty",
+        "none",
+        "null",
+        "空",
+        "无结果",
+        "暂无"
+      ],
+      "shapeCount": 3
+    },
+    {
+      "file": "svg/kh-locked.svg",
+      "spriteId": "kh-locked",
+      "name": "locked",
+      "zh": "权限受限",
+      "group": "state",
+      "use": "403 无权查看、仅自己可见的私有文档",
+      "keywords": [
+        "lock",
+        "private",
+        "权限",
+        "无权",
+        "私有",
+        "受限"
+      ],
+      "shapeCount": 4
+    },
+    {
+      "file": "svg/kh-concept.svg",
+      "spriteId": "kh-concept",
+      "name": "concept",
+      "zh": "实体 / 概念",
+      "group": "graph",
+      "use": "图谱图例「实体/概念」、热门知识点条目",
+      "keywords": [
+        "concept",
+        "entity",
+        "实体",
+        "概念",
+        "知识点"
+      ],
+      "shapeCount": 2
+    },
+    {
+      "file": "svg/kh-tag.svg",
+      "spriteId": "kh-tag",
+      "name": "tag",
+      "zh": "标签",
+      "group": "graph",
+      "use": "图谱图例「标签」、文档标签前置图标",
+      "keywords": [
+        "tag",
+        "label",
+        "标签",
+        "标记"
+      ],
+      "shapeCount": 2
+    },
+    {
+      "file": "svg/kh-share.svg",
+      "spriteId": "kh-share",
+      "name": "share",
+      "zh": "分享",
+      "group": "collab",
+      "use": "文档分享、分享链接页标题",
+      "keywords": [
+        "share",
+        "link",
+        "分享",
+        "协作",
+        "分发"
+      ],
+      "shapeCount": 4
+    }
+  ]
+}
