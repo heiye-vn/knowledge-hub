@@ -1,0 +1,9 @@
+# 生成物不入库 —— 全部可由 `node build.mjs` 重建。
+# 只保留源文件：icons.mjs / build.mjs / preview.tpl.html / README.md / audit.md
+
+svg/
+icons.svg
+preview.html
+manifest.json
+KhIcon.tsx
+index.ts

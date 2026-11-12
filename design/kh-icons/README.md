@@ -1,20 +1,40 @@
 # KH Icons · 图标资产与使用规范
 
 Knowledge Hub 专用线性图标集，29 枚，面向「企业知识库 + Agentic RAG」界面。
-本目录是**独立设计资产**，未接入 `apps/web`，可按需取用。
+
+## 关于版本控制
+
+**只有源文件入库**：`icons.mjs`、`build.mjs`、`preview.tpl.html`、`README.md`、`audit.md`。
+**生成物一律不入库**（见 `.gitignore`）：`svg/`、`icons.svg`、`preview.html`、
+`manifest.json`、`KhIcon.tsx`、`index.ts` —— 它们都能用一条命令重建，
+入库只会造成「改了源忘了重建」的漂移。
+
+clone 仓库后：
+
+```bash
+node design/kh-icons/build.mjs          # 生成全部产物（本地文件，不进 git）
+```
+
+运行时真正使用的组件副本在 `apps/web/src/components/icons/`，那个**入库**，
+因为前端不跑构建脚本也要能直接用。改图标后记得把生成的
+`KhIcon.tsx` / `index.ts` 同步过去。
+
+## 目录结构
 
 ```
 design/kh-icons/
-├── icons.mjs         单一数据源（改图标只改这里）
-├── build.mjs         构建脚本：node build.mjs
-├── icons.svg         SVG Sprite
-├── svg/              29 个独立 SVG 文件
-├── KhIcon.tsx        React 组件
-├── index.ts          组件 + 元数据出口
-├── manifest.json     机器可读清单（命名 / 分组 / 用途）
-├── preview.html      规范与预览页（浏览器打开）
-├── audit.md          UI 图标落位分析
-└── preview.tpl.html  预览页模板（构建时注入数据）
+├── icons.mjs         单一数据源（改图标只改这里）· 入库
+├── build.mjs         构建脚本：node build.mjs      · 入库
+├── preview.tpl.html  预览页模板                    · 入库
+├── README.md         本文件                        · 入库
+├── audit.md          UI 图标落位分析               · 入库
+├── .gitignore        生成物排除清单
+├── svg/              29 个独立 SVG 文件            · 生成物
+├── icons.svg         SVG Sprite                    · 生成物
+├── preview.html      规范与预览页（浏览器打开）     · 生成物
+├── manifest.json     机器可读清单                  · 生成物
+├── KhIcon.tsx        React 组件（复制到 src 使用）  · 生成物
+└── index.ts          组件 + 元数据出口             · 生成物
 ```
 
 ---
