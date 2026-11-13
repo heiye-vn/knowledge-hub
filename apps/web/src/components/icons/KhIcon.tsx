@@ -8,6 +8,7 @@ export type KhIconName =
   | 'search'
   | 'chat'
   | 'graph'
+  | 'user'
   | 'memory'
   | 'admin'
   | 'intent'
@@ -69,14 +70,20 @@ const ICONS: Record<KhIconName, Shape[]> = {
     { t: 'p', d: 'M10.1 13.4 6.8 15.5' },
     { t: 'p', d: 'M13.9 13.4 17.2 15.5' },
   ],
+  'user': [
+    { t: 'c', cx: 12, cy: 8.4, r: 3.4 },
+    { t: 'p', d: 'M5.6 20.6a6.4 6.4 0 0 1 12.8 0' },
+  ],
   'memory': [
     { t: 'p', d: 'M8.4 6.4h7.2a2 2 0 0 1 2 2v7.2a2 2 0 0 1-2 2H8.4a2 2 0 0 1-2-2V8.4a2 2 0 0 1 2-2Z' },
     { t: 'p', d: 'M9.6 6.4V3.4M14.4 6.4V3.4M9.6 17.6v3M14.4 17.6v3M6.4 9.6H3.4M6.4 14.4H3.4M17.6 9.6h3M17.6 14.4h3' },
     { t: 'f', d: 'M12 9.2c.3 1.4 1 2.1 2.4 2.4-1.4.3-2.1 1-2.4 2.4-.3-1.4-1-2.1-2.4-2.4 1.4-.3 2.1-1 2.4-2.4Z' },
   ],
   'admin': [
-    { t: 'p', d: 'M12 3.4 19 6.2v6.2c0 3.9-2.8 7.1-7 8.5-4.2-1.4-7-4.6-7-8.5V6.2l7-2.8Z' },
-    { t: 'p', d: 'M9.2 12.2l2 2 3.6-4' },
+    { t: 'p', d: 'M4.6 8.6h14.8' },
+    { t: 'p', d: 'M4.6 15.4h14.8' },
+    { t: 'fc', cx: 9.2, cy: 8.6, r: 2.2 },
+    { t: 'fc', cx: 14.8, cy: 15.4, r: 2.2 },
   ],
   'intent': [
     { t: 'c', cx: 12, cy: 12, r: 8.6 },
@@ -185,13 +192,52 @@ const ICONS: Record<KhIconName, Shape[]> = {
   ]
 }
 
+/** 小尺寸精简变体（去细节、扩大特征），仅 compact 模式启用 */
+const SMALL_ICONS: Partial<Record<KhIconName, Shape[]>> = {
+  'home': [
+    { t: 'p', d: 'M3.8 10.4 12 3.8l8.2 6.6' },
+    { t: 'p', d: 'M5.8 9.2v10a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6v-10' },
+  ],
+  'documents': [
+    { t: 'p', d: 'M13.6 3.2H6.4A2.2 2.2 0 0 0 4.2 5.4v13.2a2.2 2.2 0 0 0 2.2 2.2h11.2a2.2 2.2 0 0 0 2.2-2.2V8.6L13.6 3.2Z' },
+    { t: 'p', d: 'M13.6 3.2v5.4h6.2' },
+    { t: 'p', d: 'M8.6 15.4h6.8' },
+  ],
+  'search': [
+    { t: 'c', cx: 10.6, cy: 10.6, r: 6.4 },
+    { t: 'p', d: 'M15.2 15.2 20.8 20.8' },
+  ],
+  'chat': [
+    { t: 'p', d: 'M3.8 7.6A3.4 3.4 0 0 1 7.2 4.2h9.6a3.4 3.4 0 0 1 3.4 3.4v6.2a3.4 3.4 0 0 1-3.4 3.4H10.6L6.2 20.6v-3.4h.2A3.4 3.4 0 0 1 3.8 13.8V7.6Z' },
+    { t: 'fc', cx: 7.9, cy: 9.8, r: 1 },
+    { t: 'fc', cx: 12, cy: 9.8, r: 1 },
+    { t: 'fc', cx: 16.1, cy: 9.8, r: 1 },
+  ],
+  'graph': [
+    { t: 'c', cx: 12, cy: 12.2, r: 3 },
+    { t: 'c', cx: 12, cy: 4.4, r: 2.2 },
+    { t: 'c', cx: 18.4, cy: 17.4, r: 2.2 },
+    { t: 'p', d: 'M12 6.6V9.2' },
+    { t: 'p', d: 'M14.3 14.1 16.7 16' },
+  ]
+}
+
+/** compact 模式默认描边：14px 下 2.1×14/24 ≈ 1.23px，避开 0.93px 的亚像素发灰 */
+const SMALL_STROKE = 2.1
+
 export interface KhIconProps extends Omit<SVGProps<SVGSVGElement>, 'name' | 'color'> {
   name: KhIconName
   /** 像素尺寸，默认 24 */
   size?: number
   /** 颜色，默认继承 currentColor */
   color?: string
-  /** 描边宽度，默认 1.6，非特殊场景不要改 */
+  /**
+   * 小尺寸优化（≤16px 场景，如顶栏菜单）：
+   * 启用精简图形变体，并把描边自动加粗到 2.1。
+   * 15/16px 的按钮图标默认不要开启，保持全量细节。
+   */
+  compact?: boolean
+  /** 描边宽度，默认 1.6（compact 时默认 2.1），非特殊场景不要改 */
   strokeWidth?: number
   style?: CSSProperties
 }
@@ -200,11 +246,13 @@ export function KhIcon({
   name,
   size = 24,
   color = 'currentColor',
-  strokeWidth = 1.6,
+  compact = false,
+  strokeWidth,
   style,
   ...rest
 }: KhIconProps) {
-  const shapes = ICONS[name]
+  const shapes = (compact ? SMALL_ICONS[name] : undefined) ?? ICONS[name]
+  const mergedStroke = strokeWidth ?? (compact ? SMALL_STROKE : 1.6)
   if (!shapes) return null
   return (
     <svg
@@ -213,7 +261,7 @@ export function KhIcon({
       height={size}
       fill="none"
       stroke={color}
-      strokeWidth={strokeWidth}
+      strokeWidth={mergedStroke}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

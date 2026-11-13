@@ -21,6 +21,8 @@ const svgDir = join(root, 'svg')
 mkdirSync(svgDir, { recursive: true })
 
 const SW = META.strokeWidth
+// 小尺寸（≤16px）场景的加粗笔画：14px 下 2.1×14/24 ≈ 1.23px，超过 1.25px 清晰阈值附近
+const SMALL_STROKE = 2.1
 const STROKE_ATTRS =
   `fill="none" stroke="currentColor" stroke-width="${SW}" ` +
   `stroke-linecap="round" stroke-linejoin="round"`
@@ -43,6 +45,23 @@ function renderShape(s, indent = '') {
     default:
       throw new Error(`未知形状类型：${s.t}`)
   }
+}
+
+/* ── 形状 → TS 字面量（ICONS / SMALL_ICONS 共用） ───────── */
+function serializeShapes(shapes) {
+  const items = shapes
+    .map((s) => {
+      if (s.t === 'p') return `    { t: 'p', d: '${s.d}' }`
+      if (s.t === 'c') return `    { t: 'c', cx: ${s.cx}, cy: ${s.cy}, r: ${s.r} }`
+      if (s.t === 'r') {
+        const dash = s.dash ? `, dash: '${s.dash}'` : ''
+        return `    { t: 'r', x: ${s.x}, y: ${s.y}, w: ${s.w}, h: ${s.h}, rx: ${s.rx}${dash} }`
+      }
+      if (s.t === 'f') return `    { t: 'f', d: '${s.d}' }`
+      return `    { t: 'fc', cx: ${s.cx}, cy: ${s.cy}, r: ${s.r} }`
+    })
+    .join(',\n')
+  return `[\n${items},\n  ]`
 }
 
 /* ── 1. 独立 SVG ─────────────────────────────────────────── */
@@ -73,19 +92,13 @@ ${symbols}
 writeFileSync(join(root, 'icons.svg'), sprite, 'utf8')
 
 /* ── 3. React 组件 ───────────────────────────────────────── */
-const tsShapes = ICONS.map((icon) => {
-  const items = icon.shapes.map((s) => {
-    if (s.t === 'p') return `    { t: 'p', d: '${s.d}' }`
-    if (s.t === 'c') return `    { t: 'c', cx: ${s.cx}, cy: ${s.cy}, r: ${s.r} }`
-    if (s.t === 'r') {
-      const dash = s.dash ? `, dash: '${s.dash}'` : ''
-      return `    { t: 'r', x: ${s.x}, y: ${s.y}, w: ${s.w}, h: ${s.h}, rx: ${s.rx}${dash} }`
-    }
-    if (s.t === 'f') return `    { t: 'f', d: '${s.d}' }`
-    return `    { t: 'fc', cx: ${s.cx}, cy: ${s.cy}, r: ${s.r} }`
-  }).join(',\n')
-  return `  '${icon.name}': [\n${items},\n  ]`
-}).join(',\n')
+const tsShapes = ICONS.map(
+  (icon) => `  '${icon.name}': ${serializeShapes(icon.shapes)}`,
+).join(',\n')
+
+const tsSmallShapes = ICONS.filter((icon) => icon.small)
+  .map((icon) => `  '${icon.name}': ${serializeShapes(icon.small)}`)
+  .join(',\n')
 
 const names = ICONS.map((i) => `  | '${i.name}'`).join('\n')
 
@@ -107,13 +120,27 @@ const ICONS: Record<KhIconName, Shape[]> = {
 ${tsShapes}
 }
 
+/** 小尺寸精简变体（去细节、扩大特征），仅 compact 模式启用 */
+const SMALL_ICONS: Partial<Record<KhIconName, Shape[]>> = {
+${tsSmallShapes}
+}
+
+/** compact 模式默认描边：14px 下 2.1×14/24 ≈ 1.23px，避开 0.93px 的亚像素发灰 */
+const SMALL_STROKE = ${SMALL_STROKE}
+
 export interface KhIconProps extends Omit<SVGProps<SVGSVGElement>, 'name' | 'color'> {
   name: KhIconName
   /** 像素尺寸，默认 24 */
   size?: number
   /** 颜色，默认继承 currentColor */
   color?: string
-  /** 描边宽度，默认 ${SW}，非特殊场景不要改 */
+  /**
+   * 小尺寸优化（≤16px 场景，如顶栏菜单）：
+   * 启用精简图形变体，并把描边自动加粗到 ${SMALL_STROKE}。
+   * 15/16px 的按钮图标默认不要开启，保持全量细节。
+   */
+  compact?: boolean
+  /** 描边宽度，默认 ${SW}（compact 时默认 ${SMALL_STROKE}），非特殊场景不要改 */
   strokeWidth?: number
   style?: CSSProperties
 }
@@ -122,11 +149,13 @@ export function KhIcon({
   name,
   size = 24,
   color = 'currentColor',
-  strokeWidth = ${SW},
+  compact = false,
+  strokeWidth,
   style,
   ...rest
 }: KhIconProps) {
-  const shapes = ICONS[name]
+  const shapes = (compact ? SMALL_ICONS[name] : undefined) ?? ICONS[name]
+  const mergedStroke = strokeWidth ?? (compact ? SMALL_STROKE : ${SW})
   if (!shapes) return null
   return (
     <svg
@@ -135,7 +164,7 @@ export function KhIcon({
       height={size}
       fill="none"
       stroke={color}
-      strokeWidth={strokeWidth}
+      strokeWidth={mergedStroke}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -195,8 +224,10 @@ writeFileSync(
   JSON.stringify(
     {
       ...META,
+      smallStroke: SMALL_STROKE,
       generatedAt: new Date().toISOString(),
       count: ICONS.length,
+      smallCount: ICONS.filter((i) => i.small).length,
       groups: GROUPS,
       icons: ICONS.map((i) => ({
         file: `svg/kh-${i.name}.svg`,
@@ -207,6 +238,8 @@ writeFileSync(
         use: i.use,
         keywords: i.keywords,
         shapeCount: i.shapes.length,
+        hasSmall: Boolean(i.small),
+        smallShapeCount: i.small ? i.small.length : null,
       })),
     },
     null,
@@ -223,11 +256,12 @@ const payload = JSON.stringify({ meta: META, groups: GROUPS, icons: ICONS }).rep
 )
 writeFileSync(join(root, 'preview.html'), tpl.replace('__ICON_DATA__', payload), 'utf8')
 
+const smallCount = ICONS.filter((i) => i.small).length
 console.log(
-  `✓ 构建完成：${ICONS.length} 枚图标 · ${Object.keys(GROUPS).length} 个分组\n` +
+  `✓ 构建完成：${ICONS.length} 枚图标（${smallCount} 枚含 small 变体）· ${Object.keys(GROUPS).length} 个分组\n` +
     `  svg/            ${ICONS.length} 个独立文件\n` +
     `  icons.svg       sprite\n` +
-    `  KhIcon.tsx      React 组件\n` +
+    `  KhIcon.tsx      React 组件（compact 模式 · small 描边 ${SMALL_STROKE}）\n` +
     `  index.ts        元数据出口\n` +
     `  manifest.json   机器可读清单\n` +
     `  preview.html    预览页`,

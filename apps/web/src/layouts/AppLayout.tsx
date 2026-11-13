@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  AuditOutlined,
   BellOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  SafetyCertificateOutlined,
-  TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { Avatar, Badge, Dropdown, Layout, Menu, Tag, theme } from 'antd'
@@ -16,18 +13,17 @@ import { clearAuth, updateUser, useAuth } from '../auth'
 import type { TeamItem } from '../types'
 import { can, displayName, isAdmin, isReviewer } from '../utils'
 import { BrandLogo } from '../components/BrandLogo'
-import { KhIcon } from '../components/icons'
 
 const { Header, Sider, Content } = Layout
 
 type MenuItem = NonNullable<MenuProps['items']>[number]
 
 /**
- * 导航图标 14px：与 AntD Menu 的 iconSize（= fontSize，默认 14）严格对齐。
- * 本套图标内容区为 20/24，14px 下实际内容约 11.7px，AntD 图标约 12.0px，视觉等重。
+ * 导航采用纯文字（2026-11-12）：
+ * 14px 线性图标在 24 网格下细节无法完整表达（实际笔画 0.93px + 细节间距 <2px），
+ * 而 7 个菜单名本身已自解释，图标是纯装饰。去掉后文字与选中态（蓝色下划线）更突出，
+ * 也免去维护一套"只能糊着用"的导航图标。KhIcon 仍用于卡片/空态/图例等 16–24px 场景。
  */
-const NAV_ICON = 14
-
 export default function AppLayout() {
   const user = useAuth()
   const navigate = useNavigate()
@@ -86,43 +82,17 @@ export default function AppLayout() {
   }, [location.pathname])
 
   const topItems = useMemo(() => {
-    const items: MenuItem[] = [
-      {
-        key: '/dashboard',
-        label: '首页大盘',
-        icon: <KhIcon name="home" size={NAV_ICON} />,
-      },
-    ]
+    const items: MenuItem[] = [{ key: '/dashboard', label: '首页大盘' }]
     if (can(user, 'document:list')) {
-      items.push({
-        key: '/documents',
-        label: '文档管理',
-        icon: <KhIcon name="documents" size={NAV_ICON} />,
-      })
+      items.push({ key: '/documents', label: '文档管理' })
     }
     if (can(user, 'search')) {
-      items.push({
-        key: '/search',
-        label: '文档搜索',
-        icon: <KhIcon name="search" size={NAV_ICON} />,
-      })
-      items.push({
-        key: '/chat',
-        label: 'AI智能问答',
-        icon: <KhIcon name="chat" size={NAV_ICON} />,
-      })
-      items.push({
-        key: '/graph',
-        label: '知识图谱',
-        icon: <KhIcon name="graph" size={NAV_ICON} />,
-      })
+      items.push({ key: '/search', label: '文档搜索' })
+      items.push({ key: '/chat', label: 'AI智能问答' })
+      items.push({ key: '/graph', label: '知识图谱' })
     }
     if (can(user, 'profile')) {
-      items.push({
-        key: '/profile',
-        label: '个人中心',
-        icon: <UserOutlined />,
-      })
+      items.push({ key: '/profile', label: '个人中心' })
     }
     // RBAC 权限码对齐：只要拥有任一系统管理权限或为管理员即展示系统菜单
     const canManageSystem =
@@ -132,11 +102,7 @@ export default function AppLayout() {
       can(user, 'system:team') ||
       can(user, 'document:category')
     if (canManageSystem) {
-      items.push({
-        key: '/admin/users',
-        label: '系统管理',
-        icon: <KhIcon name="admin" size={NAV_ICON} />,
-      })
+      items.push({ key: '/admin/users', label: '系统管理' })
     }
     return items
   }, [user])
@@ -144,139 +110,64 @@ export default function AppLayout() {
   const side = useMemo(() => {
     if (topKey === '/documents') {
       const items: MenuItem[] = [
-        {
-          key: '/documents',
-          icon: <KhIcon name="documents" size={NAV_ICON} />,
-          label: '全部文档',
-        },
-        {
-          key: '/favorites',
-          icon: <KhIcon name="favorite" size={NAV_ICON} />,
-          label: '我的收藏',
-        },
-        {
-          key: '/documents/new',
-          icon: <KhIcon name="new-doc" size={NAV_ICON} />,
-          label: '新建文档',
-        },
+        { key: '/documents', label: '全部文档' },
+        { key: '/favorites', label: '我的收藏' },
+        { key: '/documents/new', label: '新建文档' },
       ]
       if (isReviewer(user)) {
-        items.push({
-          key: '/admin/reviews',
-          icon: <AuditOutlined />,
-          label: '审核工作台',
-        })
+        items.push({ key: '/admin/reviews', label: '审核工作台' })
       }
       return { title: '文档管理', items }
     }
     if (topKey === '/search') {
-      return {
-        title: '文档搜索',
-        items: [
-          {
-            key: '/search',
-            icon: <KhIcon name="search" size={NAV_ICON} />,
-            label: '全文检索',
-          },
-        ],
-      }
+      return { title: '文档搜索', items: [{ key: '/search', label: '全文检索' }] }
     }
     if (topKey === '/chat') {
-      return {
-        title: 'AI智能问答',
-        items: [
-          {
-            key: '/chat',
-            icon: <KhIcon name="chat" size={NAV_ICON} />,
-            label: '知识问答',
-          },
-        ],
-      }
+      return { title: 'AI智能问答', items: [{ key: '/chat', label: '知识问答' }] }
     }
     if (topKey === '/graph') {
-      return {
-        title: '知识图谱',
-        items: [
-          {
-            key: '/graph',
-            icon: <KhIcon name="graph" size={NAV_ICON} />,
-            label: '全景图谱',
-          },
-        ],
-      }
+      return { title: '知识图谱', items: [{ key: '/graph', label: '全景图谱' }] }
     }
     if (topKey === '/profile') {
       return {
         title: '个人中心',
         items: [
-          { key: '/profile', icon: <UserOutlined />, label: '账号资料' },
-          {
-            key: '/profile/memory',
-            icon: <KhIcon name="memory" size={NAV_ICON} />,
-            label: '我的记忆',
-          },
-          { key: '/notifications', icon: <BellOutlined />, label: '消息通知' },
+          { key: '/profile', label: '账号资料' },
+          { key: '/profile/memory', label: '我的记忆' },
+          { key: '/notifications', label: '消息通知' },
         ],
       }
     }
     if (topKey === '/admin') {
       const adminItems: MenuItem[] = []
       if (isAdmin(user) || can(user, 'system:user')) {
-        adminItems.push({
-          key: '/admin/users',
-          icon: <UserOutlined />,
-          label: '用户管理',
-        })
+        adminItems.push({ key: '/admin/users', label: '用户管理' })
       }
       if (isAdmin(user) || can(user, 'system:role')) {
-        adminItems.push({
-          key: '/admin/roles',
-          icon: <SafetyCertificateOutlined />,
-          label: '角色权限',
-        })
+        adminItems.push({ key: '/admin/roles', label: '角色权限' })
       }
       if (isAdmin(user) || can(user, 'system:team')) {
-        adminItems.push({
-          key: '/admin/teams',
-          icon: <TeamOutlined />,
-          label: '团队管理',
-        })
+        adminItems.push({ key: '/admin/teams', label: '团队管理' })
       }
       if (isAdmin(user) || can(user, 'document:category')) {
-        adminItems.push({
-          key: '/admin/categories',
-          icon: <KhIcon name="tag" size={NAV_ICON} />,
-          label: '分类管理',
-        })
+        adminItems.push({ key: '/admin/categories', label: '分类管理' })
       }
       if (isAdmin(user)) {
-        adminItems.push({
-          key: '/admin/notifications',
-          icon: <BellOutlined />,
-          label: '发送通知',
-        })
+        adminItems.push({ key: '/admin/notifications', label: '发送通知' })
       }
-      return {
-        title: '系统管理',
-        items: adminItems,
-      }
+      return { title: '系统管理', items: adminItems }
     }
-    return {
-      title: '首页大盘',
-      items: [
-        {
-          key: '/dashboard',
-          icon: <KhIcon name="home" size={NAV_ICON} />,
-          label: '工作概览',
-        },
-      ],
-    }
+    return { title: '首页大盘', items: [{ key: '/dashboard', label: '工作概览' }] }
   }, [topKey, user])
 
   return (
     <Layout className="kh-root">
       <Header className="kh-header" style={{ background: colorBgContainer }}>
-        <div className="kh-logo" onClick={() => navigate('/dashboard')}>
+        <div
+          className="kh-logo"
+          title="返回首页"
+          onClick={() => navigate('/dashboard')}
+        >
           <BrandLogo />
           <span className="kh-logo-text">Knowledge Hub</span>
         </div>

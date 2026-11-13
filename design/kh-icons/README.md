@@ -1,6 +1,6 @@
 # KH Icons · 图标资产与使用规范
 
-Knowledge Hub 专用线性图标集，29 枚，面向「企业知识库 + Agentic RAG」界面。
+Knowledge Hub 专用线性图标集，30 枚，面向「企业知识库 + Agentic RAG」界面。
 
 ## 关于版本控制
 
@@ -29,7 +29,7 @@ design/kh-icons/
 ├── README.md         本文件                        · 入库
 ├── audit.md          UI 图标落位分析               · 入库
 ├── .gitignore        生成物排除清单
-├── svg/              29 个独立 SVG 文件            · 生成物
+├── svg/              30 个独立 SVG 文件            · 生成物
 ├── icons.svg         SVG Sprite                    · 生成物
 ├── preview.html      规范与预览页（浏览器打开）     · 生成物
 ├── manifest.json     机器可读清单                  · 生成物
@@ -68,6 +68,31 @@ design/kh-icons/
 
 同一行（同一按钮组 / 同一列表行）的图标尺寸必须一致；图标与文字间距取 6px（紧凑）或 8px（常规）。
 
+### 小尺寸（≤16px）：必须开启 compact
+
+14px 时 24 网格的 `1.6` 描边实际只有 **0.93px**，亚像素渲染会发灰；同时细节间距被压缩到
+1.5–2.1px 会粘连（窗格线、行线、镜内文字线）。因此组件提供 `compact` 模式：
+
+```tsx
+<KhIcon name="home" size={14} compact />
+```
+
+开启后组件做两件事：
+1. **切换到 small 变体**（若该图标有定义，见 `icons.mjs` 的 `small` 字段）——只保留 1–2 个最强特征；
+2. **描边自动加粗到 `2.1`**（14px 下 ≈1.23px，避开 0.93px 的灰雾）。
+
+当前含 small 变体（5 枚）：`home / documents / search / chat / graph`；
+`admin`（滑块）与 `user` 本身已极简，compact 只加粗不换形。
+15/16px 的按钮图标默认**不要**开启 compact，保持全量细节。
+
+| 图标 | full 细节 | small 变体 |
+| --- | --- | --- |
+| home | 屋顶 + 房身 + 3 条窗格线 | 屋顶 + 房身 |
+| documents | 页 + 折角 + 2 条行线 | 页 + 折角 + 1 条行线 |
+| search | 圆 + 柄 + 镜内 2 条线 | 圆 + 柄 |
+| chat | 气泡 + 四角星芒 | 气泡 + 3 个点 |
+| graph | 中心圆 + 3 卫星 + 3 连线 | 中心圆 + 2 卫星 + 2 连线 |
+
 ---
 
 ## 三、颜色语义
@@ -99,6 +124,8 @@ import { KhIcon } from '@/components/icons'
 
 <KhIcon name="retrieve" size={16} />
 <KhIcon name="success" size={16} color="#52c41a" />
+{/* ≤16px 场景（顶栏菜单等）：compact = small 变体 + 描边 2.1 */}
+<KhIcon name="home" size={14} compact />
 ```
 
 组件内联 path，无运行时请求；`name` 为字面量联合类型，拼错会编译报错。

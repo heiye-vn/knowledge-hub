@@ -102,6 +102,96 @@ KhIcon 会被裁切。传 `imageStyle={{ height: 'auto', display: 'flex', justif
 
 ---
 
+## 6.【实录】KhIcon 放进 AntD v6 顶栏 Menu 导致图标/文字换行、页面出滚动条
+
+**现象**：顶栏横向菜单每个菜单项"图标一行在上、文字一行在下"，导航栏被撑高、
+图标被 header 顶边裁掉，整页出现滚动条；侧边栏完全正常。
+
+**原因**（读 antd 6.6.5 源码逐层确认，三层叠加）：
+
+1. `.ant-menu-horizontal > .ant-menu-item` 是 `display: inline-block`
+   （`es/menu/style/horizontal.js`）——不是 flex，icon 与文字靠 inline 布局同行；
+2. antd v6 的 `MenuItem.js` 用 `cloneElement` 把 `.ant-menu-item-icon` class
+   **直接加到 `items.icon` 根元素上**（不包 div），该 class 由 `resetIcon` 提供
+   `display: inline-flex`；
+3. AntIcon 根元素是 `span.anticon`（class 级样式，与 menu 样式合并后仍是
+   inline-flex）→ 正常；而 KhIcon 根元素是 SVG 且内联 style 自带
+   `display: block`（`KhIcon.tsx` 的 `style={{ display: 'block', flexShrink: 0 }}`）
+   ——**内联样式无条件覆盖 class**，block SVG 在 inline-block 的 li 里独占一行，
+   把 `.ant-menu-title-content` 挤到第二行。
+
+侧边栏 vertical item 是 flex 容器，SVG 被当 flex item 块化，所以幸免——
+这也是为什么同一个 icon 写法在侧栏正常、顶栏崩掉。
+
+**解法**：`AppLayout.tsx` 加 `NavIcon` 包装组件（span 包 KhIcon），让
+`.ant-menu-item-icon` 落到 span 上（span 无内联 display，resetIcon 的
+inline-flex 生效），`index.css` 加 `.kh-nav-icon { display:inline-flex;
+align-items:center; line-height:0 }` 兜底。全部 15 处菜单 icon 统一替换。
+**不要改 KhIcon 的默认 style**——`display:block` 在卡片/过程条等 flex 容器里
+是正确行为，且该文件由 build.mjs 生成、勿手改。
+
+**如何验证**：`playwright eval` 实测 `iconTopAlignedWithText: true`（图标与
+文字 top 差 < 20px）、各菜单项高度一致；DOM 快照中 icon 与文字同层渲染。
+
+---
+
+## 7.【实录】布局链 `height: 100%` 被 antd `flex: auto` 撑破，改 100vh 锚定
+
+**现象**：菜单修好后 `documentElement.scrollHeight - clientHeight` 仍溢出 453px；
+逐层 `getComputedStyle().height` 排查发现 `.kh-root` 高 1172.88px（视口仅 720px），
+`.kh-content` 与 Sider 全被 dashboard 内容撑到 1117px，`.kh-content` 的
+`overflow: auto` 完全失效。
+
+**原因**：antd `.ant-layout` 自带 `flex: 1 1 auto`，`height: 100%` 百分比链在
+"内容超一屏"场景被 flex 布局的 min-content 约束反向撑破（flex item 的尺寸
+分配基于被撑大的父级），根容器 100% 失效、整页被内容顶出视口。
+
+**解法**：`.kh-root { height: 100vh; min-height: 0; overflow: hidden }`——
+100vh 是绝对值，不依赖父级解析，无歧义；`overflow: hidden` 保证页面级永不
+滚动（登录页 `.kh-login` 不在 `.kh-root` 内，不受影响，超小屏仍可正常滚动）。
+配套把 `.kh-page` 的 `min-height: calc(100vh - 88px)` 修正为
+`calc(100vh - 96px)`（56 header + 16/24 content padding，原 88 会恒出 8px 滚动条）。
+
+**如何验证**：`rootH=720px`、`contentClientH=664`、`contentScrollH=1117`
+（内容区内部正常滚动、内容完整可达）、`pageOverflowY=0`、
+`window.innerWidth - documentElement.clientWidth = 0`（无滚动条占位）。
+
+---
+
+## 8.【实录】菜单图标 14px 发灰/粘连：三层诊断与 compact 模式
+
+**现象**：顶栏菜单图标"不好看"。结论是**适配错位**而非图形本身差——按 24px 设计，
+14px 只是等比缩到 58%。
+
+**诊断（可复用于任何小尺寸图标质疑）**：
+1. **渲染层**：`strokeWidth 1.6 @ 24 网格` → 14px 实际笔画 `1.6×14/24 = 0.93px`，
+   亚像素抗锯齿成 50% 灰线。经验阈值：小尺寸描边 ≥1.25px（24 网格 ≥2.14）。
+2. **造型层**：14px 下元素间距 <2.5px 必然粘连——home 窗格 1.5px（粘成块）、
+   documents 行线 2.1px、search 镜内线 1.6px、graph 7 元素小圆直径 2.2px（读作散点）。
+3. **系统层**：6 个 KhIcon 描边 + 1 个 AntD `UserOutlined`（1024 网格 **fill path**，
+   查 `@ant-design/icons-svg` 确认）混排，填充天然比描边"实"；且 admin 盾牌语义偏移。
+
+**解法**：
+- `KhIcon` 加 `compact` 属性（启用 small 变体 + 描边 2.1），**不做 size 自动判断**——
+  16px 按钮图标与 12px 图例需要全量细节，自动切换会误伤；
+- 5 枚导航图标定义 `small` 变体（home 去窗格 / documents 单行线 / search 去镜内线 /
+  chat 星芒→3 点 / graph 7→5 元素）；
+- 新增 `user` 图标；`admin` 重画为滑块（14px 齿轮会糊成太阳，滑块是唯一清晰形态）。
+
+**如何验证**：`stroke-width` = 2.1、graph `<circle>` 数量 4→3；新排与旧排同屏
+14px + 6× 放大对比，肉眼确认无粘连。
+
+**教训**：图标"不好看"先量三件事——实际笔画像素、最密细节间距、同排是否混体系。
+换图形排最后。
+
+**后续定稿（2026-11-12）**：compact 优化完成后，观感仍未达预期。结论是问题不在
+"画得多好"，而在"14px 本就不该放线性图标"——**顶栏与侧栏导航已改为纯文字**
+（7 个菜单名自解释，图标属纯装饰）。`compact` 能力保留在 `KhIcon` / `icons.mjs`
+中作为小尺寸场景的备用能力，导航不再调用；nav 组图标资产保留未删。
+侧栏折叠时 AntD 回退显示菜单项首字（`inline-collapsed-noicon`），属可接受行为。
+
+---
+
 ## 已知局限与后续待办
 
 - 过程条节点 9 种颜色未收敛到语义色板（成功/警告/危险三色之外还有青、橙、靛蓝、灰），
@@ -114,3 +204,8 @@ KhIcon 会被裁切。传 `imageStyle={{ height: 'auto', display: 'flex', justif
   需要认出文件类型用彩色徽标。
 - `design/kh-icons/` 改图标后必须重跑 `node build.mjs` 并把生成的
   `KhIcon.tsx` / `index.ts` 同步到 `src/components/icons/`（目前是复制，未做构建联动）。
+- 12px 场景（Agent 过程条节点、图谱图例、来源标记）暂无 small 变体，细节同样偏密；
+  这些位置图标本身就是"信息编码"（形状承担语义），暂按全量细节使用，
+  若后续反馈不清晰，可复用 `compact` 机制为 agent/state 组补 small。
+- `admin` 已从盾牌改为滑块（`sliders` 语义），若业务更强调"权限/安全"，
+  需另加一枚 `shield` 图标承担该语义，不要改回 `admin`。

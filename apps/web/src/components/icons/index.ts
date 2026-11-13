@@ -9,6 +9,7 @@ export const KH_ICON_META = [
   { name: 'search', zh: '全文检索', group: 'nav', use: '顶栏「文档搜索」、搜索框前缀' },
   { name: 'chat', zh: 'AI 智能问答', group: 'nav', use: '顶栏「AI智能问答」、侧栏「知识问答」、对话空状态' },
   { name: 'graph', zh: '知识图谱', group: 'nav', use: '顶栏「知识图谱」、侧栏「全景图谱」' },
+  { name: 'user', zh: '个人中心', group: 'nav', use: '顶栏「个人中心」、侧栏「账号资料」' },
   { name: 'memory', zh: '长期记忆', group: 'nav', use: '侧栏「我的记忆」、记忆层级标签' },
   { name: 'admin', zh: '系统管理', group: 'nav', use: '顶栏「系统管理」、权限相关标题' },
   { name: 'intent', zh: '意图识别', group: 'agent', use: '过程条「意图识别」节点' },
