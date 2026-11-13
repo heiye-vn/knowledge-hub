@@ -14,6 +14,7 @@ import { DocumentReviewService } from './document-review.service.js';
 import { CreateDocumentDto } from './dto/create-document.dto.js';
 import { UpdateDocumentDto } from './dto/update-document.dto.js';
 import { QueryDocumentDto } from './dto/query-document.dto.js';
+import { ViewTrendQueryDto } from './dto/stats.dto.js';
 import {
   QueryReviewTasksDto,
   ReviewDecisionDto,
@@ -103,12 +104,35 @@ export class DocumentController {
     return this.documentService.findAll(query, user);
   }
 
+  /** 分类占比统计（首页环形图；只统计当前用户可见文档，未分类 categoryId 为 null） */
+  @Get('stats/categories')
+  @RequirePermission('document:list')
+  statsByCategory(@CurrentUser() user: AuthUser) {
+    return this.documentService.statsByCategory(user);
+  }
+
+  /** 访问趋势（首页折线图；按日聚合浏览量，缺失日期补 0，默认近 7 天） */
+  @Get('stats/views')
+  @RequirePermission('document:list')
+  viewTrend(@Query() query: ViewTrendQueryDto) {
+    return this.documentService.viewTrend(query.days ?? 7);
+  }
+
+  /** 可见范围内全库概览（首页统计卡：文档数 / 浏览 / 点赞 / 评论） */
+  @Get('stats/overview')
+  @RequirePermission('document:list')
+  statsOverview(@CurrentUser() user: AuthUser) {
+    return this.documentService.statsOverview(user);
+  }
+
   /** 查询文档详情（含正文，校验读取权限；附带当前用户的点赞 / 收藏状态） */
   @Get(':id')
   @RequirePermission('document:list')
   async findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     const doc = await this.documentService.findOne(id, true, user);
     const flags = await this.social.flags(id, user.userId);
+    // 浏览埋点：fire-and-forget，不阻塞、不影响读接口（recordView 内部已兜错）
+    void this.documentService.recordView(id, user.userId);
     return { ...doc, ...flags };
   }
 

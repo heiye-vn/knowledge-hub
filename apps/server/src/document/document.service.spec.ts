@@ -137,6 +137,7 @@ function makeService(
     outbox as never,
     categoryStub as never,
     versionStub as never,
+    { record: vi.fn() } as never,
   );
 
   return {
@@ -415,6 +416,7 @@ describe('DocumentService.loadForIndex / findPublishedIds', () => {
       {} as never,
       categoryStub as never,
       versionStub as never,
+      { record: vi.fn() } as never,
     );
 
     return service;
@@ -452,6 +454,7 @@ describe('DocumentService 文件元数据持久化', () => {
       { transaction: async (callback: (manager: typeof tx) => Promise<unknown>) => callback(tx) } as never,
       {} as never, {} as never, {} as never, { isRequireApproval: () => false } as never, {} as never, {} as never,
       categoryStub as never, versionStub as never,
+      { record: vi.fn() } as never,
     );
     await service.create({ title: '架构图', content: '# 架构图' }, { fileUrl: '/documents/100/source', objectKey: 'document-imports/100/source.bin', fileName: 'arch.png', fileSize: '1024', fileExtension: 'png' });
     expect(saved[0]).toMatchObject({ title: '架构图', fileExtension: 'png', fileUrl: '/documents/100/source', status: 0 });
@@ -544,6 +547,7 @@ describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
       {} as never,
       categoryStub as never,
       versionStub as never,
+      { record: vi.fn() } as never,
     );
 
     await service.update('1001', { isPublic: true }, authorUser);
@@ -588,6 +592,7 @@ describe('DocumentService.safeBackfillVisibility 存量可见性回填', () => {
       {} as never,
       categoryStub as never,
       versionStub as never,
+      { record: vi.fn() } as never,
     );
 
     const result = await service.safeBackfillVisibility();
@@ -627,6 +632,7 @@ describe('DocumentService.safeBackfillVisibility 存量可见性回填', () => {
       {} as never,
       categoryStub as never,
       versionStub as never,
+      { record: vi.fn() } as never,
     );
 
     const result = await service.safeBackfillVisibility();

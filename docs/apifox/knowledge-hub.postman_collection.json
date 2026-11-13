@@ -253,6 +253,63 @@
           }
         },
         {
+          "name": "文档分类占比统计（首页环形图）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/stats/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "stats",
+                "categories"
+              ]
+            },
+            "description": "按分类统计当前用户可见的文档数量，用于首页「文档分类占比」环形图。\n\n可见性与文档列表一致：普通用户只统计 自己的 ∪ 已发布且（公开或同团队），不会泄露私有文档数量。\n\n响应：Array<{ categoryId: string | null, categoryName: string, count: number }>，按 count 降序。\ncategoryId 为 null 表示未分类；分类已删除但文档仍引用时 categoryName 为「未知分类」。\n\n权限：document:list。路由必须声明在 GET /documents/:id 之前（Nest 按声明顺序匹配）。"
+          }
+        },
+        {
+          "name": "访问趋势（首页折线图）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/stats/views?days=7",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "stats",
+                "views"
+              ]
+            },
+            "description": "近 N 天按日聚合文档浏览量，用于首页「访问趋势」折线图。\n\ndays 取值 1–30，默认 7。日期序列由 PG generate_series 生成，缺失日期补 0，返回 [{ date: YYYY-MM-DD, count: number }]。\n\n数据源 kh_doc_view_log（每次成功读取文档详情写一行，fire-and-forget，埋点失败不影响读接口）。\n权限：document:list。路由必须声明在 GET /documents/:id 之前。"
+          }
+        },
+        {
+          "name": "可见范围全库概览（首页统计卡）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/stats/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "stats",
+                "overview"
+              ]
+            },
+            "description": "首页 5 个统计卡的数据源：文档数 / 浏览 / 点赞 / 评论合计。\n\n口径与分类占比统计一致——只统计当前用户可见文档，文档总数 = 各分类计数之和（含未分类），两者应始终相等。\n权限：document:list。"
+          }
+        },
+        {
           "name": "文档详情（含正文）",
           "request": {
             "method": "GET",
@@ -3794,6 +3851,36 @@
               ]
             },
             "description": "清空当前用户的全部长期记忆，含 user 层画像与各会话的 session 层上下文。语义刻意定为「全清」：Mem0 的 deleteAll 无法表达「只删 runId 为空」，自行分页筛 runId 会因删除导致页码偏移而漏删，因此不提供「只清画像」入口。不可恢复，调用前需二次确认。Mem0 未启用时返回 503。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "审计日志（近期操作记录）",
+      "item": [
+        {
+          "name": "最近操作记录",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audit/logs?limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit",
+                "logs"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "返回条数 1–50，默认 10"
+                }
+              ]
+            },
+            "description": "首页「近期操作记录」表格数据源。\n\n记录范围：文档创建/更新/删除/发布/提交审核/归档 + 审核通过/驳回（写操作，读操作不入库）。\n\n可见性：管理员看全部，普通用户只看自己的操作（避免推断他人私有文档）。\n\n响应：[{ id, actorId, actorName, action, targetType, targetId, targetName, detail, createdAt }]，按时间倒序。"
           }
         }
       ]

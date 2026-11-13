@@ -7,13 +7,14 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
-import { EntityManager } from 'typeorm';
+import { EntityManager, SelectQueryBuilder } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id.js';
 import { CreateDocumentDto } from './dto/create-document.dto.js';
 import { UpdateDocumentDto } from './dto/update-document.dto.js';
 import { QueryDocumentDto } from './dto/query-document.dto.js';
 import type { ReviewDecisionDto } from './dto/review.dto.js';
 import { DocumentEntity } from './entities/document.entity.js';
+import { DocumentViewLogEntity } from './entities/document-view-log.entity.js';
 import {
   canArchive,
   canEditContent,
@@ -24,6 +25,7 @@ import {
 } from './document-status.js';
 import { DocumentContentEntity } from './entities/document-content.entity.js';
 import { DocumentReviewService } from './document-review.service.js';
+import { AuditLogService } from '../audit/audit-log.service.js';
 import type { AuthUser } from '../auth/auth-user.interface.js';
 import { RagOrchestrator } from '../rag/rag.orchestrator.js';
 import type { PipelineDocument } from '../rag/types/rag.types.js';
@@ -134,6 +136,8 @@ export class DocumentService implements OnModuleInit {
     private readonly categories: CategoryService,
     /** 正文历史版本快照 */
     private readonly versions: DocumentVersionService,
+    /** 审计日志（首页「近期操作记录」；fire-and-forget） */
+    private readonly audit: AuditLogService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -353,6 +357,15 @@ export class DocumentService implements OnModuleInit {
       await this.buildIndexes(saved, dto.content);
     }
 
+    if (actor) {
+      this.audit.record({
+        actor,
+        action: 'create',
+        targetType: 'document',
+        targetId: saved.id,
+        targetName: saved.title,
+      });
+    }
     return { ...saved, content: dto.content };
   }
 
@@ -433,6 +446,143 @@ export class DocumentService implements OnModuleInit {
       page,
       pageSize,
     };
+  }
+
+  /**
+   * 给 QueryBuilder 追加「当前用户可见文档」条件（与 findAll 完全一致）。
+   * 统计类接口必须复用，否则会通过数字泄露私有文档的存在。
+   */
+  private applyVisibility(
+    qb: SelectQueryBuilder<DocumentEntity>,
+    user: AuthUser,
+  ): void {
+    const scope = accessFromUser(user);
+    if (scope.unrestricted) return;
+    if (scope.teamIds.length) {
+      qb.andWhere(
+        `(doc.author_id = :me OR (doc.status = :published AND (doc.is_public = true OR doc.team_id IN (:...teamIds))))`,
+        {
+          me: scope.userId,
+          published: DocumentStatus.Published,
+          teamIds: scope.teamIds,
+        },
+      );
+    } else {
+      qb.andWhere(
+        `(doc.author_id = :me OR (doc.status = :published AND doc.is_public = true))`,
+        { me: scope.userId, published: DocumentStatus.Published },
+      );
+    }
+  }
+
+  /**
+   * 可见范围内的全库概览统计（首页 5 个统计卡）
+   *
+   * 与 statsByCategory 同口径：文档总数 = 各分类计数之和（含未分类），
+   * 浏览/点赞/评论为可见文档的列合计。
+   */
+  async statsOverview(user: AuthUser): Promise<{
+    documentCount: number;
+    viewCount: number;
+    likeCount: number;
+    commentCount: number;
+  }> {
+    const qb = this.em
+      .createQueryBuilder(DocumentEntity, 'doc')
+      .where('doc.deleted = :deleted', { deleted: false });
+    this.applyVisibility(qb, user);
+
+    const raw = await qb
+      .select('COUNT(*)', 'documentCount')
+      .addSelect('COALESCE(SUM(doc.view_count), 0)', 'viewCount')
+      .addSelect('COALESCE(SUM(doc.like_count), 0)', 'likeCount')
+      .addSelect('COALESCE(SUM(doc.comment_count), 0)', 'commentCount')
+      .getRawOne<{
+        documentCount: string;
+        viewCount: string;
+        likeCount: string;
+        commentCount: string;
+      }>();
+
+    return {
+      documentCount: Number(raw?.documentCount ?? 0),
+      viewCount: Number(raw?.viewCount ?? 0),
+      likeCount: Number(raw?.likeCount ?? 0),
+      commentCount: Number(raw?.commentCount ?? 0),
+    };
+  }
+
+  /**
+   * 按分类统计可见文档数量（首页「文档分类占比」环形图）
+   *
+   * 可见性与 findAll 保持一致：普通用户只统计「自己的 ∪ 已发布且（公开或同团队）」，
+   * 避免通过统计数字泄露私有文档的存在。未分类文档归入 categoryId=null。
+   */
+  async statsByCategory(user: AuthUser) {
+    const qb = this.em
+      .createQueryBuilder(DocumentEntity, 'doc')
+      .select('doc.category_id', 'categoryId')
+      .addSelect('COUNT(*)', 'count')
+      .where('doc.deleted = :deleted', { deleted: false });
+
+    this.applyVisibility(qb, user);
+
+    const rows = await qb
+      .groupBy('doc.category_id')
+      .getRawMany<{ categoryId: string | null; count: string }>();
+
+    const names = await this.categories.namesByIds(
+      rows.map((row) => row.categoryId),
+    );
+    return rows
+      .map((row) => ({
+        categoryId: row.categoryId ?? null,
+        categoryName: row.categoryId
+          ? (names.get(row.categoryId) ?? '未知分类')
+          : '未分类',
+        count: Number(row.count),
+      }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  /** 记录一次文档浏览（首页「访问趋势」数据源；埋点失败静默忽略，不影响读接口） */
+  async recordView(documentId: string, userId: string): Promise<void> {
+    try {
+      await this.em.insert(DocumentViewLogEntity, {
+        id: nextSnowflakeId(),
+        documentId,
+        userId,
+      });
+    } catch {
+      // 埋点失败不能让文档读取失败，静默忽略即可
+    }
+  }
+
+  /**
+   * 近 N 天访问趋势（按日聚合，缺失日期补 0）
+   *
+   * 日期序列由 PG generate_series 生成，与数据库时区一致，避免 JS 端补零的时区偏差。
+   * 不做按文档可见性过滤：趋势是系统级聚合数字，不包含任何单文档信息。
+   */
+  async viewTrend(days = 7): Promise<Array<{ date: string; count: number }>> {
+    const safeDays = Math.min(Math.max(days, 1), 30);
+    return this.em.query(
+      `WITH days AS (
+         SELECT generate_series(
+           date_trunc('day', NOW()) - ($1::int - 1) * INTERVAL '1 day',
+           date_trunc('day', NOW()),
+           '1 day'
+         ) AS day
+       )
+       SELECT TO_CHAR(d.day, 'YYYY-MM-DD') AS date,
+              COUNT(v.id)::int AS count
+       FROM days d
+       LEFT JOIN kh_doc_view_log v
+         ON v.created_at >= d.day AND v.created_at < d.day + INTERVAL '1 day'
+       GROUP BY d.day
+       ORDER BY d.day`,
+      [safeDays],
+    );
   }
 
   /**
@@ -638,6 +788,15 @@ export class DocumentService implements OnModuleInit {
       }
     }
 
+    if (actor) {
+      this.audit.record({
+        actor,
+        action: 'update',
+        targetType: 'document',
+        targetId: saved.id,
+        targetName: saved.title,
+      });
+    }
     return { ...saved, content: finalContent };
   }
 
@@ -695,10 +854,21 @@ export class DocumentService implements OnModuleInit {
     }
 
     if (this.reviewService.isRequireApproval()) {
+      // 提交审核由 submitForReview 自身记录（action=submit-review），此处不重复埋点
       return this.submitForReview(id, actor);
     }
 
-    return this.markPublishedAndIndex(doc);
+    const result = await this.markPublishedAndIndex(doc);
+    if (actor) {
+      this.audit.record({
+        actor,
+        action: 'publish',
+        targetType: 'document',
+        targetId: doc.id,
+        targetName: doc.title,
+      });
+    }
+    return result;
   }
 
   /**
@@ -730,6 +900,17 @@ export class DocumentService implements OnModuleInit {
     this.logger.log(
       `文档已提交审核：documentId=${id}, reviewId=${review.id}, beforeStatus=${beforeStatus}`,
     );
+
+    if (actor) {
+      this.audit.record({
+        actor,
+        action: 'submit-review',
+        targetType: 'document',
+        targetId: saved.id,
+        targetName: saved.title,
+        detail: `提交审核（原状态 ${beforeStatus}）`,
+      });
+    }
 
     return {
       id: saved.id,
@@ -776,6 +957,15 @@ export class DocumentService implements OnModuleInit {
       `审核通过：reviewId=${taskId}, documentId=${doc.id}, indexed=${indexes.indexed}`,
     );
 
+    this.audit.record({
+      actor: { userId: actor.reviewerId, username: actor.reviewerName },
+      action: 'approve',
+      targetType: 'document',
+      targetId: doc.id,
+      targetName: doc.title,
+      detail: dto.reviewComment?.trim() || '审核通过',
+    });
+
     return {
       id: doc.id,
       status: doc.status,
@@ -810,6 +1000,15 @@ export class DocumentService implements OnModuleInit {
 
     this.logger.log(`审核驳回：reviewId=${taskId}, documentId=${doc.id}`);
 
+    this.audit.record({
+      actor: { userId: actor.reviewerId, username: actor.reviewerName },
+      action: 'reject',
+      targetType: 'document',
+      targetId: doc.id,
+      targetName: doc.title,
+      detail: `审核驳回：${dto.reviewComment ?? ''}`,
+    });
+
     return {
       id: doc.id,
       status: doc.status,
@@ -831,6 +1030,15 @@ export class DocumentService implements OnModuleInit {
 
     this.logger.log(`文档已归档：documentId=${id}`);
 
+    if (actor) {
+      this.audit.record({
+        actor,
+        action: 'archive',
+        targetType: 'document',
+        targetId: saved.id,
+        targetName: saved.title,
+      });
+    }
     return { id: saved.id, status: saved.status, ...cleanup };
   }
 
@@ -1141,6 +1349,15 @@ export class DocumentService implements OnModuleInit {
         ? await this.cleanupIndexes(id)
         : { vectorsCleaned: false, searchCleaned: false, kgDeleteQueued: false };
 
+    if (actor) {
+      this.audit.record({
+        actor,
+        action: 'delete',
+        targetType: 'document',
+        targetId: id,
+        targetName: doc.title,
+      });
+    }
     return { id, deleted: true, ...cleanup };
   }
 

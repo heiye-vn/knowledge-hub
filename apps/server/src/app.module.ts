@@ -19,6 +19,7 @@ import { HealthModule } from './health/health.module.js';
 import { buildTypeOrmOptions } from './database/typeorm.options.js';
 import { IndexMaintenanceModule } from './indexing/index-maintenance.module.js';
 import { NotificationModule } from './notification/notification.module.js';
+import { AuditModule } from './audit/audit.module.js';
 
 @Module({
   imports: [
@@ -48,6 +49,8 @@ import { NotificationModule } from './notification/notification.module.js';
     HealthModule,
     // feat-v21：站内通知（互动通知 + 管理员广播）
     NotificationModule,
+    // 审计日志：写操作埋点 + 首页「近期操作记录」
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [

@@ -12,6 +12,8 @@ import { DocumentLikeEntity } from '../document/entities/document-like.entity.js
 import { DocumentFavoriteEntity } from '../document/entities/document-favorite.entity.js';
 import { DocumentShareEntity } from '../document/entities/document-share.entity.js';
 import { DocumentVersionEntity } from '../document/entities/document-version.entity.js';
+import { DocumentViewLogEntity } from '../document/entities/document-view-log.entity.js';
+import { AuditLogEntity } from '../audit/audit-log.entity.js';
 import { NotificationEntity } from '../notification/notification.entity.js';
 import { TeamMemberEntity } from '../team/entities/team-member.entity.js';
 import { TeamEntity } from '../team/entities/team.entity.js';
@@ -41,6 +43,8 @@ export const ENTITIES = [
   DocumentFavoriteEntity,
   DocumentShareEntity,
   DocumentVersionEntity,
+  DocumentViewLogEntity,
+  AuditLogEntity,
   NotificationEntity,
   UserEntity,
   RoleEntity,

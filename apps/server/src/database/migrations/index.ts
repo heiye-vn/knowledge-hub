@@ -4,6 +4,7 @@ import { DocumentImports1790000002000 } from './1790000002000-document-imports.j
 import { DocumentImportDismiss1790000003000 } from './1790000003000-document-import-dismiss.js';
 import { DocumentExperience1790000004000 } from './1790000004000-document-experience.js';
 import { ChatMemoryMirror1790000005000 } from './1790000005000-chat-memory-mirror.js';
+import { Observability1790000006000 } from './1790000006000-observability.js';
 
 /**
  * 迁移清单：新增迁移必须在此登记（运行时与 CLI 共用同一份列表），
@@ -16,4 +17,5 @@ export const MIGRATIONS = [
   DocumentImportDismiss1790000003000,
   DocumentExperience1790000004000,
   ChatMemoryMirror1790000005000,
+  Observability1790000006000,
 ];

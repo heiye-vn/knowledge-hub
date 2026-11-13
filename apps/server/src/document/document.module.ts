@@ -23,6 +23,7 @@ import {
 import { ShareController } from './share.controller.js';
 import { NotificationModule } from '../notification/notification.module.js';
 import { RedisModule } from '../redis/redis.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 
 /**
  * 文档模块
@@ -47,6 +48,8 @@ import { RedisModule } from '../redis/redis.module.js';
     NotificationModule,
     // 分享密码失败限流（Redis INCR + TTL）
     RedisModule,
+    // 审计日志：文档写操作（创建/更新/删除/发布/归档）与审核结果埋点
+    AuditModule,
   ],
   controllers: [
     DocumentImportController,
