@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <!-- Knowledge Hub · K 字母标（反白 / 小尺寸版）
+       规范见 README.md「五、缩放表现」：32px 以下省略底部纸边，仅保留负形 K。
+       深墨蓝 #1B2A41 底，骨白负形 K；竖干占字面宽 24%，双臂等宽，端点水平/垂直切。 -->
+  <rect width="32" height="32" rx="2.4" fill="#1B2A41"/>
+  <path fill="#FFFFFF" d="M9.25 5.1h3.3v8.8l6.25-8.8h3.95L15 16l7.75 10.9h-3.95l-6.25-8.8v8.8h-3.3z"/>
+</svg>
