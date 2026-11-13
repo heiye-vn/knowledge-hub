@@ -317,8 +317,9 @@ export class UserService {
     likeCount: number;
     commentCount: number;
   }> {
+    // 计数口径与其它统计一致：软删文档不计入「我的文档数」
     const documentCount = await this.documentRepo.count({
-      where: { createBy: userId },
+      where: { createBy: userId, deleted: false },
     });
     const raw = await this.documentRepo
       .createQueryBuilder('d')
