@@ -24,18 +24,3 @@
 | **异常可观测性** | catch 吞错返回空拓扑，仅打日志 | Neo4j 不可用抛 503，查询失败抛错交全局异常过滤器 | 避免前端在后端连接故障时展示一片空白却无从排查 |
 | **标签节点支持** | 建图时写 tags | 建图 Cypher 同步增加 `d.tags = $tags` 持久化，并提供 splitTags 标签解析 | 丰富知识图谱网络密度，实现文档-标签拓扑关联 |
 | **时间字段比较** | 直接字符串比较 | 兼容 Neo4j DateTime 与 ISO 字符串，使用 `toString(d.updatedAt)` 投影 | 消除数据库驱动返回格式不一致导致的字典序或精度问题 |
-
----
-
-## 三、 验证闭环
-
-1. **服务端检查**：
-   - 类型检查：`pnpm typecheck:server` 通过（0 错误）。
-   - 纯单元测试：`pnpm vitest run --exclude='**/*.e2e.spec.ts'` 24 个单测文件全部绿灯通过（169 passed）。
-   - 代码规范检查：`pnpm --filter @knowledge-hub/server lint` 0 错误。
-   - 编译构建：`pnpm build:server` 构建成功。
-2. **前端界面检查**：
-   - 权限守卫与路由：`document:list` 与 `document:edit` 路由门禁修复，`/graph` 与 `/dashboard` 完整接线。
-   - 类型检查：`pnpm --filter @knowledge-hub/web typecheck` 通过（0 错误）。
-   - 代码规范检查：`pnpm --filter @knowledge-hub/web lint` 通过（0 错误 0 告警）。
-   - 生产打包构建：`pnpm --filter @knowledge-hub/web build` 构建成功。

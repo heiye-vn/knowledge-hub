@@ -72,11 +72,8 @@
 
 ## 验证记录
 
-- `pnpm test:server`：637 passed / 7 skipped（含新增 MinerU、导入、存储加密、分块、上下文预算与记录隐藏用例；集成套件默认跳过）
-- `RUN_IMPORT_INTEGRATION=true pnpm --filter @knowledge-hub/server test src/document/document-import.integration.spec.ts`：8 passed；使用真实 PostgreSQL 隔离 schema，覆盖加密原文件、幂等提交、非本人访问、失败重试、软删除后资源拒绝、记录隐藏不影响文档资源
-- `pnpm test:web`：71 passed；覆盖 XSS 清洗、KaTeX、HTML/GFM 表格、私有图片 Blob 与下载、折叠面板、记录隐藏/清空、单请求轮询
-- `pnpm build:server`、`pnpm build:web`：通过
-- `pnpm migration:run`：`DocumentImports1790000002000` 执行成功
+- 集成套件默认跳过，需显式开启：`RUN_IMPORT_INTEGRATION=true pnpm --filter @knowledge-hub/server test src/document/document-import.integration.spec.ts`（使用真实 PostgreSQL 隔离 schema）。
+- 迁移：`DocumentImports1790000002000`（`pnpm migration:run`）。
 - 接口实测：MD 上传 → 202 → 3 秒内 completed → 文档正文、表格、公式落库；同 requestId 重试同任务，内容变化返回 409；原文件下载 200
 - **扫描件实测**：`scanned-1page.pdf` → parsing → downloading → completed，生成 1471 字符正文；未配置 Token 时返回“未配置 MinerU 解析服务”
 - **复杂 PDF 实测**：`example.pdf`（公式/表格/图片）解析出 50,692 字符、HTML 表格、图片资源；鉴权 asset 接口返回 `image/jpeg` 200

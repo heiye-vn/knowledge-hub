@@ -81,14 +81,10 @@ onFinish: 拼 answer → 抽 [n] 引用 → appendTurn 落库（尽力而为）
 - 【易错】vite 代理必须 `timeout:0 / proxyTimeout:0`，否则长思考流被代理掐断。
 - StrictMode 保留，历史加载沿用 `cancelled` 守卫；流式期间锁定会话切换/新建/删除。
 
-## 五、 验证结果与遗留
+## 五、 已知遗留
 
-【实录】typecheck:server / web typecheck / 全量 test:server（192 通过，2 个
-KG 集成用例因无 LLM Key 跳败，与本模块无关）/ oxlint（新代码 0 警告）/
-web 生产构建均通过；langchain 1.5.16 + core 1.2.11 + zod v4 冒烟验证
-（createAgent / tool / modelCallLimitMiddleware 构造成功）。
-
-遗留（详见 docs/TODO.md）：
+`langchain 1.5.16 + @langchain/core 1.2.11 + zod v4` 冒烟验证通过
+（createAgent / tool / modelCallLimitMiddleware 构造成功）。其余见 docs/TODO.md：
 1. 流式接口 401 不会自动刷新令牌——`DefaultChatTransport` 自管 fetch，
    绕过了 client.ts 的刷新拦截，过期需手动重登（待后续统一流式传输层拦截器）。
 2. `@langchain/core` peer 要求 ^1.2.17、实装 1.2.11，冒烟兼容；
