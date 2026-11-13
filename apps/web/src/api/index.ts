@@ -1,13 +1,16 @@
 import { del, get, patch, post, put, request } from './client'
 import type {
   AuthUser,
+  AuditLogItem,
   CategoryNode,
+  CategoryStatItem,
   ChatMessage,
   ChatResult,
   ChatSession,
   ChunkHit,
   CommentItem,
   DocumentItem,
+  DocumentOverviewStats,
   DocumentVersionDetail,
   DocumentVersionSummary,
   GraphEdge,
@@ -31,6 +34,7 @@ import type {
   TeamTreeNode,
   UserStats,
   UserVO,
+  ViewTrendPoint,
 } from '../types'
 
 export const authApi = {
@@ -56,6 +60,14 @@ export const documentApi = {
   remove: (id: string) => del<{ affected?: number }>(`/documents/${id}`),
   publish: (id: string) => put<DocumentItem>(`/documents/${id}/publish`),
   archive: (id: string) => put<DocumentItem>(`/documents/${id}/archive`),
+  /** 分类占比统计（只统计当前用户可见文档，未分类归入 null） */
+  statsByCategory: () => get<CategoryStatItem[]>('/documents/stats/categories'),
+  /** 可见范围内全库概览（首页统计卡；与分类占比同口径） */
+  statsOverview: () =>
+    get<DocumentOverviewStats>('/documents/stats/overview'),
+  /** 访问趋势（近 N 天按日聚合，后端补零，1–30 天） */
+  viewTrend: (days = 7) =>
+    get<ViewTrendPoint[]>(`/documents/stats/views?days=${days}`),
   saveDraft: (id: string) => put<DocumentItem>(`/documents/${id}/save-draft`),
   uploadParse: (form: FormData, signal?: AbortSignal) =>
     request<ImportTaskView>('/documents/upload/parse', {
@@ -320,4 +332,9 @@ export const teamApi = {
     post<unknown>(`/teams/${id}/members`, userIds),
   removeMembers: (id: string, userIds: string[]) =>
     del<unknown>(`/teams/${id}/members`, userIds),
+}
+
+/** 审计日志（首页「近期操作记录」；管理员看全部，普通用户只看自己的） */
+export const auditApi = {
+  recent: (limit = 10) => get<AuditLogItem[]>(`/audit/logs?limit=${limit}`),
 }

@@ -261,6 +261,42 @@ export interface UserStats {
   commentCount: number
 }
 
+/** 可见范围内的全库概览（首页统计卡；文档总数 = 各分类计数之和） */
+export interface DocumentOverviewStats {
+  documentCount: number
+  viewCount: number
+  likeCount: number
+  commentCount: number
+}
+
+/** 文档分类占比（首页环形图），categoryId 为 null 表示未分类 */
+export interface CategoryStatItem {
+  categoryId: string | null
+  categoryName: string
+  count: number
+}
+
+/** 访问趋势单日数据（缺失日期由后端补 0） */
+export interface ViewTrendPoint {
+  date: string
+  count: number
+}
+
+/** 审计日志（首页「近期操作记录」） */
+export interface AuditLogItem {
+  id: string
+  actorId: string
+  actorName: string
+  action: string
+  targetType: string
+  targetId: string | null
+  targetName: string | null
+  detail: string | null
+  createdAt: string
+  /** 相关文档当前是否仍存在（false 时前端渲染为「已删除」不可点） */
+  targetExists: boolean
+}
+
 export interface CategoryNode {
   id: string
   name: string

@@ -6,6 +6,19 @@
 
 * {
   box-sizing: border-box;
+  /* ===== 全局隐藏滚动条，保留滚动能力（2026-11-13） =====
+   * 三套声明分别覆盖 Firefox / 旧版 Edge·IE / Chromium 内核。
+   * 只藏滚动条本身——滚轮、触控板、键盘、编程式滚动完全不受影响；
+   * 各滚动容器（.kh-content / .kh-chat-log / 表格横向区）无需单独处理。 */
+  scrollbar-width: none; /* Firefox 64+ */
+  -ms-overflow-style: none; /* 旧版 Edge / IE */
+}
+
+*::-webkit-scrollbar {
+  /* Chrome / Safari / 新 Edge：display:none 比 width:0 更彻底，不会残留空隙 */
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 html,
@@ -17,8 +30,13 @@ body,
 }
 
 .kh-root {
-  height: 100%;
-  min-height: 100%;
+  /* 100vh 直接锚定视口：不依赖父级 % 链。AntD Layout 自带 flex:auto，
+   * % 高度链在内容超一屏时会被撑破（root 长到内容高度，页面溢出 453px 实测），
+   * 导致页面滚动条 + 内容区滚动失效。100vh 是绝对值，无此歧义。 */
+  height: 100vh;
+  min-height: 0;
+  /* 页面级永不滚动：各内容区自行 overflow，避免 body 出滚动条 */
+  overflow: hidden;
 }
 
 .kh-root > .ant-layout {
@@ -74,6 +92,7 @@ body,
   min-width: 0;
   border-bottom: none !important;
 }
+
 
 .kh-header-right {
   display: flex;
@@ -133,7 +152,14 @@ body,
   background: #fff;
   border-radius: 8px;
   padding: 20px 24px 24px;
-  min-height: calc(100vh - 88px);
+  /* 全站统一内容宽度（2026-11-12）：1400 + 两侧 content padding 20 = 1440，
+   * 与原型稿视口一致；宽屏下居中收边，避免表格被无限拉伸。 */
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  /* 56 header + 16 content padding-top + 24 content padding-bottom = 96；
+   * 原 88 会多出 8px，导致内容再少也会出现内容区滚动条 */
+  min-height: calc(100vh - 96px);
 }
 
 .kh-search-bar {
@@ -479,6 +505,8 @@ body,
   min-height: 0;
   align-items: stretch;
   overflow: hidden;
+  /* 图谱画布要空间：不受全站 1400 收边限制 */
+  max-width: none;
 }
 
 .kh-graph-main {
@@ -1732,5 +1760,183 @@ body,
   position: absolute;
   inset: 0;
   min-height: 0;
+}
+
+/* ===== 首页大盘（数据总览，2026-11-12 重构） ===== */
+.kh-page.kh-dashboard {
+  /* 页面由卡片构成，外层不再叠白底与内边距，避免与 .kh-content 双重留白 */
+  background: transparent;
+  padding: 0;
+}
+
+.kh-dash-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.kh-dash-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #1f1f1f;
+}
+
+.kh-dash-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.kh-dash-dot {
+  color: #d9d9d9;
+}
+
+/* 统计卡：auto-fit 自动降列，1200 容器内正好 5 列 */
+.kh-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.kh-stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  font-size: 20px;
+}
+
+.kh-stat-value {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #1f1f1f;
+  font-variant-numeric: tabular-nums;
+}
+
+.kh-stat-label {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.kh-dash-card {
+  height: 100%;
+}
+
+.kh-dash-chart {
+  height: 300px;
+}
+
+.kh-dash-chart-wrap {
+  position: relative;
+}
+
+/* 加载/空态用遮罩覆盖，图表容器常驻不卸载（否则 ECharts 注入的 DOM 会让 React removeChild 崩溃） */
+.kh-dash-chart-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.kh-quick-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.kh-quick-item:hover {
+  background: #f5f7fa;
+}
+
+.kh-quick-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #f0f5ff;
+  color: #1677ff;
+  font-size: 16px;
+}
+
+.kh-quick-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.kh-quick-label {
+  font-size: 14px;
+  line-height: 1.4;
+  color: #1f1f1f;
+}
+
+.kh-quick-desc {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #8c8c8c;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kh-quick-arrow {
+  flex: none;
+  color: #bfbfbf;
+}
+
+.kh-quick-item:hover .kh-quick-arrow {
+  color: #1677ff;
+}
+
+.kh-dash-auth {
+  background: #fff;
+  border-radius: 8px;
+}
+
+.kh-dash-auth .ant-collapse-header {
+  font-weight: 600;
+}
+
+.kh-dash-auth-label {
+  margin-right: 8px;
+  color: #8c8c8c;
+}
+
+.kh-dash-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kh-dash-auth-muted {
+  color: #bfbfbf;
+}
+
+/* 操作记录里指向已删除文档的文本（不可点） */
+.kh-dash-deleted {
+  color: #bfbfbf;
 }
 
