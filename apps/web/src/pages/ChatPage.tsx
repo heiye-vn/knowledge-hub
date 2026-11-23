@@ -5,38 +5,73 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { MouseEvent, TouchEvent, WheelEvent } from 'react'
+import type {
+  ComponentRef,
+  KeyboardEvent,
+  MouseEvent,
+  TouchEvent,
+  WheelEvent,
+} from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { DeleteOutlined, DownOutlined, PlusOutlined } from '@ant-design/icons'
+import {
+  DeleteOutlined,
+  DownOutlined,
+  PlusOutlined,
+  SearchOutlined,
+  SendOutlined,
+  StopOutlined,
+} from '@ant-design/icons'
 import {
   Button,
   Input,
+  InputNumber,
   Select,
-  Space,
-  Typography,
+  Tooltip,
   message,
 } from 'antd'
 import { aiApi } from '../api'
 import { API_BASE, ApiError, fetchWithAuthRefresh } from '../api/client'
 import { getAccessToken } from '../auth'
+import { formatChatError } from '../chat-error-utils'
+import { BrandLogo } from '../components/BrandLogo'
+import { ChatErrorCard } from '../components/ChatErrorCard'
 import { ChatMessageParts } from '../components/ChatMessageParts'
 import { KhEmpty } from '../components/KhEmpty'
-import { historyToUIMessages, type KhUIMessage } from '../chat-message-utils'
+import { KhIcon } from '../components/icons'
+import {
+  historyToUIMessages,
+  textFromParts,
+  type KhUIMessage,
+} from '../chat-message-utils'
 import type { ChatMessage, ChatSession, SearchMode } from '../types'
 import { formatTime } from '../utils'
 
 const CHAT_ID = 'kh-chat'
 
+const QUICK_PROMPTS = [
+  {
+    title: '系统架构梳理',
+    prompt: '系统架构的核心模块有哪些，彼此之间是如何协作的？',
+  },
+  {
+    title: '流程与制度查询',
+    prompt: '请总结当前知识库中与审批、发布或权限管理相关的核心规范。',
+  },
+  {
+    title: '检索定位原文',
+    prompt: '列出知识库中最近更新的重要技术文档要点，并标注出处。',
+  },
+]
+
 /**
  * 知识问答（流式 Agentic RAG）
  *
- * - useChat + DefaultChatTransport 对接 /ai/chat/stream，按 part 渲染
- *   意图、检索评估、改写、联网、思考与正文
+ * - 全高沉浸式两栏布局：左侧历史会话栏 + 右侧居中阅读列（max-width: 860px）
+ * - useChat + DefaultChatTransport 对接 /ai/chat/stream，按 part 渲染意图/检索/评估/改写/联网/思考与正文
  * - URL 即会话态：/chat?session=<id>；新会话由服务端创建并经 data-session 回写
  * - 保留 topK / 检索模式 / 「仅检索」入口；仅检索不落库
- * - 流式输出自动钉底；用户上滑后停止抢滚动，可一键回到底部
  */
 export default function ChatPage() {
   const navigate = useNavigate()
@@ -47,7 +82,9 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [topK, setTopK] = useState(5)
   const [mode, setMode] = useState<SearchMode>('hybrid')
+  const [ragOnlyLoading, setRagOnlyLoading] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<ComponentRef<typeof Input.TextArea>>(null)
   const sessionIdRef = useRef(sessionId)
   const loadedSessionRef = useRef<string | undefined>(undefined)
   /** true 时流式输出自动滚到底；用户上滑后解开，避免抢滚动 */
@@ -75,31 +112,51 @@ export default function ChatPage() {
     [],
   )
 
-  const { messages, sendMessage, setMessages, status, stop, error } =
-    useChat<KhUIMessage>({
-      id: CHAT_ID,
-      transport,
-      onData: (part) => {
-        if (part.type !== 'data-session') return
-        const nextId = part.data.sessionId
-        if (!nextId) return
-        // 服务端 touchTitle 已在流前更新标题，这里立即刷新侧栏，
-        // 避免首答期间仍显示「新对话」
-        void loadSessions()
-        if (nextId === sessionIdRef.current) return
-        loadedSessionRef.current = nextId
-        navigate(`/chat?session=${nextId}`, { replace: true })
-      },
-      onFinish: () => {
-        void loadSessions()
-      },
-      onError: (err) => {
-        message.error(err.message || '问答请求失败')
-      },
-    })
+  const {
+    messages,
+    sendMessage,
+    setMessages,
+    status,
+    stop,
+    error,
+    regenerate,
+    clearError,
+  } = useChat<KhUIMessage>({
+    id: CHAT_ID,
+    transport,
+    onData: (part) => {
+      if (part.type !== 'data-session') return
+      const nextId = part.data.sessionId
+      if (!nextId) return
+      // 服务端 touchTitle 已在流前更新标题，这里立即刷新侧栏，
+      // 避免首答期间仍显示「新对话」
+      void loadSessions()
+      if (nextId === sessionIdRef.current) return
+      loadedSessionRef.current = nextId
+      navigate(`/chat?session=${nextId}`, { replace: true })
+    },
+    onFinish: () => {
+      void loadSessions()
+    },
+    onError: (err) => {
+      // 对话流中会渲染完整的诊断错误卡，这里只弹简短中文标题避免英文堆栈刷屏
+      message.error(formatChatError(err).title)
+    },
+  })
 
   const streaming = status === 'submitted' || status === 'streaming'
-  const busy = streaming
+  const busy = streaming || ragOnlyLoading
+  const isEmptyConversation = messages.length === 0 && !error
+
+  const lastUserQuestion = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role === 'user') {
+        const text = textFromParts(messages[i].parts).trim()
+        if (text) return text
+      }
+    }
+    return ''
+  }, [messages])
 
   const loadSessions = useCallback(async () => {
     try {
@@ -119,6 +176,7 @@ export default function ChatPage() {
     if (!sessionId) {
       if (loadedSessionRef.current) {
         loadedSessionRef.current = undefined
+        clearError()
         setMessages([])
       }
       return
@@ -126,6 +184,7 @@ export default function ChatPage() {
     if (loadedSessionRef.current === sessionId) return
     let cancelled = false
     loadedSessionRef.current = sessionId
+    clearError()
     aiApi
       .messages(sessionId)
       .then((rows: ChatMessage[]) => {
@@ -142,7 +201,7 @@ export default function ChatPage() {
     return () => {
       cancelled = true
     }
-  }, [sessionId, streaming, navigate, setMessages])
+  }, [sessionId, streaming, navigate, setMessages, clearError])
 
   function gapToBottom(el: HTMLElement) {
     return el.scrollHeight - el.scrollTop - el.clientHeight
@@ -221,31 +280,39 @@ export default function ChatPage() {
         scrollRafRef.current = null
       }
     }
-  }, [messages, status])
+  }, [messages, status, error])
 
-  async function send() {
-    const text = input.trim()
+  async function sendText(rawText: string) {
+    const text = rawText.trim()
     if (!text || busy) return
     setInput('')
+    clearError()
     setPinned(true)
     await sendMessage({ text }, { body: { sessionId, topK, mode } })
   }
 
-  async function sendRagOnly() {
-    const text = input.trim()
-    if (!text || busy) return
-    setInput('')
+  async function send() {
+    await sendText(input)
+  }
+
+  async function runRagOnly(text: string, appendUserMessage: boolean) {
+    const clean = text.trim()
+    if (!clean || busy) return
+    clearError()
     setPinned(true)
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `local-u-${Date.now()}`,
-        role: 'user',
-        parts: [{ type: 'text', text }],
-      },
-    ])
+    setRagOnlyLoading(true)
+    if (appendUserMessage) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-u-${Date.now()}`,
+          role: 'user',
+          parts: [{ type: 'text', text: clean }],
+        },
+      ])
+    }
     try {
-      const hits = await aiApi.ragSearch(text, topK, mode)
+      const hits = await aiApi.ragSearch(clean, topK, mode)
       const content = hits.length
         ? hits
             .map(
@@ -269,7 +336,36 @@ export default function ChatPage() {
       ])
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : '检索请求失败')
+    } finally {
+      setRagOnlyLoading(false)
     }
+  }
+
+  async function sendRagOnly() {
+    const text = input.trim()
+    if (!text || busy) return
+    setInput('')
+    await runRagOnly(text, true)
+  }
+
+  async function retryLastAnswer() {
+    if (busy || !lastUserQuestion) return
+    clearError()
+    setPinned(true)
+    await regenerate({ body: { sessionId, topK, mode } })
+  }
+
+  async function fallbackToRagOnly() {
+    if (busy || !lastUserQuestion) return
+    await runRagOnly(lastUserQuestion, false)
+  }
+
+  function onComposerKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== 'Enter' || e.shiftKey) return
+    // 中文输入法组合期间回车仅确认选词，不触发发送
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+    e.preventDefault()
+    void send()
   }
 
   function switchSession(id?: string) {
@@ -277,23 +373,33 @@ export default function ChatPage() {
       message.warning('请等待当前回答结束再切换会话')
       return
     }
+    clearError()
     navigate(id ? `/chat?session=${id}` : '/chat')
   }
 
-  async function onNew() {
+  const isFreshDraft = !sessionId && isEmptyConversation
+
+  /**
+   * 切回空白草稿态，不提前向服务端落库空会话；
+   * 真正发出首条消息时由 /ai/chat/stream 自动创建会话并经 data-session 回写 URL 与侧栏，
+   * 避免重复点击按钮堆积大量无意义的「新对话」空记录。
+   */
+  function onNew() {
     if (busy) {
       message.warning('请等待当前回答结束再开新对话')
       return
     }
-    try {
-      const created = await aiApi.createSession()
-      loadedSessionRef.current = created.id
+    if (!isFreshDraft) {
+      loadedSessionRef.current = undefined
+      clearError()
       setMessages([])
-      navigate(`/chat?session=${created.id}`)
-      void loadSessions()
-    } catch (err) {
-      message.error(err instanceof ApiError ? err.message : '创建会话失败')
+      if (sessionId) {
+        navigate('/chat')
+      }
     }
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+    })
   }
 
   async function onRemove(id: string, e: MouseEvent) {
@@ -306,6 +412,7 @@ export default function ChatPage() {
       await aiApi.removeSession(id)
       if (sessionId === id) {
         loadedSessionRef.current = undefined
+        clearError()
         setMessages([])
         navigate('/chat')
       }
@@ -315,21 +422,115 @@ export default function ChatPage() {
     }
   }
 
+  const composer = (
+    <div className="kh-chat-composer">
+      <Input.TextArea
+        ref={textareaRef}
+        className="kh-chat-textarea"
+        variant="borderless"
+        autoSize={{ minRows: 2, maxRows: 6 }}
+        placeholder="输入您的问题，Enter 发送，Shift + Enter 换行…"
+        aria-label="提问输入框"
+        value={input}
+        disabled={busy}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={onComposerKeyDown}
+      />
+      <div className="kh-chat-composer-bar">
+        <div className="kh-chat-composer-controls">
+          <Select
+            size="small"
+            value={mode}
+            onChange={setMode}
+            disabled={busy}
+            aria-label="检索模式"
+            style={{ width: 108 }}
+            options={[
+              { label: '混合检索', value: 'hybrid' },
+              { label: '向量检索', value: 'vector' },
+              { label: '全文关键字', value: 'keyword' },
+            ]}
+          />
+          <Tooltip title="TopK 召回条数 (1-10)">
+            <div className="kh-chat-topk">
+              <span>Top</span>
+              <InputNumber
+                size="small"
+                min={1}
+                max={10}
+                controls={false}
+                aria-label="TopK 召回条数"
+                value={topK}
+                disabled={busy}
+                onChange={(val) =>
+                  setTopK(Math.min(10, Math.max(1, Number(val) || 5)))
+                }
+                style={{ width: 42 }}
+              />
+            </div>
+          </Tooltip>
+          <span className="kh-chat-composer-note">「仅检索」不落库</span>
+        </div>
+        <div className="kh-chat-composer-actions">
+          <Button
+            size="middle"
+            icon={<SearchOutlined />}
+            loading={ragOnlyLoading}
+            disabled={busy || !input.trim()}
+            onClick={() => void sendRagOnly()}
+          >
+            仅检索
+          </Button>
+          {streaming ? (
+            <Button
+              size="middle"
+              danger
+              icon={<StopOutlined />}
+              onClick={() => void stop()}
+            >
+              停止
+            </Button>
+          ) : (
+            <Button
+              type="primary"
+              size="middle"
+              icon={<SendOutlined />}
+              disabled={busy || !input.trim()}
+              onClick={() => void send()}
+            >
+              发送
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
   return (
-    <div className="kh-page kh-chat-layout">
-      <aside className="kh-chat-sessions">
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          block
-          disabled={busy}
-          onClick={() => void onNew()}
-        >
-          新对话
-        </Button>
+    <div className="kh-chat-layout">
+      <aside className="kh-chat-sessions" aria-label="对话会话列表">
+        <div className="kh-chat-sessions-head">
+          <Tooltip title={isFreshDraft ? '当前已是新对话，直接提问即可' : ''}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              block
+              disabled={busy || isFreshDraft}
+              onClick={onNew}
+            >
+              新建对话
+            </Button>
+          </Tooltip>
+        </div>
+        <div className="kh-chat-sessions-caption">
+          <span>历史会话</span>
+          <span>{sessions.length}</span>
+        </div>
         <div className="kh-chat-session-list">
           {sessions.length === 0 ? (
-            <KhEmpty icon="chat" size={36} description="还没有会话" />
+            <div className="kh-chat-sessions-empty">
+              <KhEmpty icon="chat" size={32} description="还没有历史会话" />
+            </div>
           ) : (
             sessions.map((s) => (
               <div
@@ -342,117 +543,111 @@ export default function ChatPage() {
                 </div>
                 <div className="kh-chat-session-meta">
                   <span>{formatTime(s.updatedAt)}</span>
-                  <DeleteOutlined onClick={(e) => void onRemove(s.id, e)} />
+                  <DeleteOutlined
+                    aria-label="删除会话"
+                    onClick={(e) => void onRemove(s.id, e)}
+                  />
                 </div>
               </div>
             ))
           )}
         </div>
       </aside>
-      <div className="kh-chat">
-        <Typography.Title level={4} style={{ marginTop: 0 }}>
-          知识问答
-        </Typography.Title>
-        <Typography.Paragraph type="secondary">
-          只会检索你有权限的文档（公开、所在团队、自己写的）。先识别意图，再按需检索知识库、图谱或联网；资料不切题时由助手改写问题再查。「仅检索」不落库。
-        </Typography.Paragraph>
-        <div className="kh-chat-log-wrap">
-          <div
-            className="kh-chat-log"
-            ref={logRef}
-            onScroll={onLogScroll}
-            onWheel={onLogWheel}
-            onTouchStart={onLogTouchStart}
-            onTouchMove={onLogTouchMove}
-          >
-            {messages.length === 0 ? (
-              <div
-                style={{
-                  padding: '40px 0',
-                  textAlign: 'center',
-                  color: '#8c8c8c',
-                }}
-              >
-                输入您的问题，系统将基于企业知识库进行准确解答与引用溯源。
-              </div>
-            ) : (
-              messages.map((m, i) => {
-                const liveAssistant =
-                  streaming && m.role === 'assistant' && i === messages.length - 1
-                return (
-                  <div key={m.id} className={`kh-bubble ${m.role}`}>
-                    <ChatMessageParts
-                      messageId={m.id}
-                      parts={m.parts}
-                      role={m.role}
-                      showSources={!liveAssistant}
-                    />
-                  </div>
-                )
-              })
-            )}
-            {error ? <div className="kh-chat-error">{error.message}</div> : null}
-          </div>
-          {showJump ? (
-            <Button
-              className="kh-chat-jump"
-              size="small"
-              icon={<DownOutlined />}
-              onClick={jumpToBottom}
-            >
-              回到底部
-            </Button>
-          ) : null}
+
+      <section className="kh-chat" aria-label="知识问答对话区">
+        <div className="kh-chat-scope-bar">
+          <span className="kh-chat-scope-pill">
+            <KhIcon name="locked" size={13} />
+            仅检索你有权限的文档（公开、所在团队、本人文档）
+          </span>
+          <span className="kh-chat-scope-desc">
+            自动识别意图并按需调度知识库、图谱与联网检索
+          </span>
         </div>
-        <Space.Compact style={{ width: '100%' }}>
-          <Select
-            size="large"
-            value={mode}
-            onChange={setMode}
-            disabled={busy}
-            style={{ width: 110 }}
-            options={[
-              { label: '混合检索', value: 'hybrid' },
-              { label: '向量检索', value: 'vector' },
-              { label: '全文关键字', value: 'keyword' },
-            ]}
-          />
-          <Input
-            size="large"
-            placeholder="例如：系统架构的核心模块有哪些？"
-            value={input}
-            disabled={busy}
-            onChange={(e) => setInput(e.target.value)}
-            onPressEnter={() => void send()}
-          />
-          <Input
-            size="large"
-            style={{ width: 70 }}
-            value={topK}
-            disabled={busy}
-            onChange={(e) =>
-              setTopK(Math.min(10, Math.max(1, Number(e.target.value) || 5)))
-            }
-            title="TopK 召回条数 (1-10)"
-          />
-          <Button size="large" disabled={busy} onClick={() => void sendRagOnly()}>
-            仅检索
-          </Button>
-          {streaming ? (
-            <Button size="large" onClick={() => void stop()}>
-              停止
-            </Button>
-          ) : (
-            <Button
-              type="primary"
-              size="large"
-              onClick={() => void send()}
+
+        {isEmptyConversation ? (
+          <div className="kh-chat-welcome-stage">
+            <div className="kh-chat-welcome-inner">
+              <div className="kh-chat-welcome-head">
+                <BrandLogo size={40} />
+                <h2>有什么可以帮您查找或梳理？</h2>
+                <p>
+                  基于企业知识库与知识图谱进行溯源解答，资料不足时自动改写检索词或按需联网核验。
+                </p>
+              </div>
+              <div className="kh-chat-quick-grid">
+                {QUICK_PROMPTS.map((item) => (
+                  <button
+                    key={item.title}
+                    type="button"
+                    className="kh-chat-quick-card"
+                    disabled={busy}
+                    onClick={() => void sendText(item.prompt)}
+                  >
+                    <strong>{item.title}</strong>
+                    <span>{item.prompt}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="kh-chat-log-wrap">
+            <div
+              className="kh-chat-log"
+              ref={logRef}
+              onScroll={onLogScroll}
+              onWheel={onLogWheel}
+              onTouchStart={onLogTouchStart}
+              onTouchMove={onLogTouchMove}
             >
-              发送
-            </Button>
-          )}
-        </Space.Compact>
-      </div>
+              <div className="kh-chat-thread">
+                {messages.map((m, i) => {
+                  const liveAssistant =
+                    streaming &&
+                    m.role === 'assistant' &&
+                    i === messages.length - 1
+                  return (
+                    <div key={m.id} className={`kh-bubble ${m.role}`}>
+                      <ChatMessageParts
+                        messageId={m.id}
+                        parts={m.parts}
+                        role={m.role}
+                        showSources={!liveAssistant}
+                      />
+                    </div>
+                  )
+                })}
+                {error ? (
+                  <ChatErrorCard
+                    error={error}
+                    busy={busy}
+                    canRetryAction={Boolean(lastUserQuestion)}
+                    canFallbackRagAction={Boolean(lastUserQuestion)}
+                    onRetry={() => void retryLastAnswer()}
+                    onFallbackRag={() => void fallbackToRagOnly()}
+                    onDismiss={clearError}
+                  />
+                ) : null}
+              </div>
+            </div>
+            {showJump ? (
+              <Button
+                className="kh-chat-jump"
+                size="small"
+                icon={<DownOutlined />}
+                onClick={jumpToBottom}
+              >
+                回到底部
+              </Button>
+            ) : null}
+          </div>
+        )}
+
+        <div className="kh-chat-dock">
+          <div className="kh-chat-dock-inner">{composer}</div>
+        </div>
+      </section>
     </div>
   )
 }

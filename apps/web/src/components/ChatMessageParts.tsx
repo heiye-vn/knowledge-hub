@@ -3,6 +3,7 @@ import { getToolName, isToolUIPart } from 'ai'
 import { AnswerMarkdown, SourceCiteList } from './SourceCiteList'
 import { ForceGraph } from './ForceGraph'
 import { KhIcon, type KhIconName } from './icons'
+import { formatStepError } from '../chat-error-utils'
 import {
   citedSources,
   graphHitToView,
@@ -435,7 +436,7 @@ function KbPanel({
           {query ? <span className="kh-panel-sub">{query}</span> : null}
           {count ? <b className="kh-panel-n">{count}</b> : null}
         </summary>
-        {error ? <div className="kh-step-err">{error}</div> : children}
+        {error ? <div className="kh-step-err">{formatStepError(error)}</div> : children}
       </details>
     </TraceItem>
   )
@@ -474,7 +475,7 @@ function GraphCard({
           ) : null}
         </summary>
         {data.error ? (
-          <div className="kh-step-err">{data.error}</div>
+          <div className="kh-step-err">{formatStepError(data.error)}</div>
         ) : !pending && !empty ? (
           <div className="kh-trace-graph-canvas">
             <ForceGraph nodes={view.nodes} edges={view.edges} compact />
@@ -566,7 +567,7 @@ function RewriteToolCard({ part }: { part: ToolPartLike }) {
         </div>
         {failed ? (
           <div className="kh-step-err">
-            {String(rec?.error || part.errorText || '改写失败')}
+            {formatStepError(String(rec?.error || part.errorText || '改写失败'))}
           </div>
         ) : previous || query ? (
           <dl className="kh-meta">
@@ -617,7 +618,9 @@ function WebSearchCard({ part }: { part: ToolPartLike }) {
           {!pending && count ? <b className="kh-panel-n">{count}</b> : null}
         </summary>
         {failed ? (
-          <div className="kh-step-err">{output?.error || part.errorText}</div>
+          <div className="kh-step-err">
+            {formatStepError(output?.error || part.errorText)}
+          </div>
         ) : count ? (
           <div className="kh-link-grid">
             {output?.items.map((hit) => {
