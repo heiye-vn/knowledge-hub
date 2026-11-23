@@ -43,7 +43,6 @@ import { CategoryService } from './category.service.js';
 import { DocumentVersionService } from './document-version.service.js';
 import { stripNullBytes } from './parser/utils/markdown.util.js';
 
-
 /**
  * 文档主键为 bigint：非数字 id 直接抛 400。
  * 否则字符串 id（如测试残留在 Neo4j 的 'kg-spec-doc' 经前端回传）会直达 PG，
@@ -164,7 +163,8 @@ export class DocumentService implements OnModuleInit {
 
     try {
       if (this.ragOrchestrator?.countMissingVisibilityChunks) {
-        missingChunks = await this.ragOrchestrator.countMissingVisibilityChunks();
+        missingChunks =
+          await this.ragOrchestrator.countMissingVisibilityChunks();
       }
     } catch (err) {
       this.logger.warn(`探测 ES 存量可见性缺口失败：${err}`);
@@ -172,7 +172,8 @@ export class DocumentService implements OnModuleInit {
 
     try {
       if (this.graphBuildService?.countMissingVisibilityDocs) {
-        missingKgDocs = await this.graphBuildService.countMissingVisibilityDocs();
+        missingKgDocs =
+          await this.graphBuildService.countMissingVisibilityDocs();
       }
     } catch (err) {
       this.logger.warn(`探测 KG 存量可见性缺口失败：${err}`);
@@ -215,7 +216,9 @@ export class DocumentService implements OnModuleInit {
             authorId: doc.authorId,
           });
         } catch (err) {
-          this.logger.warn(`KG 节点可见性回填失败：documentId=${doc.id}, ${err}`);
+          this.logger.warn(
+            `KG 节点可见性回填失败：documentId=${doc.id}, ${err}`,
+          );
         }
       }
       this.logger.log(`KG 图谱节点可见性回填完成，覆盖 ${docs.length} 篇文档`);
@@ -253,7 +256,6 @@ export class DocumentService implements OnModuleInit {
       );
     }
   }
-
 
   /**
    * 创建文档
@@ -298,6 +300,9 @@ export class DocumentService implements OnModuleInit {
 
     this.assertAuditFieldsAllowed(dto, actor);
 
+    /**
+     * tx：Transaction(事务)的缩写
+     */
     const saved = await this.em.transaction(async (tx) => {
       const doc = tx.create(DocumentEntity, {
         id,
@@ -417,7 +422,9 @@ export class DocumentService implements OnModuleInit {
       qb.andWhere('doc.team_id = :teamId', { teamId: query.teamId });
     }
     if (query.mine) {
-      qb.andWhere('doc.author_id = :authorId', { authorId: user?.userId ?? '' });
+      qb.andWhere('doc.author_id = :authorId', {
+        authorId: user?.userId ?? '',
+      });
     } else if (query.authorId) {
       qb.andWhere('doc.author_id = :authorId', { authorId: query.authorId });
     }
@@ -774,10 +781,7 @@ export class DocumentService implements OnModuleInit {
       !this.reviewService.isRequireApproval()
     ) {
       await this.buildIndexes(saved, finalContent);
-    } else if (
-      oldStatus === DocumentStatus.Published &&
-      visibilityChanged
-    ) {
+    } else if (oldStatus === DocumentStatus.Published && visibilityChanged) {
       try {
         await this.syncVisibility(saved);
       } catch (error) {
@@ -828,7 +832,6 @@ export class DocumentService implements OnModuleInit {
       throw error;
     }
   }
-
 
   /**
    * 发布文档
@@ -928,7 +931,11 @@ export class DocumentService implements OnModuleInit {
    * 索引构建放在事务外——ES / Neo4j 无法与 PG 共享事务，
    * 且索引失败时文档已是 Published，可用 POST /rag/reindex 重建（该接口扫的就是已发布文档）。
    */
-  async approveReview(taskId: string, dto: ReviewDecisionDto = {}, actor: ReviewActor) {
+  async approveReview(
+    taskId: string,
+    dto: ReviewDecisionDto = {},
+    actor: ReviewActor,
+  ) {
     const { review, doc } = await this.em.transaction(async (tx) => {
       const approved = await this.reviewService.approve(
         taskId,
@@ -942,7 +949,9 @@ export class DocumentService implements OnModuleInit {
         where: { id: approved.documentId, deleted: false },
       });
       if (!target) {
-        throw new NotFoundException(`Document ${approved.documentId} not found`);
+        throw new NotFoundException(
+          `Document ${approved.documentId} not found`,
+        );
       }
 
       target.status = DocumentStatus.Published;
@@ -951,7 +960,10 @@ export class DocumentService implements OnModuleInit {
       return { review: approved, doc: saved };
     });
 
-    const indexes = await this.buildIndexes(doc, await this.loadContent(doc.id));
+    const indexes = await this.buildIndexes(
+      doc,
+      await this.loadContent(doc.id),
+    );
 
     this.logger.log(
       `审核通过：reviewId=${taskId}, documentId=${doc.id}, indexed=${indexes.indexed}`,
@@ -976,7 +988,11 @@ export class DocumentService implements OnModuleInit {
   }
 
   /** 审核驳回：待审核 → 草稿，作者改稿后可再次提交（索引在提审时已清，此处无需再清） */
-  async rejectReview(taskId: string, dto: ReviewDecisionDto = {}, actor: ReviewActor) {
+  async rejectReview(
+    taskId: string,
+    dto: ReviewDecisionDto = {},
+    actor: ReviewActor,
+  ) {
     const { review, doc } = await this.em.transaction(async (tx) => {
       const rejected = await this.reviewService.reject(
         taskId,
@@ -990,7 +1006,9 @@ export class DocumentService implements OnModuleInit {
         where: { id: rejected.documentId, deleted: false },
       });
       if (!target) {
-        throw new NotFoundException(`Document ${rejected.documentId} not found`);
+        throw new NotFoundException(
+          `Document ${rejected.documentId} not found`,
+        );
       }
 
       target.status = DocumentStatus.Draft;
@@ -1067,7 +1085,10 @@ export class DocumentService implements OnModuleInit {
       await this.em.save(doc);
     }
 
-    const indexes = await this.buildIndexes(doc, await this.loadContent(doc.id));
+    const indexes = await this.buildIndexes(
+      doc,
+      await this.loadContent(doc.id),
+    );
 
     return {
       id: doc.id,
@@ -1222,7 +1243,9 @@ export class DocumentService implements OnModuleInit {
    * 写文档级搜索索引（ES kh_document）。
    * 失败不阻断发布——ES 与 PG 无法共享事务，索引没写上去还有 `POST /rag/reindex` 兜底。
    */
-  private async indexForSearch(pipelineDoc: PipelineDocument): Promise<boolean> {
+  private async indexForSearch(
+    pipelineDoc: PipelineDocument,
+  ): Promise<boolean> {
     if (!this.searchIndexService.isAvailable()) {
       this.logger.warn(
         `搜索索引链路不可用，已发布但未建文档索引：documentId=${pipelineDoc.id}`,
@@ -1347,7 +1370,11 @@ export class DocumentService implements OnModuleInit {
     const cleanup =
       doc.status === DocumentStatus.Published
         ? await this.cleanupIndexes(id)
-        : { vectorsCleaned: false, searchCleaned: false, kgDeleteQueued: false };
+        : {
+            vectorsCleaned: false,
+            searchCleaned: false,
+            kgDeleteQueued: false,
+          };
 
     if (actor) {
       this.audit.record({

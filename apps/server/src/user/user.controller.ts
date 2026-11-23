@@ -126,14 +126,18 @@ export class UserController {
 
   @Put(':id')
   @RequirePermission('system:user')
-  updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.userService.updateUser(id, dto);
+  updateUser(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.userService.updateUser(id, dto, actor.userId);
   }
 
   @Delete(':id')
   @RequirePermission('system:user')
-  async deleteUser(@Param('id') id: string) {
-    await this.userService.deleteUser(id);
+  async deleteUser(@Param('id') id: string, @CurrentUser() actor: AuthUser) {
+    await this.userService.deleteUser(id, actor.userId);
     return { message: '删除成功' };
   }
 

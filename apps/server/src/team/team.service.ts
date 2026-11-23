@@ -172,7 +172,26 @@ export class TeamService {
       .skip((page - 1) * pageSize)
       .take(pageSize);
     const [items, total] = await qb.getManyAndCount();
-    return { items, total, page, pageSize };
+    if (!items.length) {
+      return { items: [], total, page, pageSize };
+    }
+    // 批量聚合当前页各团队的成员数，避免 N+1 查询，首屏列表即可展示真实人数
+    const teamIds = items.map((t) => t.id);
+    const counts = await this.memberRepo
+      .createQueryBuilder('m')
+      .select('m.team_id', 'teamId')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('m.team_id IN (:...teamIds)', { teamIds })
+      .groupBy('m.team_id')
+      .getRawMany<{ teamId: string | number; cnt: string | number }>();
+    const countMap = new Map(
+      counts.map((row) => [String(row.teamId), Number(row.cnt)]),
+    );
+    const enriched = items.map((t) => ({
+      ...t,
+      memberCount: countMap.get(t.id) ?? 0,
+    }));
+    return { items: enriched, total, page, pageSize };
   }
 
   /**

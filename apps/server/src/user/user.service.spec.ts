@@ -110,3 +110,19 @@ describe('UserService.getUserStatistics', () => {
     });
   });
 });
+
+describe('UserService 防自锁守卫', () => {
+  it('禁止禁用当前登录账号', async () => {
+    const { service } = makeService(0);
+    await expect(
+      service.updateUser('100', { status: 0 }, '100'),
+    ).rejects.toThrow('不能禁用当前登录账号');
+  });
+
+  it('禁止删除当前登录账号', async () => {
+    const { service } = makeService(0);
+    await expect(service.deleteUser('100', '100')).rejects.toThrow(
+      '不能删除当前登录账号',
+    );
+  });
+});

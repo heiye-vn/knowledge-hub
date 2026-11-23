@@ -403,8 +403,15 @@ export class UserService {
     return userId;
   }
 
-  /** 管理员更新用户（邮箱/username 唯一性校验；密码不在此改） */
-  async updateUser(id: string, dto: UpdateUserDto): Promise<UserVO> {
+  /** 管理员更新用户（邮箱/username 唯一性校验；密码不在此改；禁止禁用自己防锁死） */
+  async updateUser(
+    id: string,
+    dto: UpdateUserDto,
+    actorId?: string,
+  ): Promise<UserVO> {
+    if (actorId && actorId === id && dto.status === 0) {
+      throw new BadRequestException('不能禁用当前登录账号');
+    }
     const user = await this.findByIdOrThrow(id);
     if (dto.username && dto.username !== user.username) {
       const exists = await this.findByUsername(dto.username);
@@ -430,8 +437,11 @@ export class UserService {
     return this.toUserVO(await this.findByIdOrThrow(id));
   }
 
-  /** 管理员删除用户：软删（文档保留创建人痕迹，硬删会断外键） */
-  async deleteUser(id: string): Promise<void> {
+  /** 管理员删除用户：软删（文档保留创建人痕迹，硬删会断外键；禁止删除自己） */
+  async deleteUser(id: string, actorId?: string): Promise<void> {
+    if (actorId && actorId === id) {
+      throw new BadRequestException('不能删除当前登录账号');
+    }
     await this.findByIdOrThrow(id);
     await this.userRepo.update(id, { deleted: true, updatedAt: new Date() });
   }
