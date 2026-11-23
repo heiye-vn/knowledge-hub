@@ -7,7 +7,9 @@ import {
   Popconfirm,
   Select,
   Space,
+  Switch,
   Table,
+  Tag,
   message,
 } from 'antd'
 import { teamApi, userApi } from '../../api'
@@ -26,7 +28,9 @@ export default function TeamsPage() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [keyword, setKeyword] = useState('')
-  const [open, setOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingTeam, setEditingTeam] = useState<TeamItem | null>(null)
+  const [saving, setSaving] = useState(false)
   const [membersFor, setMembersFor] = useState<TeamItem | null>(null)
   const [members, setMembers] = useState<MemberRow[]>([])
   const [selectedUserId, setSelectedUserId] = useState<string>()
@@ -104,6 +108,35 @@ export default function TeamsPage() {
     void load(1)
   }, [])
 
+  function openCreate() {
+    setEditingTeam(null)
+    form.resetFields()
+    form.setFieldsValue({ enabled: true })
+    setModalOpen(true)
+  }
+
+  function openEdit(row: TeamItem) {
+    setEditingTeam(row)
+    form.setFieldsValue({
+      teamName: row.teamName,
+      teamCode: row.teamCode ?? '',
+      description: row.description ?? '',
+      enabled: (row.status ?? 1) === 1,
+    })
+    setModalOpen(true)
+  }
+
+  async function handleDelete(row: TeamItem) {
+    try {
+      await teamApi.remove(row.id)
+      message.success('团队已删除')
+      const nextPage = items.length === 1 && page > 1 ? page - 1 : page
+      void load(nextPage)
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : '删除失败')
+    }
+  }
+
   return (
     <div className="kh-page">
       <Space style={{ marginBottom: 16 }}>
@@ -114,7 +147,7 @@ export default function TeamsPage() {
           onPressEnter={() => void load(1)}
         />
         <Button onClick={() => void load(1)}>查询</Button>
-        <Button type="primary" onClick={() => setOpen(true)}>
+        <Button type="primary" onClick={openCreate}>
           新建团队
         </Button>
       </Space>
@@ -129,40 +162,81 @@ export default function TeamsPage() {
         }}
         columns={[
           { title: '名称', dataIndex: 'teamName' },
-          { title: '编码', dataIndex: 'teamCode' },
-          { title: '说明', dataIndex: 'description' },
-          { title: '成员数', dataIndex: 'memberCount' },
+          {
+            title: '编码',
+            dataIndex: 'teamCode',
+            render: (v?: string | null) => v || '-',
+          },
+          {
+            title: '说明',
+            dataIndex: 'description',
+            render: (v?: string | null) => v || '-',
+          },
+          {
+            title: '成员数',
+            dataIndex: 'memberCount',
+            width: 100,
+            render: (v?: number) => v ?? 0,
+          },
+          {
+            title: '状态',
+            dataIndex: 'status',
+            width: 96,
+            render: (s?: number) => (
+              <Tag color={(s ?? 1) === 1 ? 'success' : 'default'}>
+                {(s ?? 1) === 1 ? '启用' : '禁用'}
+              </Tag>
+            ),
+          },
           {
             title: '操作',
+            width: 220,
             render: (_: unknown, row: TeamItem) => (
-              <a
-                onClick={async () => {
-                  setMembersFor(row)
-                  setSelectedUserId(undefined)
-                  setUserOptions([])
-                  try {
-                    await loadMembers(row.id)
-                  } catch (error) {
-                    message.error(
-                      error instanceof ApiError
-                        ? error.message
-                        : '加载成员失败',
-                    )
-                  }
-                }}
-              >
-                成员管理
-              </a>
+              <Space size={12}>
+                <a onClick={() => openEdit(row)}>编辑</a>
+                <a
+                  onClick={async () => {
+                    setMembersFor(row)
+                    setSelectedUserId(undefined)
+                    setUserOptions([])
+                    try {
+                      await loadMembers(row.id)
+                    } catch (error) {
+                      message.error(
+                        error instanceof ApiError
+                          ? error.message
+                          : '加载成员失败',
+                      )
+                    }
+                  }}
+                >
+                  成员管理
+                </a>
+                <Popconfirm
+                  title={`确定删除团队「${row.teamName}」？`}
+                  description="删除后将清空该团队的成员绑定；存在子团队时无法删除。"
+                  okText="删除"
+                  okType="danger"
+                  cancelText="取消"
+                  onConfirm={() => void handleDelete(row)}
+                >
+                  <a style={{ color: '#c53030' }}>删除</a>
+                </Popconfirm>
+              </Space>
             ),
           },
         ]}
       />
 
-      {/* 新建团队弹窗 */}
+      {/* 新建 / 编辑团队弹窗 */}
       <Modal
-        title="新建团队"
-        open={open}
-        onCancel={() => setOpen(false)}
+        title={editingTeam ? `编辑团队 - ${editingTeam.teamName}` : '新建团队'}
+        open={modalOpen}
+        confirmLoading={saving}
+        onCancel={() => {
+          setModalOpen(false)
+          setEditingTeam(null)
+        }}
         onOk={() => form.submit()}
       >
         <Form
@@ -172,17 +246,33 @@ export default function TeamsPage() {
             teamName: string
             teamCode?: string
             description?: string
+            enabled?: boolean
           }) => {
+            setSaving(true)
             try {
-              await teamApi.create(values)
-              message.success('团队已创建')
-              setOpen(false)
+              const payload = {
+                teamName: values.teamName.trim(),
+                teamCode: values.teamCode?.trim() || undefined,
+                description: values.description?.trim() ?? '',
+                status: values.enabled === false ? 0 : 1,
+              }
+              if (editingTeam) {
+                await teamApi.update(editingTeam.id, payload)
+                message.success('团队信息已更新')
+              } else {
+                await teamApi.create(payload)
+                message.success('团队已创建')
+              }
+              setModalOpen(false)
+              setEditingTeam(null)
               form.resetFields()
-              void load(1)
+              void load(editingTeam ? page : 1)
             } catch (error) {
               message.error(
-                error instanceof ApiError ? error.message : '创建失败',
+                error instanceof ApiError ? error.message : '保存失败',
               )
+            } finally {
+              setSaving(false)
             }
           }}
         >
@@ -191,14 +281,19 @@ export default function TeamsPage() {
             label="团队名称"
             rules={[{ required: true, message: '请输入团队名称' }]}
           >
-            <Input placeholder="如 研发团队" />
+            <Input placeholder="如 研发团队" maxLength={100} />
           </Form.Item>
           <Form.Item name="teamCode" label="编码">
-            <Input placeholder="如 R_AND_D" />
+            <Input placeholder="如 R_AND_D" maxLength={50} />
           </Form.Item>
           <Form.Item name="description" label="说明">
-            <Input placeholder="团队职责描述" />
+            <Input.TextArea rows={3} placeholder="团队职责描述" maxLength={500} />
           </Form.Item>
+          {editingTeam ? (
+            <Form.Item name="enabled" label="状态" valuePropName="checked">
+              <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+            </Form.Item>
+          ) : null}
         </Form>
       </Modal>
 
@@ -280,7 +375,7 @@ export default function TeamsPage() {
                     }
                   }}
                 >
-                  <a style={{ color: '#ff4d4f' }}>移出</a>
+                  <a style={{ color: '#c53030' }}>移出</a>
                 </Popconfirm>
               ),
             },

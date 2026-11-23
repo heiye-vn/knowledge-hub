@@ -4,15 +4,19 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
+  Tooltip,
   TreeSelect,
   message,
 } from 'antd'
 import { permissionApi, roleApi, userApi } from '../../api'
 import { ApiError } from '../../api/client'
+import { useAuth } from '../../auth'
 import type { PermissionNode, RoleItem, UserVO } from '../../types'
 import { formatTime } from '../../utils'
 
@@ -33,6 +37,7 @@ function toTreeSelect(nodes: PermissionNode[]): PermSelectNode[] {
 }
 
 export default function UsersPage() {
+  const currentUser = useAuth()
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -41,6 +46,8 @@ export default function UsersPage() {
   const [permTree, setPermTree] = useState<PermissionNode[]>([])
   const [loading, setLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<UserVO | null>(null)
+  const [saving, setSaving] = useState(false)
 
   // 角色分配
   const [roleUser, setRoleUser] = useState<UserVO | null>(null)
@@ -54,7 +61,8 @@ export default function UsersPage() {
   const [permUser, setPermUser] = useState<UserVO | null>(null)
   const [userPermCodes, setUserPermCodes] = useState<string[]>([])
 
-  const [form] = Form.useForm()
+  const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm()
 
   async function load(nextPage = page) {
     setLoading(true)
@@ -80,6 +88,38 @@ export default function UsersPage() {
     permissionApi.tree().then(setPermTree).catch(() => undefined)
   }, [])
 
+  function openEdit(row: UserVO) {
+    setEditingUser(row)
+    editForm.setFieldsValue({
+      username: row.username,
+      realName: row.realName ?? '',
+      email: row.email ?? '',
+      enabled: row.status === 1,
+    })
+  }
+
+  async function toggleStatus(row: UserVO) {
+    const nextStatus = row.status === 1 ? 0 : 1
+    try {
+      await userApi.update(row.id, { status: nextStatus })
+      message.success(nextStatus === 1 ? '已启用账号' : '已禁用账号')
+      void load(page)
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : '更新状态失败')
+    }
+  }
+
+  async function handleDelete(row: UserVO) {
+    try {
+      await userApi.remove(row.id)
+      message.success('用户已删除')
+      const nextPage = items.length === 1 && page > 1 ? page - 1 : page
+      void load(nextPage)
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : '删除失败')
+    }
+  }
+
   return (
     <div className="kh-page">
       <Space style={{ marginBottom: 16 }}>
@@ -93,7 +133,7 @@ export default function UsersPage() {
         <Button
           type="primary"
           onClick={() => {
-            form.resetFields()
+            createForm.resetFields()
             setCreateOpen(true)
           }}
         >
@@ -112,8 +152,8 @@ export default function UsersPage() {
         }}
         columns={[
           { title: '用户名', dataIndex: 'username' },
-          { title: '姓名', dataIndex: 'realName' },
-          { title: '邮箱', dataIndex: 'email' },
+          { title: '姓名', dataIndex: 'realName', render: (v?: string | null) => v || '-' },
+          { title: '邮箱', dataIndex: 'email', render: (v?: string | null) => v || '-' },
           {
             title: '角色',
             dataIndex: 'roleCodes',
@@ -127,48 +167,92 @@ export default function UsersPage() {
           {
             title: '状态',
             dataIndex: 'status',
+            width: 88,
             render: (s: number) => (
               <Tag color={s === 1 ? 'success' : 'default'}>
                 {s === 1 ? '启用' : '禁用'}
               </Tag>
             ),
           },
-          { title: '最近登录', dataIndex: 'lastLoginAt', render: formatTime },
+          { title: '最近登录', dataIndex: 'lastLoginAt', width: 168, render: formatTime },
           {
             title: '操作',
-            render: (_: unknown, row: UserVO) => (
-              <Space>
-                <a
-                  onClick={() => {
-                    setPwdUser(row)
-                    setNewPassword('')
-                  }}
-                >
-                  重置密码
-                </a>
-                <a
-                  onClick={() => {
-                    setRoleUser(row)
-                    setRoleCodes(row.roleCodes || [])
-                  }}
-                >
-                  分配角色
-                </a>
-                <a
-                  onClick={async () => {
-                    setPermUser(row)
-                    try {
-                      const res = await userApi.getPermissions(row.id)
-                      setUserPermCodes(res.permissionCodes || [])
-                    } catch {
-                      setUserPermCodes([])
-                    }
-                  }}
-                >
-                  直接授权
-                </a>
-              </Space>
-            ),
+            width: 340,
+            render: (_: unknown, row: UserVO) => {
+              const isSelf = row.id === currentUser?.userId
+              return (
+                <Space size={12} wrap>
+                  <a onClick={() => openEdit(row)}>编辑</a>
+                  {isSelf ? (
+                    <Tooltip title="不能禁用当前登录账号">
+                      <span style={{ color: '#bfbfbf', cursor: 'not-allowed' }}>
+                        禁用
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <Popconfirm
+                      title={
+                        row.status === 1
+                          ? `确定禁用账号「${row.username}」？`
+                          : `确定启用账号「${row.username}」？`
+                      }
+                      okText="确定"
+                      cancelText="取消"
+                      onConfirm={() => void toggleStatus(row)}
+                    >
+                      <a>{row.status === 1 ? '禁用' : '启用'}</a>
+                    </Popconfirm>
+                  )}
+                  <a
+                    onClick={() => {
+                      setPwdUser(row)
+                      setNewPassword('')
+                    }}
+                  >
+                    重置密码
+                  </a>
+                  <a
+                    onClick={() => {
+                      setRoleUser(row)
+                      setRoleCodes(row.roleCodes || [])
+                    }}
+                  >
+                    分配角色
+                  </a>
+                  <a
+                    onClick={async () => {
+                      setPermUser(row)
+                      try {
+                        const res = await userApi.getPermissions(row.id)
+                        setUserPermCodes(res.permissionCodes || [])
+                      } catch {
+                        setUserPermCodes([])
+                      }
+                    }}
+                  >
+                    直接授权
+                  </a>
+                  {isSelf ? (
+                    <Tooltip title="不能删除当前登录账号">
+                      <span style={{ color: '#bfbfbf', cursor: 'not-allowed' }}>
+                        删除
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <Popconfirm
+                      title={`确定删除用户「${row.username}」？`}
+                      description="采用软删除，其历史创建的文档记录仍会保留。"
+                      okText="删除"
+                      okType="danger"
+                      cancelText="取消"
+                      onConfirm={() => void handleDelete(row)}
+                    >
+                      <a style={{ color: '#c53030' }}>删除</a>
+                    </Popconfirm>
+                  )}
+                </Space>
+              )
+            },
           },
         ]}
       />
@@ -177,11 +261,12 @@ export default function UsersPage() {
       <Modal
         title="新建用户"
         open={createOpen}
+        confirmLoading={saving}
         onCancel={() => setCreateOpen(false)}
-        onOk={() => form.submit()}
+        onOk={() => createForm.submit()}
       >
         <Form
-          form={form}
+          form={createForm}
           layout="vertical"
           onFinish={async (values: {
             username: string
@@ -190,8 +275,14 @@ export default function UsersPage() {
             email?: string
             roleCodes?: string[]
           }) => {
+            setSaving(true)
             try {
-              await userApi.create(values)
+              await userApi.create({
+                ...values,
+                username: values.username.trim(),
+                realName: values.realName?.trim() || undefined,
+                email: values.email?.trim() || undefined,
+              })
               message.success('用户已创建')
               setCreateOpen(false)
               void load(1)
@@ -199,6 +290,8 @@ export default function UsersPage() {
               message.error(
                 error instanceof ApiError ? error.message : '创建失败',
               )
+            } finally {
+              setSaving(false)
             }
           }}
         >
@@ -219,7 +312,11 @@ export default function UsersPage() {
           <Form.Item name="realName" label="姓名">
             <Input placeholder="真实姓名" />
           </Form.Item>
-          <Form.Item name="email" label="邮箱">
+          <Form.Item
+            name="email"
+            label="邮箱"
+            rules={[{ type: 'email', message: '请输入正确的邮箱格式' }]}
+          >
             <Input placeholder="电子邮箱" />
           </Form.Item>
           <Form.Item name="roleCodes" label="角色">
@@ -230,6 +327,82 @@ export default function UsersPage() {
                 value: r.roleCode,
                 label: `${r.roleName} (${r.roleCode})`,
               }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 编辑用户弹窗 */}
+      <Modal
+        title={editingUser ? `编辑用户 - ${editingUser.username}` : '编辑用户'}
+        open={Boolean(editingUser)}
+        confirmLoading={saving}
+        onCancel={() => setEditingUser(null)}
+        onOk={() => editForm.submit()}
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={async (values: {
+            username: string
+            realName?: string
+            email?: string
+            enabled: boolean
+          }) => {
+            if (!editingUser) return
+            setSaving(true)
+            try {
+              const body: Record<string, unknown> = {
+                username: values.username.trim(),
+                realName: values.realName?.trim() ?? '',
+                status: values.enabled ? 1 : 0,
+              }
+              const email = values.email?.trim()
+              if (email) body.email = email
+              await userApi.update(editingUser.id, body)
+              message.success('用户信息已更新')
+              setEditingUser(null)
+              void load(page)
+            } catch (error) {
+              message.error(
+                error instanceof ApiError ? error.message : '更新失败',
+              )
+            } finally {
+              setSaving(false)
+            }
+          }}
+        >
+          <Form.Item
+            name="username"
+            label="用户名"
+            rules={[{ required: true, message: '请输入用户名' }]}
+          >
+            <Input placeholder="用户名" />
+          </Form.Item>
+          <Form.Item name="realName" label="姓名">
+            <Input placeholder="真实姓名" />
+          </Form.Item>
+          <Form.Item
+            name="email"
+            label="邮箱"
+            rules={[{ type: 'email', message: '请输入正确的邮箱格式' }]}
+          >
+            <Input placeholder="电子邮箱" />
+          </Form.Item>
+          <Form.Item
+            name="enabled"
+            label="账号状态"
+            valuePropName="checked"
+            extra={
+              editingUser?.id === currentUser?.userId
+                ? '当前登录账号不允许禁用'
+                : '禁用后该用户将无法登录系统'
+            }
+          >
+            <Switch
+              checkedChildren="启用"
+              unCheckedChildren="禁用"
+              disabled={editingUser?.id === currentUser?.userId}
             />
           </Form.Item>
         </Form>
