@@ -13,6 +13,7 @@ import { aiApi, memoryApi } from '../api'
 import { ApiError } from '../api/client'
 import type { ChatSession, MemoryItem } from '../types'
 import { formatTime } from '../utils'
+import { ProfileSubNav } from '../components/ProfileSubNav'
 
 type Layer = 'user' | 'session'
 
@@ -113,15 +114,19 @@ export default function MemoryPage() {
 
   return (
     <div className="kh-page">
+      <ProfileSubNav />
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           gap: 16,
+          marginBottom: 14,
         }}
       >
-        <h2 style={{ margin: 0 }}>我的长期记忆</h2>
+        <h2 style={{ margin: 0, fontSize: 18, color: 'var(--kh-ink)' }}>
+          我的长期记忆
+        </h2>
         <Button danger onClick={() => setConfirm({ open: true, kind: 'all' })}>
           清空全部
         </Button>

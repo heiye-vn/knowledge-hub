@@ -140,7 +140,7 @@ export default function GraphPage() {
   const entityTypes = data?.entityTypes || []
 
   return (
-    <div className="kh-page" style={{ height: '100%', padding: '16px 20px', overflow: 'hidden' }}>
+    <div className="kh-graph-page">
       <div className="kh-graph-layout">
         {/* 左侧主图谱与交互区域 */}
         <div className="kh-graph-main">
@@ -291,7 +291,7 @@ export default function GraphPage() {
               <KhIcon
                 name="graph"
                 size={14}
-                color="#1677ff"
+                color="#2352A0"
                 style={{ marginRight: 6 }}
               />
               图谱规模概览

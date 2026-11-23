@@ -5,6 +5,7 @@ import { notificationApi } from '../api'
 import { ApiError } from '../api/client'
 import type { NotificationItem } from '../types'
 import { formatTime } from '../utils'
+import { ProfileSubNav } from '../components/ProfileSubNav'
 
 const TYPE_LABEL: Record<string, string> = {
   like: '点赞',
@@ -60,8 +61,9 @@ export default function NotificationsPage() {
 
   return (
     <div className="kh-page">
+      <ProfileSubNav />
       <Space style={{ marginBottom: 16 }} wrap>
-        <h2 style={{ margin: 0 }}>通知</h2>
+        <h2 style={{ margin: 0, fontSize: 18, color: 'var(--kh-ink)' }}>消息通知</h2>
         <Button
           onClick={async () => {
             try {
@@ -91,7 +93,9 @@ export default function NotificationsPage() {
           <List.Item
             style={{
               cursor: item.documentId ? 'pointer' : 'default',
-              background: item.isRead ? undefined : '#f6ffed',
+              background: item.isRead ? undefined : '#F3F6FB',
+              paddingInline: 12,
+              borderRadius: 8,
             }}
             onClick={() => void open(item)}
           >

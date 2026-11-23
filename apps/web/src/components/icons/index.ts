@@ -4,7 +4,7 @@ export { KhIcon, type KhIconName, type KhIconProps } from './KhIcon'
 export { default } from './KhIcon'
 
 export const KH_ICON_META = [
-  { name: 'home', zh: '首页大盘', group: 'nav', use: '顶栏「首页大盘」、侧栏「工作概览」' },
+  { name: 'home', zh: '数据概览', group: 'nav', use: '顶栏与侧栏「数据概览」' },
   { name: 'documents', zh: '文档管理', group: 'nav', use: '顶栏「文档管理」、侧栏「全部文档」' },
   { name: 'search', zh: '全文检索', group: 'nav', use: '顶栏「文档搜索」、搜索框前缀' },
   { name: 'chat', zh: 'AI 智能问答', group: 'nav', use: '顶栏「AI智能问答」、侧栏「知识问答」、对话空状态' },

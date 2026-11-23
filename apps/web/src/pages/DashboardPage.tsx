@@ -44,16 +44,16 @@ import type {
 } from '../types'
 import { displayName, formatTime } from '../utils'
 
-/** 分类环形图配色（与 AntD 语义色板一致） */
+/** 分类环形图配色（承接深墨蓝 × 青铜金 × 克制语义色） */
 const CHART_COLORS = [
-  '#1677ff',
-  '#52c41a',
-  '#fa8c16',
-  '#722ed1',
-  '#13c2c2',
-  '#eb2f96',
-  '#faad14',
-  '#a0d911',
+  '#2352A0',
+  '#B08D4F',
+  '#2F855A',
+  '#0E7490',
+  '#5B4B8A',
+  '#C27803',
+  '#64748B',
+  '#9A3412',
 ]
 
 /** 操作类型 → 中文标签 + 颜色 + 图标 */
@@ -203,7 +203,7 @@ function ViewTrendChart({
       return
     }
     chart.setOption({
-      color: ['#1677ff'],
+      color: ['#2352A0'],
       tooltip: {
         trigger: 'axis',
         formatter: (params: unknown) => {
@@ -216,15 +216,15 @@ function ViewTrendChart({
         type: 'category',
         boundaryGap: false,
         data: data.map((item) => item.date.slice(5)),
-        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLine: { lineStyle: { color: '#E6E3D8' } },
         axisTick: { show: false },
-        axisLabel: { color: '#8c8c8c', fontSize: 11 },
+        axisLabel: { color: '#8A94A6', fontSize: 11 },
       },
       yAxis: {
         type: 'value',
         minInterval: 1,
-        splitLine: { lineStyle: { color: '#f0f0f0' } },
-        axisLabel: { color: '#8c8c8c', fontSize: 11 },
+        splitLine: { lineStyle: { color: '#EFECE3' } },
+        axisLabel: { color: '#8A94A6', fontSize: 11 },
       },
       series: [
         {
@@ -233,12 +233,12 @@ function ViewTrendChart({
           symbol: 'circle',
           symbolSize: 6,
           data: data.map((item) => item.count),
-          lineStyle: { width: 2 },
+          lineStyle: { width: 2.2 },
           itemStyle: { borderWidth: 2, borderColor: '#fff' },
           areaStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(22, 119, 255, 0.18)' },
-              { offset: 1, color: 'rgba(22, 119, 255, 0.02)' },
+              { offset: 0, color: 'rgba(35, 82, 160, 0.16)' },
+              { offset: 1, color: 'rgba(35, 82, 160, 0.01)' },
             ]),
           },
         },
@@ -355,40 +355,40 @@ export default function DashboardPage() {
         key: 'doc',
         label: '文档总数',
         value: stats?.documentCount ?? 0,
-        color: '#1677ff',
-        bg: '#e6f4ff',
+        color: '#2352A0',
+        bg: '#EEF3FA',
         icon: <FileTextOutlined />,
       },
       {
         key: 'view',
         label: '累计浏览',
         value: stats?.viewCount ?? 0,
-        color: '#52c41a',
-        bg: '#f6ffed',
+        color: '#2F855A',
+        bg: '#EDF7F1',
         icon: <EyeOutlined />,
       },
       {
         key: 'like',
         label: '获得点赞',
         value: stats?.likeCount ?? 0,
-        color: '#fa8c16',
-        bg: '#fff7e6',
+        color: '#9A7638',
+        bg: '#F6EFE2',
         icon: <LikeOutlined />,
       },
       {
         key: 'comment',
         label: '互动评论',
         value: stats?.commentCount ?? 0,
-        color: '#722ed1',
-        bg: '#f9f0ff',
+        color: '#5B4B8A',
+        bg: '#F2EFF8',
         icon: <CommentOutlined />,
       },
       {
         key: 'category',
         label: '文档分类',
         value: categoryCount,
-        color: '#13c2c2',
-        bg: '#e6fffb',
+        color: '#0E7490',
+        bg: '#ECF6F9',
         icon: <FolderOutlined />,
       },
     ],
@@ -471,7 +471,7 @@ export default function DashboardPage() {
     <div className="kh-page kh-dashboard">
       <div className="kh-dash-head">
         <div>
-          <h2 className="kh-dash-title">数据总览</h2>
+          <h2 className="kh-dash-title">数据概览</h2>
           <div className="kh-dash-sub">
             <span>你好，{displayName(user)}</span>
             <span className="kh-dash-dot">·</span>

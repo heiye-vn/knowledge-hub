@@ -14,6 +14,7 @@ import { teamApi, userApi } from '../api'
 import { ApiError } from '../api/client'
 import type { TeamItem, UserStats } from '../types'
 import { updateUser, useAuth } from '../auth'
+import { ProfileSubNav } from '../components/ProfileSubNav'
 
 export default function ProfilePage() {
   const user = useAuth()
@@ -33,6 +34,7 @@ export default function ProfilePage() {
 
   return (
     <div className="kh-page">
+      <ProfileSubNav />
       <Row gutter={16}>
         <Col span={8}>
           <Statistic title="我的文档" value={stats?.documentCount ?? 0} />
