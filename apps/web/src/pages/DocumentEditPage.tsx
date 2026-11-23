@@ -9,11 +9,10 @@ import { canWriteDocument, flattenCategories, flattenTeams, isAdmin } from '../u
 
 export default function DocumentEditPage() {
   const { id } = useParams()
-  const isNew = !id
   const navigate = useNavigate()
   const user = useAuth()
   const [form] = Form.useForm()
-  const [loading, setLoading] = useState(!isNew)
+  const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
   const [teams, setTeams] = useState<TeamItem[]>([])
   const [categories, setCategories] = useState<{ value: string; label: string }[]>([])
@@ -101,7 +100,7 @@ export default function DocumentEditPage() {
 
   return (
     <div className="kh-page">
-      <h2 style={{ marginTop: 0 }}>{isNew ? '新建文档' : '编辑文档'}</h2>
+      <h2 style={{ marginTop: 0 }}>编辑文档</h2>
       <p className="kh-access-hint">
         公开：所有登录用户可见。指定团队：发布后团队成员可见。都不选：仅自己可见。
       </p>
@@ -118,6 +117,7 @@ export default function DocumentEditPage() {
           teamId?: string
           content: string
         }) => {
+          if (!id) return
           try {
             const payload = {
               title: values.title,
@@ -128,18 +128,9 @@ export default function DocumentEditPage() {
               isPublic: values.isPublic,
               teamId: values.teamId || null,
             }
-            if (isNew) {
-              const created = await documentApi.create({
-                ...payload,
-                status: 0,
-              })
-              message.success('已保存为草稿')
-              navigate(`/documents/${created.id}`)
-            } else if (id) {
-              await documentApi.update(id, payload)
-              message.success('文档已更新保存')
-              navigate(`/documents/${id}`)
-            }
+            await documentApi.update(id, payload)
+            message.success('文档已更新保存')
+            navigate(`/documents/${id}`)
           } catch (error) {
             message.error(
               error instanceof ApiError ? error.message : '保存失败',

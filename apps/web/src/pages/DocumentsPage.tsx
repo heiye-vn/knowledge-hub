@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { EditOutlined } from '@ant-design/icons'
 import {
@@ -26,9 +26,14 @@ import {
 } from '../utils'
 import { FileTypeIcon, fileTypeLabel } from '../components/FileTypeIcon'
 import { KhIcon } from '../components/icons'
-import { DocumentImports } from '../components/DocumentImports'
+import {
+  DocumentImportBar,
+  DocumentImportsSidebar,
+  useImportJobs,
+} from '../components/DocumentImports'
+import { CreateDocumentModal } from '../components/CreateDocumentModal'
 
-export default function DocumentsPage() {
+function DocumentsWorkspace() {
   const user = useAuth()
   const navigate = useNavigate()
   const [title, setTitle] = useState('')
@@ -40,28 +45,40 @@ export default function DocumentsPage() {
   const [total, setTotal] = useState(0)
   const [items, setItems] = useState<DocumentItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const pageSize = 10
+  const canCreate = can(user, 'document:create')
 
-  async function load(nextPage = page) {
-    setLoading(true)
-    try {
-      const res = await documentApi.list({
-        page: nextPage,
-        pageSize,
-        title: title.trim() || undefined,
-        status,
-        categoryId,
-        authorId: mineOnly ? user?.userId : undefined,
-      })
-      setItems(res.items)
-      setTotal(res.total)
-      setPage(nextPage)
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : '加载失败')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const load = useCallback(
+    async (nextPage: number) => {
+      setLoading(true)
+      try {
+        const res = await documentApi.list({
+          page: nextPage,
+          pageSize,
+          title: title.trim() || undefined,
+          status,
+          categoryId,
+          authorId: mineOnly ? user?.userId : undefined,
+        })
+        setItems(res.items)
+        setTotal(res.total)
+        setPage(nextPage)
+      } catch (error) {
+        message.error(error instanceof ApiError ? error.message : '加载失败')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [title, status, categoryId, mineOnly, user?.userId],
+  )
+
+  // 有后台导入任务完成时自动刷新第 1 页文档列表
+  const handleImportCompleted = useCallback(() => {
+    void load(1)
+  }, [load])
+
+  const importJobs = useImportJobs(canCreate, handleImportCompleted)
 
   useEffect(() => {
     categoryApi
@@ -76,168 +93,193 @@ export default function DocumentsPage() {
       )
       .catch(() => setCategories([]))
     void load(1)
+    // 仅在首次挂载时拉取分类与默认列表；后续查询由用户点击触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
-    <div className="kh-page">
-      <p className="kh-access-hint">
-        列表只展示你能看的文档：公开、所在团队，以及自己写的。编辑 / 发布仅作者或管理员可用。
-      </p>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Input
-          allowClear
-          placeholder="标题搜索"
-          style={{ width: 240 }}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onPressEnter={() => void load(1)}
-        />
-        <Select
-          allowClear
-          placeholder="分类"
-          style={{ width: 180 }}
-          value={categoryId}
-          onChange={setCategoryId}
-          options={categories}
-        />
-        <Select
-          allowClear
-          placeholder="状态"
-          style={{ width: 140 }}
-          value={status}
-          onChange={setStatus}
-          options={Object.entries(DOC_STATUS).map(([k, v]) => ({
-            value: Number(k),
-            label: v.label,
-          }))}
-        />
-        <Checkbox checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)}>
-          仅我的
-        </Checkbox>
-        <Button onClick={() => void load(1)}>查询</Button>
-        {can(user, 'document:create') ? (
-          <Button type="primary" onClick={() => navigate('/documents/new')}>
-            新建文档
-          </Button>
+    <div className={`kh-docs-layout${canCreate ? ' has-aside' : ''}`}>
+      <section className="kh-docs-main" aria-label="文档管理">
+        <p className="kh-access-hint">
+          列表只展示你能看的文档：公开、所在团队，以及自己写的。编辑 / 发布仅作者或管理员可用。
+        </p>
+        {canCreate ? (
+          <DocumentImportBar
+            controller={importJobs}
+            onCreateClick={() => setCreateOpen(true)}
+          />
         ) : null}
-      </Space>
-      {user ? <DocumentImports key={user.userId} canUpload={can(user, 'document:create')} /> : null}
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={items}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          onChange: (p) => void load(p),
-        }}
-        columns={[
-          {
-            title: '标题',
-            dataIndex: 'title',
-            render: (value: string, row: DocumentItem) => (
-              <a
-                onClick={() => navigate(`/documents/${row.id}`)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <FileTypeIcon name={row.title} />
-                {value}
-              </a>
-            ),
-          },
-          {
-            title: '文件类型',
-            dataIndex: 'title',
-            width: 100,
-            render: (docTitle: string) => fileTypeLabel(docTitle),
-          },
-          {
-            title: '分类',
-            dataIndex: 'categoryName',
-            width: 140,
-            render: (value?: string | null) => value || '-',
-          },
-          {
-            title: '状态',
-            dataIndex: 'status',
-            width: 100,
-            render: (s: number) => (
-              <Tag color={DOC_STATUS[s]?.color}>{DOC_STATUS[s]?.label}</Tag>
-            ),
-          },
-          {
-            title: '可见性',
-            width: 110,
-            render: (_: unknown, row: DocumentItem) => {
-              const vis = getVisibilityMeta(row)
-              return <Tag color={vis.color}>{vis.label}</Tag>
+        <Space style={{ marginBottom: 16 }} wrap>
+          <Input
+            allowClear
+            placeholder="标题搜索"
+            style={{ width: 220 }}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onPressEnter={() => void load(1)}
+          />
+          <Select
+            allowClear
+            placeholder="分类"
+            style={{ width: 160 }}
+            value={categoryId}
+            onChange={setCategoryId}
+            options={categories}
+          />
+          <Select
+            allowClear
+            placeholder="状态"
+            style={{ width: 130 }}
+            value={status}
+            onChange={setStatus}
+            options={Object.entries(DOC_STATUS).map(([k, v]) => ({
+              value: Number(k),
+              label: v.label,
+            }))}
+          />
+          <Checkbox
+            checked={mineOnly}
+            onChange={(e) => setMineOnly(e.target.checked)}
+          >
+            仅我的
+          </Checkbox>
+          <Button onClick={() => void load(1)}>查询</Button>
+        </Space>
+        <Table
+          rowKey="id"
+          loading={loading}
+          dataSource={items}
+          scroll={{ x: 'max-content' }}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            onChange: (p) => void load(p),
+          }}
+          columns={[
+            {
+              title: '标题',
+              dataIndex: 'title',
+              ellipsis: true,
+              render: (value: string, row: DocumentItem) => (
+                <a
+                  onClick={() => navigate(`/documents/${row.id}`)}
+                  className="kh-doc-title-link"
+                >
+                  <FileTypeIcon name={row.title} />
+                  <span>{value}</span>
+                </a>
+              ),
             },
-          },
-          {
-            title: '更新时间',
-            dataIndex: 'updatedAt',
-            width: 180,
-            render: formatTime,
-          },
-          {
-            title: '操作',
-            width: 160,
-            render: (_: unknown, row: DocumentItem) => {
-              const writable =
-                can(user, 'document:edit') && canWriteDocument(row, user)
-              return (
-                <Space size={12}>
-                  {writable ? (
-                    <Tooltip title="编辑文档">
-                      <a
-                        onClick={() => navigate(`/documents/${row.id}/edit`)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
-                      >
-                        <EditOutlined /> 编辑
-                      </a>
-                    </Tooltip>
-                  ) : null}
-                  {writable && row.status === 0 ? (
-                    <Tooltip title="提交发布（触发 RAG 索引重建）">
-                      <a
-                        onClick={async () => {
-                          try {
-                            await documentApi.publish(row.id)
-                            message.success('已提交发布')
-                            void load()
-                          } catch (error) {
-                            message.error(
-                              error instanceof ApiError
-                                ? error.message
-                                : '发布失败',
-                            )
-                          }
-                        }}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
-                      >
-                        <KhIcon name="publish" size={14} /> 发布
-                      </a>
-                    </Tooltip>
-                  ) : null}
-                </Space>
-              )
+            {
+              title: '文件类型',
+              dataIndex: 'title',
+              width: 100,
+              render: (docTitle: string) => fileTypeLabel(docTitle),
             },
-          },
-        ]}
-      />
+            {
+              title: '分类',
+              dataIndex: 'categoryName',
+              width: 128,
+              ellipsis: true,
+              render: (value?: string | null) => value || '-',
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 96,
+              render: (s: number) => (
+                <Tag color={DOC_STATUS[s]?.color}>{DOC_STATUS[s]?.label}</Tag>
+              ),
+            },
+            {
+              title: '可见性',
+              width: 96,
+              render: (_: unknown, row: DocumentItem) => {
+                const vis = getVisibilityMeta(row)
+                return <Tag color={vis.color}>{vis.label}</Tag>
+              },
+            },
+            {
+              title: '更新时间',
+              dataIndex: 'updatedAt',
+              width: 168,
+              render: formatTime,
+            },
+            {
+              title: '操作',
+              width: 140,
+              render: (_: unknown, row: DocumentItem) => {
+                const writable =
+                  can(user, 'document:edit') && canWriteDocument(row, user)
+                return (
+                  <Space size={10}>
+                    {writable ? (
+                      <Tooltip title="编辑文档">
+                        <a
+                          onClick={() => navigate(`/documents/${row.id}/edit`)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <EditOutlined /> 编辑
+                        </a>
+                      </Tooltip>
+                    ) : null}
+                    {writable && row.status === 0 ? (
+                      <Tooltip title="提交发布（触发 RAG 索引重建）">
+                        <a
+                          onClick={async () => {
+                            try {
+                              await documentApi.publish(row.id)
+                              message.success('已提交发布')
+                              void load(page)
+                            } catch (error) {
+                              message.error(
+                                error instanceof ApiError
+                                  ? error.message
+                                  : '发布失败',
+                              )
+                            }
+                          }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <KhIcon name="publish" size={14} /> 发布
+                        </a>
+                      </Tooltip>
+                    ) : null}
+                  </Space>
+                )
+              },
+            },
+          ]}
+        />
+        {canCreate ? (
+          <CreateDocumentModal
+            open={createOpen}
+            categories={categories}
+            onCancel={() => setCreateOpen(false)}
+            onCreated={() => {
+              setCreateOpen(false)
+              void load(1)
+            }}
+          />
+        ) : null}
+      </section>
+
+      {canCreate ? <DocumentImportsSidebar controller={importJobs} /> : null}
     </div>
   )
+}
+
+/** 按账号 ID 挂载，确保切换账号后导入任务队列与筛选状态彻底隔离 */
+export default function DocumentsPage() {
+  const user = useAuth()
+  return <DocumentsWorkspace key={user?.userId ?? 'guest'} />
 }

@@ -2,7 +2,12 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
-import { DocumentImports, ImportJobList } from './DocumentImports'
+import {
+  DocumentImports,
+  DocumentImportsSidebar,
+  ImportJobList,
+} from './DocumentImports'
+import { ImportJobs } from '../document-imports'
 import type { ImportTaskView } from '../types'
 
 const task: ImportTaskView = {
@@ -26,6 +31,15 @@ describe('recent imports UI', () => {
     expect(html).toContain('展开导入记录')
     expect(html).toContain('清空记录')
     expect(html).not.toContain('我的最近导入')
+    expect(html).not.toContain('在线新建文档')
+  })
+
+  it('renders secondary create-document card when onCreateClick is provided', () => {
+    const html = renderToStaticMarkup(
+      createElement(DocumentImports, { canUpload: true, onCreateClick: () => {} }),
+    )
+    expect(html).toContain('上传文件，后台自动解析')
+    expect(html).toContain('在线新建文档')
   })
 
   it.each([['uploading', '接收文件'], ['storing', '存储资源'], ['downloading', '下载解析结果']])('labels backend stage %s', (stage, label) => {
@@ -66,5 +80,36 @@ describe('recent imports UI', () => {
   it('falls back to the raw state label for unknown states instead of crashing', () => {
     const html = render([{ ...task, state: 'paused' as unknown as ImportTaskView['state'] }])
     expect(html).toContain('paused')
+  })
+
+  it('renders right-side imports panel with compact cards and empty guidance', () => {
+    const jobs = new ImportJobs()
+    const html = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(DocumentImportsSidebar, {
+          controller: {
+            jobs,
+            state: {
+              items: [task],
+              loading: false,
+              error: null,
+              submitting: false,
+              uploadError: null,
+              canRetryUpload: false,
+              retrying: [],
+            },
+            activeCount: 1,
+            failedCount: 0,
+            finishedCount: 0,
+          },
+        }),
+      ),
+    )
+    expect(html).toContain('导入记录')
+    expect(html).toContain('处理中 1')
+    expect(html).toContain('原文件.pdf')
+    expect(html).toContain('阶段：文字识别')
   })
 })

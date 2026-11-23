@@ -72,13 +72,10 @@ export default function App() {
             </Perm>
           }
         />
+        {/* 在线新建文档已收口为列表页弹窗，旧书签链接统一回流至全部文档 */}
         <Route
           path="documents/new"
-          element={
-            <Perm code="document:create">
-              <DocumentEditPage />
-            </Perm>
-          }
+          element={<Navigate to="/documents" replace />}
         />
         <Route
           path="documents/:id/versions"
