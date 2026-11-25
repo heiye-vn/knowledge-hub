@@ -6,6 +6,7 @@ import {
   rewriteImageUrls,
 } from './image-references.js';
 import { MineruError } from './mineru-error.js';
+import { normalizeMineruTables } from './normalize-mineru-tables.js';
 import { rasterContentType } from './raster-signature.js';
 import type { ParsedDocument, ParsedImage } from './parse-result.js';
 
@@ -275,7 +276,7 @@ export function extractMineruArchive(
     seen.add(path);
   }
   return {
-    markdown: rewriteImageUrls(markdown, replacements),
+    markdown: normalizeMineruTables(rewriteImageUrls(markdown, replacements)),
     images,
     warnings: [],
     parser: 'mineru',

@@ -56,6 +56,16 @@
 - 问答、改写、相关性判断共用 `context-budget.ts`，按保守的 UTF-8 字节预算保留完整块，超预算跳过整块并保留原引用编号；
 - 不把截断后的片段塞给模型。
 
+### 7. MinerU 全 `<td>` 紧凑 HTML 表格后处理规范化
+
+**【实录】** MinerU 返回的 `full.md` 中表格均为单行无结构标签的 `<table><tr><td>...</td></tr></table>`（无 `<thead>` / `<th>`），导致前端无法高亮表头、编辑页难以维护，且 `markdown-structure.ts` 的 `splitHtmlTable` 无法识别表头并在长表分片时重复。
+
+- **解法**：在 `mineru-archive.ts` 解包后统一经过 `normalizeMineruTables`（跳过 fenced code block 与已有 `<thead>`/`<th>` 的表格）按三路分流：
+  1. 简单多列/列头数据表 → 转标准 GFM Markdown 表格（复用 `toMarkdownTable`）；
+  2. 无表头的 2 列键值属性表（右列首行含数字或长值且非通用列头词） → 保留格式化多行 HTML，左列升级为 `<th scope="row">`；
+  3. 含 `colspan` / `rowspan` 或复杂内嵌标签的表格 → 保留格式化多行 HTML 并为顶部表头行补齐 `<thead>` + `<th>` + `<tbody>`。
+- **验证**：见 `normalize-mineru-tables.spec.ts` 与 `web/src/components/markdown.spec.ts`；前端 `.kh-markdown-table` 同步补齐列竖线、`thead th` / `tbody th` 层级样式与 `word-break: normal` 防首列硬断词，并在 `DocumentMarkdown` 白名单放行 `th[scope]`。
+
 ---
 
 ## 关键易错点
