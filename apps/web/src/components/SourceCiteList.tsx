@@ -16,6 +16,23 @@ export interface CiteItem {
   documentTitle: string
   heading?: string | null
   excerpt?: string
+  chunkId?: string
+  chunkIndex?: number
+  totalChunks?: number
+}
+
+export function buildDocumentLocateUrl(item: {
+  documentId: string
+  chunkIndex?: number | null
+  heading?: string | null
+  excerpt?: string | null
+}): string {
+  const params = new URLSearchParams()
+  params.set('tab', 'content')
+  if (item.chunkIndex != null) params.set('chunk', String(item.chunkIndex))
+  if (item.heading) params.set('heading', item.heading)
+  if (item.excerpt) params.set('excerpt', item.excerpt.slice(0, 160))
+  return `/documents/${item.documentId}?${params.toString()}`
 }
 
 export function citeAnchorId(scope: string, index: number) {
@@ -41,11 +58,13 @@ export function SourceCiteList({
   scope,
   activeIndex,
   onSelect,
+  onInspect,
 }: {
   items: CiteItem[]
   scope: string
   activeIndex?: number | null
   onSelect?: (index: number) => void
+  onInspect?: (item: CiteItem) => void
 }) {
   if (!items.length) return null
   return (
@@ -54,21 +73,27 @@ export function SourceCiteList({
       <div className="kh-cite-rail">
         {items.map((s, i) => {
           const index = s.index ?? i + 1
+          const locateUrl = buildDocumentLocateUrl(s)
           return (
             <div
               key={`${s.documentId}-${index}`}
               id={citeAnchorId(scope, index)}
               className={`kh-cite${activeIndex === index ? ' active' : ''}`}
-              onClick={() => onSelect?.(index)}
+              onClick={() => {
+                onSelect?.(index)
+                onInspect?.({ ...s, index })
+              }}
             >
               <FileTypeIcon name={s.documentTitle} size={28} />
               <div className="kh-cite-body">
                 <div className="kh-cite-title" title={s.documentTitle}>
                   [{index}] {s.documentTitle}
                 </div>
-                {s.heading ? (
-                  <div className="kh-cite-heading" title={s.heading}>
-                    {s.heading}
+                {s.heading || s.chunkIndex != null ? (
+                  <div className="kh-cite-heading" title={s.heading ?? undefined}>
+                    {s.chunkIndex != null ? `切块 #${s.chunkIndex + 1}` : ''}
+                    {s.chunkIndex != null && s.heading ? ' · ' : ''}
+                    {s.heading ?? ''}
                   </div>
                 ) : null}
                 {s.excerpt ? (
@@ -76,15 +101,30 @@ export function SourceCiteList({
                     {s.excerpt}
                   </div>
                 ) : null}
-                <Link
-                  className="kh-cite-open"
-                  to={`/documents/${s.documentId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  查看原文
-                </Link>
+                <div className="kh-cite-actions">
+                  {onInspect ? (
+                    <button
+                      type="button"
+                      className="kh-cite-inspect-btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onSelect?.(index)
+                        onInspect({ ...s, index })
+                      }}
+                    >
+                      原文溯源
+                    </button>
+                  ) : null}
+                  <Link
+                    className="kh-cite-open"
+                    to={locateUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    新标签打开
+                  </Link>
+                </div>
               </div>
             </div>
           )
@@ -100,11 +140,13 @@ export function AnswerMarkdown({
   sources,
   scope,
   onCite,
+  onInspect,
 }: {
   text: string
   sources?: CiteItem[]
   scope: string
   onCite?: (index: number) => void
+  onInspect?: (item: CiteItem) => void
 }) {
   const byIndex = new Map(
     (sources ?? [])
@@ -116,8 +158,12 @@ export function AnswerMarkdown({
     (index: number) => {
       onCite?.(index)
       focusCite(scope, index)
+      const matched = byIndex.get(index)
+      if (matched && onInspect) {
+        onInspect({ ...matched, index })
+      }
     },
-    [onCite, scope],
+    [onCite, onInspect, scope, byIndex],
   )
 
   const wrap = (children: ReactNode) => injectCites(children, byIndex, handleCite)

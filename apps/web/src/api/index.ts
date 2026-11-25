@@ -9,6 +9,7 @@ import type {
   ChatSession,
   ChunkHit,
   CommentItem,
+  DocumentChunksResponse,
   DocumentItem,
   DocumentOverviewStats,
   DocumentVersionDetail,
@@ -54,6 +55,8 @@ export const documentApi = {
     return get<PageResult<DocumentItem>>(`/documents${qs ? `?${qs}` : ''}`)
   },
   get: (id: string) => get<DocumentItem>(`/documents/${id}`),
+  chunks: (id: string) =>
+    get<DocumentChunksResponse>(`/documents/${id}/chunks`),
   create: (body: Record<string, unknown>) => post<DocumentItem>('/documents', body),
   update: (id: string, body: Record<string, unknown>) =>
     patch<DocumentItem>(`/documents/${id}`, body),

@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { getToolName, isToolUIPart } from 'ai'
-import { AnswerMarkdown, SourceCiteList } from './SourceCiteList'
+import { AnswerMarkdown, SourceCiteList, type CiteItem } from './SourceCiteList'
 import { ForceGraph } from './ForceGraph'
 import { KhIcon, type KhIconName } from './icons'
 import { formatStepError } from '../chat-error-utils'
@@ -47,11 +47,13 @@ export function ChatMessageParts({
   parts,
   role,
   showSources = true,
+  onInspectSource,
 }: {
   messageId: string
   parts: KhUIMessage['parts']
   role: KhUIMessage['role']
   showSources?: boolean
+  onInspectSource?: (item: CiteItem) => void
 }) {
   const sources = citedSources(sourcesFromParts(parts), textFromParts(parts))
   const [activeCite, setActiveCite] = useState<number | null>(null)
@@ -100,6 +102,7 @@ export function ChatMessageParts({
               sources={sources}
               scope={messageId}
               onCite={setActiveCite}
+              onInspect={onInspectSource}
             />
           </div>
         ) : null,
@@ -110,6 +113,7 @@ export function ChatMessageParts({
           scope={messageId}
           activeIndex={activeCite}
           onSelect={setActiveCite}
+          onInspect={onInspectSource}
         />
       ) : null}
     </>

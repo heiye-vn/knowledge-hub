@@ -16,8 +16,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import {
+  ArrowDownOutlined,
   DeleteOutlined,
-  DownOutlined,
   PlusOutlined,
   SearchOutlined,
   SendOutlined,
@@ -38,6 +38,8 @@ import { formatChatError } from '../chat-error-utils'
 import { BrandLogo } from '../components/BrandLogo'
 import { ChatErrorCard } from '../components/ChatErrorCard'
 import { ChatMessageParts } from '../components/ChatMessageParts'
+import type { CiteItem } from '../components/SourceCiteList'
+import { SourceInspectDrawer } from '../components/SourceInspectDrawer'
 import { KhEmpty } from '../components/KhEmpty'
 import { KhIcon } from '../components/icons'
 import {
@@ -83,6 +85,7 @@ export default function ChatPage() {
   const [topK, setTopK] = useState(5)
   const [mode, setMode] = useState<SearchMode>('hybrid')
   const [ragOnlyLoading, setRagOnlyLoading] = useState(false)
+  const [inspectSource, setInspectSource] = useState<CiteItem | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<ComponentRef<typeof Input.TextArea>>(null)
   const sessionIdRef = useRef(sessionId)
@@ -170,6 +173,10 @@ export default function ChatPage() {
   useEffect(() => {
     void loadSessions()
   }, [loadSessions])
+
+  useEffect(() => {
+    setInspectSource(null)
+  }, [sessionId])
 
   useEffect(() => {
     if (streaming) return
@@ -389,6 +396,7 @@ export default function ChatPage() {
       message.warning('请等待当前回答结束再开新对话')
       return
     }
+    setInspectSource(null)
     if (!isFreshDraft) {
       loadedSessionRef.current = undefined
       clearError()
@@ -614,6 +622,7 @@ export default function ChatPage() {
                         parts={m.parts}
                         role={m.role}
                         showSources={!liveAssistant}
+                        onInspectSource={setInspectSource}
                       />
                     </div>
                   )
@@ -632,14 +641,16 @@ export default function ChatPage() {
               </div>
             </div>
             {showJump ? (
-              <Button
-                className="kh-chat-jump"
-                size="small"
-                icon={<DownOutlined />}
-                onClick={jumpToBottom}
-              >
-                回到底部
-              </Button>
+              <Tooltip title="回到底部" placement="top">
+                <button
+                  type="button"
+                  className={`kh-chat-jump${streaming ? ' is-streaming' : ''}`}
+                  aria-label="回到底部"
+                  onClick={jumpToBottom}
+                >
+                  <ArrowDownOutlined />
+                </button>
+              </Tooltip>
             ) : null}
           </div>
         )}
@@ -648,6 +659,13 @@ export default function ChatPage() {
           <div className="kh-chat-dock-inner">{composer}</div>
         </div>
       </section>
+
+      {inspectSource ? (
+        <SourceInspectDrawer
+          source={inspectSource}
+          onClose={() => setInspectSource(null)}
+        />
+      ) : null}
     </div>
   )
 }
