@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ElasticsearchService } from './elasticsearch.service.js';
 import type { DocumentChunk } from './types/rag.types.js';
 import { VectorIndexService } from './vector-index.service.js';
@@ -155,5 +155,87 @@ describe('VectorIndexService（ES 禁用场景）', () => {
       service.indexChunks(makeChunks('x', 1)),
     ).resolves.toBeUndefined();
     await expect(service.deleteByDocumentId('x')).resolves.toBeUndefined();
+    await expect(service.findByDocumentId('x')).resolves.toEqual({
+      items: [],
+      total: 0,
+    });
+  });
+
+  it('findByDocumentId 按 chunk_index 升序返回且排除 embedding，遇到 index_not_found 返回空', async () => {
+    const search = vi.fn().mockResolvedValue({
+      hits: {
+        total: { value: 2 },
+        hits: [
+          {
+            _id: 'c0',
+            _source: {
+              chunk_id: 'c0',
+              document_id: 'doc-1',
+              chunk_index: 0,
+              total_chunks: 2,
+              heading: '第一章',
+              content: '第一块正文',
+              indexed_at: '2026-11-24T10:00:00.000Z',
+            },
+          },
+          {
+            _id: 'c1',
+            _source: {
+              chunk_id: 'c1',
+              document_id: 'doc-1',
+              chunk_index: 1,
+              total_chunks: 2,
+              heading: null,
+              content: '第二块正文',
+              indexed_at: '2026-11-24T10:00:00.000Z',
+            },
+          },
+        ],
+      },
+    });
+    const esMock = {
+      isEnabled: () => true,
+      getIndexName: () => 'kh_chunk',
+      getClient: () => ({ search }),
+    } as unknown as ElasticsearchService;
+    const service = new VectorIndexService(esMock);
+
+    const result = await service.findByDocumentId('doc-1');
+    expect(search).toHaveBeenCalledWith({
+      index: 'kh_chunk',
+      query: { term: { document_id: 'doc-1' } },
+      sort: [{ chunk_index: 'asc' }],
+      size: 500,
+      _source: { excludes: ['embedding'] },
+    });
+    expect(result).toEqual({
+      total: 2,
+      items: [
+        {
+          chunkId: 'c0',
+          chunkIndex: 0,
+          totalChunks: 2,
+          heading: '第一章',
+          content: '第一块正文',
+          charLength: 5,
+          indexedAt: '2026-11-24T10:00:00.000Z',
+        },
+        {
+          chunkId: 'c1',
+          chunkIndex: 1,
+          totalChunks: 2,
+          heading: null,
+          content: '第二块正文',
+          charLength: 5,
+          indexedAt: '2026-11-24T10:00:00.000Z',
+        },
+      ],
+    });
+
+    search.mockRejectedValueOnce(new Error('index_not_found_exception'));
+    await expect(service.findByDocumentId('doc-1')).resolves.toEqual({
+      items: [],
+      total: 0,
+    });
   });
 });

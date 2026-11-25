@@ -611,6 +611,12 @@ describe('packRetrieveResult', () => {
       writer as never,
     );
     expect(first.items.map((item) => item.index)).toEqual([1, 2]);
+    expect(first.items[0].chunkId).toBe('a');
+    expect(first.items[0].chunkIndex).toBe(0);
+    expect(first.items[0].totalChunks).toBe(1);
+    expect(sources[0].chunkId).toBe('a');
+    expect(sources[0].chunkIndex).toBe(0);
+    expect(sources[0].totalChunks).toBe(1);
     expect(first.context).toContain('[1] 文档 a');
     expect(first.context).toContain('[2] 文档 b');
     expect(writer.write).toHaveBeenCalledWith(

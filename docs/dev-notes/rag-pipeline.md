@@ -301,3 +301,17 @@ return hits.filter(h => liveDocIds.has(h.documentId));
 
 `RagModule` 专注于 RAG 向量管线；文档的审核与生命周期由 `DocumentModule` 编排。
 外部失败进入 Outbox 补偿表，确保检索索引与数据库最终一致。
+
+---
+
+## 8. 文档切块查询与引用原文溯源
+
+### 【实录】切块不入 PG，直接以 ES `kh_chunk` 作为单一读源
+
+- **原因**：切块文本、章节 `heading`、序号 `chunk_index` 与 `total_chunks` 已完整存储在 ES `kh_chunk` 中；若在 PG 另建切块表反而引入跨库双写一致性成本。
+- **实现**：
+  - `VectorIndexService.findByDocumentId(documentId)` 按 `chunk_index` 升序拉取切块，并用 `_source: { excludes: ['embedding'] }` 排除向量字段；
+  - `DocumentController` 新增 `GET /documents/:id/chunks`（复用 `DocumentService.findOne` 的数字 ID 与 ACL 读取校验；非已发布态或 ES 关闭时返回 `indexed: false` 与空列表）；
+  - `ChatSource`（`ai-chat.service.ts` / `ai-stream.service.ts`）透传可选字段 `chunkId`、`chunkIndex`、`totalChunks`，保持历史消息向后兼容；
+  - 前端在文档详情页与问答右侧「原文溯源」抽屉复用 `DocumentInspectorTabs`（文档正文 / 文档原件 / 文档切块），并按 `heading` 作用域 + 剥离 Markdown 标记的短语匹配实现正文滚动定位与高亮。
+- **验证**：`vector-index.service.spec.ts`、`document.service.spec.ts`、`ai-chat.service.spec.ts`、`ai-stream.service.spec.ts`、`markdown-locate.spec.ts`、`markdown.spec.ts`。

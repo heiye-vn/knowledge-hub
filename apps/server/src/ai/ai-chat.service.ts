@@ -462,6 +462,9 @@ export class AiChatService {
       heading: hit.heading,
       excerpt: this.excerpt(hit.content),
       score: hit.score,
+      chunkId: hit.chunkId,
+      chunkIndex: hit.chunkIndex,
+      totalChunks: hit.totalChunks,
     };
   }
 

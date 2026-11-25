@@ -7,4 +7,7 @@ export interface ChatSource {
   heading: string | null;
   excerpt: string;
   score: number;
+  chunkId?: string;
+  chunkIndex?: number;
+  totalChunks?: number;
 }

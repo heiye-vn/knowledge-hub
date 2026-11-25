@@ -2,6 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ElasticsearchService } from './elasticsearch.service.js';
 import type { DocumentChunk } from './types/rag.types.js';
 
+export interface StoredDocumentChunk {
+  chunkId: string;
+  chunkIndex: number;
+  totalChunks: number;
+  heading: string | null;
+  content: string;
+  charLength: number;
+  indexedAt: string | null;
+}
+
 /**
  * 向量索引存储（写入 ES `kh_chunk`）
  *
@@ -82,6 +92,69 @@ export class VectorIndexService {
     this.logger.log(
       `ES 批量索引成功：${chunks.length} chunks → ${index}`,
     );
+  }
+
+  /** 按文档 ID 读取已索引切块（按 chunk_index 升序，排除向量字段） */
+  async findByDocumentId(
+    documentId: string,
+    maxChunks = 500,
+  ): Promise<{ items: StoredDocumentChunk[]; total: number }> {
+    if (!this.esService.isEnabled()) {
+      return { items: [], total: 0 };
+    }
+
+    try {
+      const res = await this.esService.getClient().search({
+        index: this.esService.getIndexName(),
+        query: { term: { document_id: documentId } },
+        sort: [{ chunk_index: 'asc' }],
+        size: maxChunks,
+        _source: { excludes: ['embedding'] },
+      });
+
+      const items: StoredDocumentChunk[] = (res.hits?.hits ?? []).map(
+        (hit) => {
+          const src = (hit._source ?? {}) as Record<string, unknown>;
+          const content = typeof src.content === 'string' ? src.content : '';
+          return {
+            chunkId:
+              typeof src.chunk_id === 'string'
+                ? src.chunk_id
+                : String(hit._id ?? ''),
+            chunkIndex:
+              typeof src.chunk_index === 'number' ? src.chunk_index : 0,
+            totalChunks:
+              typeof src.total_chunks === 'number' ? src.total_chunks : 0,
+            heading: typeof src.heading === 'string' ? src.heading : null,
+            content,
+            charLength: content.length,
+            indexedAt:
+              typeof src.indexed_at === 'string' ? src.indexed_at : null,
+          };
+        },
+      );
+
+      const rawTotal = res.hits?.total as
+        | number
+        | { value?: number }
+        | undefined;
+      const hitTotal =
+        typeof rawTotal === 'number' ? rawTotal : (rawTotal?.value ?? 0);
+
+      return {
+        items,
+        total: Math.max(hitTotal, items.length),
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/index_not_found/i.test(message)) {
+        return { items: [], total: 0 };
+      }
+      this.logger.error(
+        `ES 查询文档切块失败：documentId=${documentId}, error=${message}`,
+      );
+      throw err;
+    }
   }
 
   private buildDocMap(chunk: DocumentChunk): Record<string, unknown> {

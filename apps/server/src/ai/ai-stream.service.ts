@@ -814,6 +814,9 @@ export function packRetrieveResult(
     heading: hit.heading,
     excerpt: excerpt(hit.content),
     score: hit.score,
+    chunkId: hit.chunkId,
+    chunkIndex: hit.chunkIndex,
+    totalChunks: hit.totalChunks,
   }));
   persistSources.push(...sources);
   // 空命中不写空数组：前端按最后一个非空 data-sources 取引用
@@ -839,6 +842,9 @@ export function packRetrieveResult(
       documentTitle: src.documentTitle,
       heading: src.heading,
       excerpt: src.excerpt,
+      chunkId: src.chunkId,
+      chunkIndex: src.chunkIndex,
+      totalChunks: src.totalChunks,
     })),
     context: packHitContext(hits, { indexOffset: offset }),
     ...extra,

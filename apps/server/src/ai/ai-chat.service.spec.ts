@@ -372,6 +372,9 @@ describe('AiChatService（mock 检索与 LLM）', () => {
     expect(res.sources[0].documentId).toBe('doc-a');
     expect(res.sources[1].documentId).toBe('doc-b');
     expect(res.sources[0].excerpt).toBe('内容 a');
+    expect(res.sources[0].chunkId).toBe('a');
+    expect(res.sources[0].chunkIndex).toBe(0);
+    expect(res.sources[0].totalChunks).toBe(1);
   });
 
   it('回答未标注 [n] 时回退为全部召回条目', async () => {
