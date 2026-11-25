@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Empty, Form, Input, Select, Spin, Switch, message } from 'antd'
 import { categoryApi, documentApi, teamApi } from '../api'
 import { ApiError } from '../api/client'
-import type { DocumentItem, TeamItem } from '../types'
+import type { DocumentItem } from '../types'
 import { useAuth } from '../auth'
 import { canWriteDocument, flattenCategories, flattenTeams, isAdmin } from '../utils'
 
@@ -14,14 +14,26 @@ export default function DocumentEditPage() {
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
-  const [teams, setTeams] = useState<TeamItem[]>([])
+  const [baseTeamOptions, setBaseTeamOptions] = useState<
+    { value: string; label: string }[]
+  >([])
   const [categories, setCategories] = useState<{ value: string; label: string }[]>([])
   const [doc, setDoc] = useState<DocumentItem | null>(null)
 
-  // 团队下拉数据源：管理员看全量团队树（打平），普通用户只看自己所在团队
+  // 团队下拉数据源：管理员看全量团队树（打平带层级缩进），普通用户只看自己所在团队
   useEffect(() => {
-    const req = isAdmin(user) ? teamApi.tree().then(flattenTeams) : teamApi.mine()
-    req.then((rows) => setTeams(rows as TeamItem[])).catch(() => setTeams([]))
+    const req = isAdmin(user)
+      ? teamApi
+          .tree()
+          .then((tree) =>
+            flattenTeams(tree).map((t) => ({ value: t.id, label: t.name })),
+          )
+      : teamApi
+          .mine()
+          .then((rows) =>
+            rows.map((t) => ({ value: t.id, label: t.teamName })),
+          )
+    req.then(setBaseTeamOptions).catch(() => setBaseTeamOptions([]))
     categoryApi
       .tree()
       .then((tree) =>
@@ -69,16 +81,13 @@ export default function DocumentEditPage() {
   }, [id, form, user])
 
   const teamOptions = useMemo(() => {
-    const options = (teams ?? []).map((team) => ({
-      value: team.id,
-      label: team.teamName,
-    }))
+    const options = [...baseTeamOptions]
     // 作者已不在该团队时，仍要保底展示当前归属，避免下拉显示为空
     if (doc?.teamId && !options.some((item) => item.value === doc.teamId)) {
       options.push({ value: doc.teamId, label: '当前团队' })
     }
     return options
-  }, [teams, doc?.teamId])
+  }, [baseTeamOptions, doc?.teamId])
 
   if (loading) {
     return (
@@ -93,6 +102,24 @@ export default function DocumentEditPage() {
       <div className="kh-page">
         <Empty description="无权编辑该文档">
           <Button onClick={() => navigate('/documents')}>返回列表</Button>
+        </Empty>
+      </div>
+    )
+  }
+
+  if (doc && doc.status !== 0) {
+    const blockMessage =
+      doc.status === 1
+        ? '已发布文档不可直接编辑，请先在文档详情页点击「下架编辑」转为草稿'
+        : doc.status === 3
+          ? '文档正在审核中，暂不可编辑'
+          : '已归档文档为只读终态，不可编辑'
+    return (
+      <div className="kh-page">
+        <Empty description={blockMessage}>
+          <Button onClick={() => navigate(`/documents/${id}`)}>
+            返回文档详情
+          </Button>
         </Empty>
       </div>
     )

@@ -24,7 +24,7 @@ const KH_THEME = {
     colorTextHeading: '#1B2A41',
     colorTextSecondary: '#5A6577',
     colorTextTertiary: '#8A94A6',
-    colorBgLayout: '#F9F8F4',
+    colorBgLayout: '#F8F7F3',
     colorBgContainer: '#FFFFFF',
     colorBorder: '#E6E3D8',
     colorBorderSecondary: '#EFECE3',
@@ -36,7 +36,7 @@ const KH_THEME = {
   },
   components: {
     Button: {
-      primaryShadow: '0 1px 2px rgba(27, 42, 65, 0.14)',
+      primaryShadow: 'none',
       defaultBorderColor: '#DCD8CB',
       defaultColor: '#1B2A41',
     },
@@ -46,16 +46,16 @@ const KH_THEME = {
       colorBorderSecondary: '#EAE7DD',
     },
     Table: {
-      headerBg: '#F7F5EF',
+      headerBg: '#F6F5F1',
       headerColor: '#1B2A41',
       headerSplitColor: '#E6E3D8',
       borderColor: '#EFECE3',
-      rowHoverBg: '#FAF9F5',
+      rowHoverBg: '#F7F8FA',
     },
     Input: {
       activeBorderColor: '#2352A0',
       hoverBorderColor: '#8CA4CC',
-      activeShadow: '0 0 0 2px rgba(35, 82, 160, 0.1)',
+      activeShadow: '0 0 0 2px rgba(35, 82, 160, 0.08)',
     },
     Select: {
       optionSelectedBg: '#EEF3FA',

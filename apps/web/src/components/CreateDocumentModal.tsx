@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Col, Form, Input, Modal, Row, Select, Switch, message } from 'antd'
 import { documentApi, teamApi } from '../api'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth'
-import type { DocumentItem, TeamItem } from '../types'
+import type { DocumentItem } from '../types'
 import { flattenTeams, isAdmin } from '../utils'
 
-type CategoryOption = {
+type SelectOption = {
   value: string
   label: string
 }
@@ -32,44 +32,45 @@ export function CreateDocumentModal({
   onCreated,
 }: {
   open: boolean
-  categories: CategoryOption[]
+  categories: SelectOption[]
   onCancel: () => void
   onCreated: (doc: DocumentItem) => void
 }) {
   const user = useAuth()
   const [form] = Form.useForm<CreateDocFormValues>()
   const [submitting, setSubmitting] = useState(false)
-  const [teams, setTeams] = useState<TeamItem[]>([])
+  const [teamOptions, setTeamOptions] = useState<SelectOption[]>([])
   const [teamsLoaded, setTeamsLoaded] = useState(false)
 
-  // 打开弹窗时按需加载团队列表，避免文档列表页初次加载时发出多余请求
+  // 打开弹窗时按需加载团队列表：管理员看打平后的全量团队树（带层级缩进），普通用户看自己所在团队
   useEffect(() => {
     if (!open || teamsLoaded) return
     let cancelled = false
-    const req = isAdmin(user) ? teamApi.tree().then(flattenTeams) : teamApi.mine()
+    const req: Promise<SelectOption[]> = isAdmin(user)
+      ? teamApi
+          .tree()
+          .then((tree) =>
+            flattenTeams(tree).map((t) => ({ value: t.id, label: t.name })),
+          )
+      : teamApi
+          .mine()
+          .then((rows) =>
+            rows.map((t) => ({ value: t.id, label: t.teamName })),
+          )
     req
-      .then((rows) => {
+      .then((options) => {
         if (!cancelled) {
-          setTeams(rows as TeamItem[])
+          setTeamOptions(options)
           setTeamsLoaded(true)
         }
       })
       .catch(() => {
-        if (!cancelled) setTeams([])
+        if (!cancelled) setTeamOptions([])
       })
     return () => {
       cancelled = true
     }
   }, [open, teamsLoaded, user])
-
-  const teamOptions = useMemo(
-    () =>
-      (teams ?? []).map((team) => ({
-        value: team.id,
-        label: team.teamName,
-      })),
-    [teams],
-  )
 
   function handleClose() {
     if (submitting) return

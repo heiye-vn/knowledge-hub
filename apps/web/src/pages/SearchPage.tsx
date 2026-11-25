@@ -188,7 +188,9 @@ export default function SearchPage() {
                   <ClockCircleOutlined /> 更新时间: {formatTime(hit.publishTime)}
                 </span>
                 {statusMeta ? (
-                  <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
+                  <Tag color={statusMeta.color} variant={statusMeta.variant}>
+                    {statusMeta.label}
+                  </Tag>
                 ) : null}
                 <Tag color={vis.color}>{vis.label}</Tag>
                 <Space size={4}>

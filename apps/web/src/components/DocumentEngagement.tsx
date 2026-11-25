@@ -119,7 +119,7 @@ export default function DocumentEngagement({
   const shareUrl = (code: string) => `${window.location.origin}/share/${code}`
 
   return (
-    <div style={{ marginTop: 28 }}>
+    <div className="kh-doc-engagement">
       <Space wrap>
         <Button
           icon={doc.liked ? <LikeFilled /> : <LikeOutlined />}

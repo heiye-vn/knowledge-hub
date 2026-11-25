@@ -1,11 +1,61 @@
 import type { AuthUser, CategoryNode, TeamTreeNode } from './types'
 
-export const DOC_STATUS: Record<number, { label: string; color: string }> = {
-  0: { label: '草稿', color: 'default' },
-  1: { label: '已发布', color: 'success' },
-  2: { label: '已归档', color: 'warning' },
-  3: { label: '待审核', color: 'processing' },
+export interface DocStatusMeta {
+  code: number
+  label: string
+  color: string
+  variant: 'filled' | 'solid'
+  /** 是否写入搜索 / RAG / 图谱索引（可供搜索与 AI 问答命中） */
+  searchable: boolean
+  /** 面向业务人员的简明状态说明 */
+  description: string
 }
+
+export const DOC_STATUS: Record<number, DocStatusMeta> = {
+  0: {
+    code: 0,
+    label: '草稿',
+    color: 'default',
+    variant: 'filled',
+    searchable: false,
+    description: '编写或修改中的未上线内容；可直接编辑、版本回滚或提交发布。',
+  },
+  1: {
+    code: 1,
+    label: '已发布',
+    color: '#16a34a',
+    variant: 'solid',
+    searchable: true,
+    description:
+      '正式生效的活跃知识；如需修改请先点「下架编辑」转为草稿，过时作废可点「归档」。',
+  },
+  2: {
+    code: 2,
+    label: '已归档',
+    color: '#b45309',
+    variant: 'solid',
+    searchable: false,
+    description:
+      '已下线并只读封存的历史档案，保留正文与版本备查，不可编辑或重新发布。',
+  },
+  3: {
+    code: 3,
+    label: '待审核',
+    color: '#2352a0',
+    variant: 'solid',
+    searchable: false,
+    description:
+      '已提交审批，内容暂时锁定不可编辑；审核通过后自动发布，驳回后退回草稿。',
+  },
+}
+
+/** 按业务生命周期顺序排列的状态列表（草稿 → 待审核 → 已发布 → 已归档） */
+export const DOC_STATUS_LIST: DocStatusMeta[] = [
+  DOC_STATUS[0],
+  DOC_STATUS[3],
+  DOC_STATUS[1],
+  DOC_STATUS[2],
+]
 
 export function formatTime(value?: string | null) {
   if (!value) return '-'
@@ -122,4 +172,15 @@ export function flattenTeams(nodes: TeamTreeNode[], depth = 0): FlatTeamOption[]
     }
   }
   return result
+}
+
+/** 格式化文件字节数为可读体积（B / KB / MB / GB） */
+export function formatFileSize(bytes?: string | number | null): string {
+  if (bytes === null || bytes === undefined || bytes === '') return ''
+  const size = Number(bytes)
+  if (!Number.isFinite(size) || size < 0) return ''
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }

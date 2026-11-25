@@ -43,13 +43,18 @@ export interface DocumentItem {
   content?: string
   fileUrl?: string | null
   fileName?: string | null
+  fileSize?: string | number | null
+  fileExtension?: string | null
   categoryId?: string | null
   categoryName?: string | null
   teamId?: string | null
+  teamName?: string | null
   authorId?: string | null
+  authorName?: string | null
   tags?: string | null
   status: number
   isPublic: boolean
+  version?: number
   viewCount?: number
   likeCount?: number
   commentCount?: number
@@ -106,6 +111,28 @@ export interface ChatSource {
   heading: string | null
   excerpt: string
   score: number
+  chunkId?: string
+  chunkIndex?: number
+  totalChunks?: number
+}
+
+export interface DocumentChunkItem {
+  chunkId: string
+  chunkIndex: number
+  totalChunks: number
+  heading: string | null
+  content: string
+  charLength: number
+  indexedAt: string | null
+}
+
+export interface DocumentChunksResponse {
+  documentId: string
+  documentStatus: number
+  indexed: boolean
+  totalChunks: number
+  indexedAt: string | null
+  items: DocumentChunkItem[]
 }
 
 export interface ChatResult {

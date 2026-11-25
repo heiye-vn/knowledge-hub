@@ -18,21 +18,34 @@ const ICONS: Record<string, { bg: string; label: string; fontSize: number }> = {
 const FALLBACK = { bg: '#90A4AE', label: 'FILE', fontSize: 6 }
 
 /**
- * 从文件名 / 标题截取后缀。
- * 无后缀（在线新建的文档）按 md；后缀无法识别时回退中性 file 徽标，
- * 避免上传的图片等文件被误标成 MD（上传区支持 PNG / JPG / JPEG / WEBP）。
+ * 提取文件扩展名标识（PDF / DOCX / XLSX / PPTX / IMG / MD / FILE）。
+ *
+ * 1. 优先读后端持久化的 fileExtension（最可靠，不受文档标题改名或带版本号影响）；
+ * 2. 无 fileExtension 时再回退解析文件名/标题后缀；
+ * 3. 纯数字后缀（如标题中的 `v1.1` / `2.0`）视为版本标识而非扩展名，按在线 `md` 文档处理。
  */
-export function extFromName(name?: string | null) {
+export function extFromName(
+  name?: string | null,
+  fileExtension?: string | null,
+) {
+  const explicit = fileExtension?.trim().replace(/^\./, '').toLowerCase()
+  if (explicit) {
+    return explicit in ICONS ? explicit : 'file'
+  }
   if (!name) return 'md'
   const base = name.split(/[/\\]/).pop() || name
   const idx = base.lastIndexOf('.')
   if (idx <= 0 || idx === base.length - 1) return 'md'
   const ext = base.slice(idx + 1).toLowerCase()
+  if (/^\d+$/.test(ext)) return 'md'
   return ext in ICONS ? ext : 'file'
 }
 
-export function fileTypeLabel(name?: string | null) {
-  const key = extFromName(name)
+export function fileTypeLabel(
+  name?: string | null,
+  fileExtension?: string | null,
+) {
+  const key = extFromName(name, fileExtension)
   if (key === 'doc') return 'DOCX'
   if (key === 'xls') return 'XLSX'
   if (key === 'ppt') return 'PPTX'
@@ -42,15 +55,17 @@ export function fileTypeLabel(name?: string | null) {
   return key.toUpperCase()
 }
 
-/** 按文件名后缀画圆角色块图标（PDF / W / X / IMG / FILE） */
+/** 按文件扩展名或文件名画圆角色块图标（PDF / W / X / IMG / MD / FILE） */
 export function FileTypeIcon({
   name,
+  extension,
   size = 22,
 }: {
   name?: string | null
+  extension?: string | null
   size?: number
 }) {
-  const spec = ICONS[extFromName(name)] ?? FALLBACK
+  const spec = ICONS[extFromName(name, extension)] ?? FALLBACK
   return (
     <svg
       width={size}

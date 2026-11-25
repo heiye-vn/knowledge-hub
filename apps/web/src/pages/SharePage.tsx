@@ -36,27 +36,11 @@ export default function SharePage() {
   }, [code])
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: '#f5f7fb',
-        padding: '48px 16px',
-      }}
-    >
-      <Card
-        style={{ width: 900, maxWidth: '100%', margin: '0 auto' }}
-        variant="borderless"
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            marginBottom: 20,
-          }}
-        >
+    <div className="kh-share-page">
+      <Card className="kh-share-card" variant="borderless">
+        <div className="kh-share-header">
           <BrandLogo size={36} />
-          <h1 style={{ margin: 0, fontSize: 22 }}>{title || '文档分享'}</h1>
+          <h1 className="kh-share-title">{title || '文档分享'}</h1>
         </div>
         {loading ? <Spin /> : null}
         {error ? (
@@ -92,7 +76,7 @@ export default function SharePage() {
         {content != null ? (
           <>
             {summary ? (
-              <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+              <Typography.Paragraph type="secondary" className="kh-share-summary">
                 {summary}
               </Typography.Paragraph>
             ) : null}

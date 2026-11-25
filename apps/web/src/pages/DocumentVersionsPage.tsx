@@ -8,6 +8,7 @@ import {
   Popconfirm,
   Space,
   Spin,
+  Tag,
   Typography,
   message,
 } from 'antd'
@@ -84,7 +85,19 @@ export default function DocumentVersionsPage() {
     )
   }
 
-  const pendingReview = doc?.status === 3
+  const latestVersionId = items[0]?.id
+  const isCurrentVersion = Boolean(
+    current && latestVersionId && current.id === latestVersionId,
+  )
+  const isDraft = doc?.status === 0
+  const blockReason =
+    doc?.status === 3
+      ? '文档正在审核中，暂不能回滚；请等待审核结果。'
+      : doc?.status === 1
+        ? '文档已发布，如需回滚历史版本，请先返回文档详情点击「下架编辑」转为草稿。'
+        : doc?.status === 2
+          ? '已归档文档为只读终态，不可回滚。'
+          : null
 
   return (
     <div className="kh-page">
@@ -98,12 +111,12 @@ export default function DocumentVersionsPage() {
       <p className="kh-access-hint">
         回滚会把选中版本的正文写成一条新版本，原来的记录仍保留。
       </p>
-      {pendingReview ? (
+      {blockReason ? (
         <Alert
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="文档正在审核中，暂不能回滚；请等待审核结果或撤回审核。"
+          message={blockReason}
         />
       ) : null}
       {!items.length ? (
@@ -126,6 +139,11 @@ export default function DocumentVersionsPage() {
               <div>
                 <div>
                   v{item.version} {item.title}
+                  {item.id === latestVersionId ? (
+                    <Tag color="#16a34a" style={{ marginInlineStart: 6 }}>
+                      当前版本
+                    </Tag>
+                  ) : null}
                 </div>
                 <Typography.Text type="secondary">
                   {formatTime(item.createdAt)}
@@ -140,16 +158,24 @@ export default function DocumentVersionsPage() {
               <Typography.Text strong>
                 v{current.version} {current.title}
               </Typography.Text>
-              <Popconfirm
-                title="确认回滚到该版本？"
-                description="当前正文会作为历史保留，回滚结果会生成一条新版本。"
-                onConfirm={() => void restore()}
-                disabled={pendingReview}
-              >
-                <Button type="primary" loading={restoring} disabled={pendingReview}>
-                  回滚到此版本
-                </Button>
-              </Popconfirm>
+              {isCurrentVersion ? (
+                <Tag color="#16a34a">当前版本</Tag>
+              ) : (
+                <Popconfirm
+                  title="确认回滚到该版本？"
+                  description="当前正文会作为历史保留，回滚结果会生成一条新版本。"
+                  onConfirm={() => void restore()}
+                  disabled={!isDraft}
+                >
+                  <Button
+                    type="primary"
+                    loading={restoring}
+                    disabled={!isDraft}
+                  >
+                    回滚到此版本
+                  </Button>
+                </Popconfirm>
+              )}
             </Space>
             <DocumentMarkdown content={current.content || '（空正文）'} />
           </div>

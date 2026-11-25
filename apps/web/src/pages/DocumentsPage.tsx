@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EditOutlined } from '@ant-design/icons'
+import { EditOutlined, RollbackOutlined } from '@ant-design/icons'
 import {
   Button,
   Checkbox,
   Input,
+  Popconfirm,
   Select,
   Space,
   Table,
@@ -18,6 +19,7 @@ import type { DocumentItem } from '../types'
 import { useAuth } from '../auth'
 import {
   DOC_STATUS,
+  DOC_STATUS_LIST,
   can,
   canWriteDocument,
   flattenCategories,
@@ -32,6 +34,7 @@ import {
   useImportJobs,
 } from '../components/DocumentImports'
 import { CreateDocumentModal } from '../components/CreateDocumentModal'
+import { DocumentStatusGuide } from '../components/DocumentStatusGuide'
 
 function DocumentsWorkspace() {
   const user = useAuth()
@@ -100,9 +103,12 @@ function DocumentsWorkspace() {
   return (
     <div className={`kh-docs-layout${canCreate ? ' has-aside' : ''}`}>
       <section className="kh-docs-main" aria-label="文档管理">
-        <p className="kh-access-hint">
-          列表只展示你能看的文档：公开、所在团队，以及自己写的。编辑 / 发布仅作者或管理员可用。
-        </p>
+        <div className="kh-access-hint kh-access-hint--between">
+          <span>
+            列表只展示你能看的文档：公开、所在团队，以及自己写的。编辑 / 发布仅作者或管理员可用。
+          </span>
+          <DocumentStatusGuide showLabel placement="bottomRight" />
+        </div>
         {canCreate ? (
           <DocumentImportBar
             controller={importJobs}
@@ -132,9 +138,9 @@ function DocumentsWorkspace() {
             style={{ width: 130 }}
             value={status}
             onChange={setStatus}
-            options={Object.entries(DOC_STATUS).map(([k, v]) => ({
-              value: Number(k),
-              label: v.label,
+            options={DOC_STATUS_LIST.map((item) => ({
+              value: item.code,
+              label: item.label,
             }))}
           />
           <Checkbox
@@ -166,7 +172,10 @@ function DocumentsWorkspace() {
                   onClick={() => navigate(`/documents/${row.id}`)}
                   className="kh-doc-title-link"
                 >
-                  <FileTypeIcon name={row.title} />
+                  <FileTypeIcon
+                    name={row.fileName || row.title}
+                    extension={row.fileExtension}
+                  />
                   <span>{value}</span>
                 </a>
               ),
@@ -175,47 +184,97 @@ function DocumentsWorkspace() {
               title: '文件类型',
               dataIndex: 'title',
               width: 100,
-              render: (docTitle: string) => fileTypeLabel(docTitle),
+              render: (_: string, row: DocumentItem) =>
+                fileTypeLabel(row.fileName || row.title, row.fileExtension),
             },
             {
               title: '分类',
               dataIndex: 'categoryName',
-              width: 128,
+              width: 120,
               ellipsis: true,
               render: (value?: string | null) => value || '-',
             },
             {
-              title: '状态',
-              dataIndex: 'status',
-              width: 96,
-              render: (s: number) => (
-                <Tag color={DOC_STATUS[s]?.color}>{DOC_STATUS[s]?.label}</Tag>
+              title: '作者',
+              dataIndex: 'authorName',
+              width: 108,
+              ellipsis: true,
+              render: (value?: string | null) => value || '-',
+            },
+            {
+              title: (
+                <span className="kh-status-col-head">
+                  状态
+                  <DocumentStatusGuide placement="bottom" />
+                </span>
               ),
+              dataIndex: 'status',
+              width: 108,
+              render: (s: number) => {
+                const meta = DOC_STATUS[s]
+                return (
+                  <Tooltip title={meta?.description}>
+                    <Tag
+                      color={meta?.color}
+                      variant={meta?.variant}
+                      style={{ marginInlineEnd: 0 }}
+                    >
+                      {meta?.label}
+                    </Tag>
+                  </Tooltip>
+                )
+              },
             },
             {
               title: '可见性',
-              width: 96,
+              width: 118,
               render: (_: unknown, row: DocumentItem) => {
                 const vis = getVisibilityMeta(row)
-                return <Tag color={vis.color}>{vis.label}</Tag>
+                const text =
+                  vis.scope === 'team' && row.teamName ? row.teamName : vis.label
+                const tip =
+                  vis.scope === 'public'
+                    ? '所有登录用户可见'
+                    : vis.scope === 'team'
+                      ? `仅「${row.teamName || '所属团队'}」成员可见`
+                      : '仅作者本人与管理员可见'
+                return (
+                  <Tooltip title={tip}>
+                    <Tag
+                      color={vis.color}
+                      style={{
+                        marginInlineEnd: 0,
+                        maxWidth: 102,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        verticalAlign: 'bottom',
+                      }}
+                    >
+                      {text}
+                    </Tag>
+                  </Tooltip>
+                )
               },
             },
             {
               title: '更新时间',
               dataIndex: 'updatedAt',
-              width: 168,
+              width: 156,
               render: formatTime,
             },
             {
               title: '操作',
-              width: 140,
+              width: 148,
               render: (_: unknown, row: DocumentItem) => {
                 const writable =
                   can(user, 'document:edit') && canWriteDocument(row, user)
-                return (
-                  <Space size={10}>
-                    {writable ? (
-                      <Tooltip title="编辑文档">
+                if (!writable) {
+                  return <span style={{ color: '#bfbfbf' }}>-</span>
+                }
+                if (row.status === 0) {
+                  return (
+                    <Space size={10}>
+                      <Tooltip title="编辑草稿">
                         <a
                           onClick={() => navigate(`/documents/${row.id}/edit`)}
                           style={{
@@ -227,8 +286,6 @@ function DocumentsWorkspace() {
                           <EditOutlined /> 编辑
                         </a>
                       </Tooltip>
-                    ) : null}
-                    {writable && row.status === 0 ? (
                       <Tooltip title="提交发布（触发 RAG 索引重建）">
                         <a
                           onClick={async () => {
@@ -253,9 +310,45 @@ function DocumentsWorkspace() {
                           <KhIcon name="publish" size={14} /> 发布
                         </a>
                       </Tooltip>
-                    ) : null}
-                  </Space>
-                )
+                    </Space>
+                  )
+                }
+                if (row.status === 1) {
+                  return (
+                    <Popconfirm
+                      title="确认下架为草稿？"
+                      description="下架后将暂时从搜索与 AI 问答中移除，修改完成后可重新发布。"
+                      okText="下架"
+                      cancelText="取消"
+                      onConfirm={async () => {
+                        try {
+                          await documentApi.saveDraft(row.id)
+                          message.success('已下架为草稿，现在可以编辑')
+                          void load(page)
+                        } catch (error) {
+                          message.error(
+                            error instanceof ApiError
+                              ? error.message
+                              : '操作失败',
+                          )
+                        }
+                      }}
+                    >
+                      <Tooltip title="已发布文档需先下架为草稿才能修改内容">
+                        <a
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <RollbackOutlined /> 下架编辑
+                        </a>
+                      </Tooltip>
+                    </Popconfirm>
+                  )
+                }
+                return <span style={{ color: '#bfbfbf' }}>-</span>
               },
             },
           ]}

@@ -2,10 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BellOutlined,
-  DownOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  RightOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { Avatar, Badge, Button, Dropdown, Layout, Tag, Tooltip } from 'antd'
@@ -70,10 +68,6 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
-  const [adminOpen, setAdminOpen] = useState(
-    location.pathname.startsWith('/admin') &&
-      !location.pathname.startsWith('/admin/reviews'),
-  )
   const [myTeams, setMyTeams] = useState<TeamItem[]>([])
   const [unread, setUnread] = useState(0)
 
@@ -177,10 +171,6 @@ export default function AppLayout() {
   }
 
   const routeMeta = resolveRouteMeta(location.pathname)
-  const inAdminSection =
-    location.pathname.startsWith('/admin') &&
-    !location.pathname.startsWith('/admin/reviews')
-  const showAdminItems = adminOpen || inAdminSection || collapsed
 
   const renderNavItem = (entry: NavEntry) => {
     const active = isActive(entry)
@@ -247,19 +237,11 @@ export default function AppLayout() {
           {adminItems.length ? (
             <div className="kh-nav-group">
               {!collapsed ? (
-                <button
-                  type="button"
-                  className="kh-nav-group-toggle"
-                  aria-expanded={showAdminItems}
-                  onClick={() => setAdminOpen((v) => !v)}
-                >
-                  <span>系统管理</span>
-                  {showAdminItems ? <DownOutlined /> : <RightOutlined />}
-                </button>
+                <div className="kh-nav-group-title">系统管理</div>
               ) : (
                 <div className="kh-nav-divider" />
               )}
-              {showAdminItems ? adminItems.map(renderNavItem) : null}
+              {adminItems.map(renderNavItem)}
             </div>
           ) : null}
         </nav>

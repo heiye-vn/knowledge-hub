@@ -68,7 +68,10 @@ export default function FavoritesPage() {
             dataIndex: 'status',
             width: 100,
             render: (status: number) => (
-              <Tag color={DOC_STATUS[status]?.color}>
+              <Tag
+                color={DOC_STATUS[status]?.color}
+                variant={DOC_STATUS[status]?.variant}
+              >
                 {DOC_STATUS[status]?.label}
               </Tag>
             ),

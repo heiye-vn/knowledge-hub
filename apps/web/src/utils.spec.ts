@@ -4,10 +4,12 @@ import {
   canWriteDocument,
   escapeHtml,
   flattenCategories,
+  formatFileSize,
   getVisibilityMeta,
   isAdmin,
   isReviewer,
 } from './utils'
+import { extFromName, fileTypeLabel } from './components/FileTypeIcon'
 import type { AuthUser } from './types'
 
 function makeUser(overrides: Partial<AuthUser> = {}): AuthUser {
@@ -100,5 +102,21 @@ describe('权限工具', () => {
       '　财务制度',
       '技术文档',
     ])
+  })
+
+  it('formatFileSize 正确转换字节体积', () => {
+    expect(formatFileSize(null)).toBe('')
+    expect(formatFileSize(512)).toBe('512 B')
+    expect(formatFileSize('2048')).toBe('2.0 KB')
+    expect(formatFileSize(2.5 * 1024 * 1024)).toBe('2.5 MB')
+  })
+
+  it('文件类型优先使用 fileExtension，且版本号小数点不误判为 FILE', () => {
+    expect(extFromName('新员工入职指南（研发中心）v1.1')).toBe('md')
+    expect(fileTypeLabel('新员工入职指南（研发中心）v1.1')).toBe('MD')
+    expect(fileTypeLabel('新员工入职指南（研发中心）v1.1', 'pdf')).toBe('PDF')
+    expect(fileTypeLabel('架构图.png')).toBe('IMG')
+    expect(fileTypeLabel('任意标题', '.docx')).toBe('DOCX')
+    expect(fileTypeLabel('未知附件', 'csv')).toBe('FILE')
   })
 })
