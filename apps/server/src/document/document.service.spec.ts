@@ -35,7 +35,11 @@ interface FakeEm {
     opts?: { where?: Record<string, unknown> },
   ): Promise<unknown>;
   save(doc: DocumentEntity): Promise<DocumentEntity>;
-  update(): Promise<undefined>;
+  update(
+    entity: unknown,
+    criteria?: unknown,
+    patch?: Record<string, unknown>,
+  ): Promise<undefined>;
   find(): Promise<unknown[]>;
   count(): Promise<number>;
   transaction(cb: (tx: FakeEm) => unknown): Promise<unknown>;
@@ -57,25 +61,41 @@ function makeService(
     rag?: boolean;
     search?: boolean;
     kgQueue?: boolean;
-    /** 是否开启发布审核（默认 false = 免审直发） */
+    /** 是否开启发布审核（默认 false = 免审） */
     requireApproval?: boolean;
+    content?: string;
+    contentVersion?: number;
   } = {},
 ) {
   const saved: DocumentEntity[] = [];
+  const savedContents: Array<Record<string, unknown>> = [];
+  const contentUpdates: Array<{
+    criteria: unknown;
+    patch?: Record<string, unknown>;
+  }> = [];
 
   const em: FakeEm = {
     // 元数据查询返回 doc；正文查询（where 带 documentId）返回内容行
     findOne: async (_entity, opts2) => {
       if (opts2?.where && 'documentId' in opts2.where) {
-        return { documentId: opts2.where.documentId, content: '正文内容' };
+        return {
+          documentId: opts2.where.documentId,
+          content: opts.content ?? '正文内容',
+          version: opts.contentVersion ?? 1,
+        };
       }
       return doc;
     },
     save: async (d: DocumentEntity) => {
-      saved.push(d);
+      const value = d as unknown as Record<string, unknown>;
+      if ('documentId' in value) savedContents.push(value);
+      else saved.push(d);
       return d;
     },
-    update: async () => undefined,
+    update: async (_entity, criteria, patch) => {
+      contentUpdates.push({ criteria, patch });
+      return undefined;
+    },
     find: async () => [],
     count: async () => 0,
     transaction: async (cb) => cb(em),
@@ -123,6 +143,11 @@ function makeService(
     reject: async () => ({ id: 'review-1', documentId: doc?.id ?? '1001' }),
   };
 
+  const versions = {
+    recordInitial: vi.fn(async () => undefined),
+    recordContentChange: vi.fn(async () => undefined),
+  };
+
   const outbox = {
     record: vi.fn(async () => 'outbox-1'),
   };
@@ -136,13 +161,17 @@ function makeService(
     graphBuildService as never,
     outbox as never,
     categoryStub as never,
-    versionStub as never,
+    versions as never,
     { record: vi.fn() } as never,
   );
 
   return {
     service,
+    em,
     saved,
+    savedContents,
+    contentUpdates,
+    versions,
     createdReviews,
     outbox,
     ragOrchestrator,
@@ -351,8 +380,22 @@ describe('DocumentService.update 编辑门禁', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('已发布文档可以改正文', async () => {
+  it('已发布文档不可直接改正文，提示先下架为草稿', async () => {
     const { service } = makeService(makeDoc(1));
+    await expect(
+      service.update('1001', { content: '# 新内容' }),
+    ).rejects.toThrow('已发布文档不可直接编辑，请先下架为草稿后再修改');
+  });
+
+  it('已归档文档不可编辑', async () => {
+    const { service } = makeService(makeDoc(2));
+    await expect(
+      service.update('1001', { title: '新标题', content: '# 新内容' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('草稿文档可以改正文', async () => {
+    const { service } = makeService(makeDoc(0));
     await expect(
       service.update('1001', { content: '# 新内容' }),
     ).resolves.toMatchObject({ content: '# 新内容' });
@@ -366,10 +409,70 @@ describe('DocumentService.update 编辑门禁', () => {
   });
 
   it('PATCH 传入与当前一致的状态不受影响', async () => {
-    const { service } = makeService(makeDoc(1));
-    await expect(service.update('1001', { status: 1 })).resolves.toMatchObject(
+    const { service } = makeService(makeDoc(0));
+    await expect(service.update('1001', { status: 0 })).resolves.toMatchObject(
       { id: '1001' },
     );
+  });
+});
+
+describe('DocumentService.update 正文版本判定', () => {
+  it('正文与检索元数据均未变化时不增版本、不写快照、不重建索引', async () => {
+    const { service, versions, savedContents, ragOrchestrator } = makeService(
+      makeDoc(0),
+    );
+    const indexDocument = vi.spyOn(ragOrchestrator, 'indexDocument');
+
+    await expect(
+      service.update('1001', { content: '正文内容' }),
+    ).resolves.toMatchObject({ content: '正文内容' });
+
+    expect(savedContents).toHaveLength(0);
+    expect(versions.recordContentChange).not.toHaveBeenCalled();
+    expect(indexDocument).not.toHaveBeenCalled();
+  });
+
+  it('正文实际变化时递增一个版本并记录前后快照', async () => {
+    const { service, versions, savedContents } = makeService(makeDoc(0), {
+      contentVersion: 4,
+    });
+
+    await service.update('1001', { content: '# 新内容' });
+
+    expect(savedContents).toHaveLength(1);
+    expect(savedContents[0]).toMatchObject({
+      content: '# 新内容',
+      version: 5,
+    });
+    expect(versions.recordContentChange).toHaveBeenCalledTimes(1);
+    expect(versions.recordContentChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previous: expect.objectContaining({
+          version: 4,
+          content: '正文内容',
+        }),
+        next: expect.objectContaining({ version: 5, content: '# 新内容' }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('正文相同但显式修改摘要时只同步内容摘要，不增版本', async () => {
+    const { service, versions, savedContents, contentUpdates } = makeService(
+      makeDoc(0),
+    );
+
+    await service.update('1001', {
+      content: '正文内容',
+      summary: '新摘要',
+    });
+
+    expect(savedContents).toHaveLength(0);
+    expect(versions.recordContentChange).not.toHaveBeenCalled();
+    expect(contentUpdates).toHaveLength(1);
+    expect(contentUpdates[0]?.patch).toMatchObject({
+      contentSummary: '新摘要',
+    });
   });
 });
 
@@ -470,7 +573,12 @@ describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
   it('findOne: 本人无论是否发布均可读取', async () => {
     const doc = { id: '1001', authorId: 'u1', status: Status.Draft, isPublic: false } as unknown as DocumentEntity;
     const { service } = makeService(doc);
-    await expect(service.findOne('1001', false, authorUser)).resolves.toEqual({ ...doc, categoryName: null });
+    await expect(service.findOne('1001', false, authorUser)).resolves.toEqual({
+      ...doc,
+      categoryName: null,
+      authorName: null,
+      teamName: null,
+    });
   });
 
   it('findOne: 未发布文档非作者访问抛 Forbidden', async () => {
@@ -482,14 +590,56 @@ describe('DocumentService 可见性与写权限守卫（Task 3）', () => {
   it('findOne: 已发布公开文档任何用户可读', async () => {
     const doc = { id: '1001', authorId: 'u1', status: Status.Published, isPublic: true } as unknown as DocumentEntity;
     const { service } = makeService(doc);
-    await expect(service.findOne('1001', false, otherUser)).resolves.toEqual({ ...doc, categoryName: null });
+    await expect(service.findOne('1001', false, otherUser)).resolves.toEqual({
+      ...doc,
+      categoryName: null,
+      authorName: null,
+      teamName: null,
+    });
   });
 
   it('findOne: 已发布团队文档同团队用户可读，不同团队抛 Forbidden', async () => {
     const doc = { id: '1001', authorId: 'u1', teamId: 't1', status: Status.Published, isPublic: false } as unknown as DocumentEntity;
     const { service } = makeService(doc);
-    await expect(service.findOne('1001', false, { ...otherUser, teamIds: ['t1'] })).resolves.toEqual({ ...doc, categoryName: null });
+    await expect(service.findOne('1001', false, { ...otherUser, teamIds: ['t1'] })).resolves.toEqual({
+      ...doc,
+      categoryName: null,
+      authorName: null,
+      teamName: null,
+    });
     await expect(service.findOne('1001', false, otherUser)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('findOne: 含正文时同时回填 authorName、teamName 与当前版本号 version', async () => {
+    const doc = {
+      id: '1001',
+      authorId: 'u1',
+      teamId: 't1',
+      status: Status.Published,
+      isPublic: false,
+    } as unknown as DocumentEntity;
+    const { service, em } = makeService(doc, {
+      content: '正文内容',
+      contentVersion: 3,
+    });
+    em.find = async (entity: unknown) => {
+      const name = (entity as { name?: string })?.name;
+      if (name === 'UserEntity') {
+        return [{ id: 'u1', username: 'zhangsan', realName: '张三' }];
+      }
+      if (name === 'TeamEntity') {
+        return [{ id: 't1', teamName: '技术中心' }];
+      }
+      return [];
+    };
+
+    await expect(service.findOne('1001', true, authorUser)).resolves.toMatchObject({
+      id: '1001',
+      authorName: '张三',
+      teamName: '技术中心',
+      content: '正文内容',
+      version: 3,
+    });
   });
 
   it('assertWritable: 非作者调用 update / publish / submit / archive / saveAsDraft / remove 抛 Forbidden', async () => {
@@ -718,6 +868,84 @@ describe('DocumentService 索引补偿 outbox', () => {
         operation: 'visibility',
       }),
     );
+  });
+
+  it('listChunks: 已发布文档返回 ES 切块列表，草稿文档返回空且不查 ES', async () => {
+    const findByDocumentId = vi.fn().mockResolvedValue({
+      total: 2,
+      items: [
+        {
+          chunkId: 'c1',
+          chunkIndex: 0,
+          totalChunks: 2,
+          heading: '第一章',
+          content: '正文块一',
+          charLength: 4,
+          indexedAt: '2026-11-24T10:00:00.000Z',
+        },
+      ],
+    });
+    const publishedDoc = {
+      ...makeDoc(Status.Published),
+      isPublic: true,
+    } as DocumentEntity;
+    const em = {
+      findOne: async () => publishedDoc,
+      find: async () => [],
+    };
+    const service = new DocumentService(
+      em as never,
+      {} as RagOrchestrator,
+      {} as SearchIndexService,
+      {} as never,
+      {} as DocumentReviewService,
+      {} as never,
+      {} as never,
+      categoryStub as never,
+      versionStub as never,
+      {} as never,
+      { findByDocumentId } as never,
+    );
+
+    const publishedRes = await service.listChunks('1001');
+    expect(findByDocumentId).toHaveBeenCalledWith('1001');
+    expect(publishedRes).toMatchObject({
+      documentId: '1001',
+      documentStatus: Status.Published,
+      indexed: true,
+      totalChunks: 2,
+      indexedAt: '2026-11-24T10:00:00.000Z',
+    });
+    expect(publishedRes.items).toHaveLength(1);
+
+    findByDocumentId.mockClear();
+    const draftDoc = {
+      ...makeDoc(Status.Draft),
+      isPublic: true,
+    } as DocumentEntity;
+    const draftService = new DocumentService(
+      { findOne: async () => draftDoc, find: async () => [] } as never,
+      {} as RagOrchestrator,
+      {} as SearchIndexService,
+      {} as never,
+      {} as DocumentReviewService,
+      {} as never,
+      {} as never,
+      categoryStub as never,
+      versionStub as never,
+      {} as never,
+      { findByDocumentId } as never,
+    );
+    const draftRes = await draftService.listChunks('1001');
+    expect(findByDocumentId).not.toHaveBeenCalled();
+    expect(draftRes).toEqual({
+      documentId: '1001',
+      documentStatus: Status.Draft,
+      indexed: false,
+      totalChunks: 0,
+      indexedAt: null,
+      items: [],
+    });
   });
 });
 

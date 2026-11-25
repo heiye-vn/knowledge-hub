@@ -170,6 +170,13 @@ export class DocumentController {
     return this.documentService.submitForReview(id, user);
   }
 
+  /** 查询文档切块列表（按 chunk_index 升序，排除向量字段，校验文档读取权限） */
+  @Get(':id/chunks')
+  @RequirePermission('document:list')
+  listChunks(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.listChunks(id, user);
+  }
+
   /** 当前待审任务（无则 null） */
   @Get(':id/reviews/current')
   @RequirePermission('document:list')

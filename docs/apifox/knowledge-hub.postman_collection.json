@@ -328,6 +328,25 @@
           }
         },
         {
+          "name": "查询文档切块列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/chunks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "chunks"
+              ]
+            },
+            "description": "从 ES `kh_chunk` 索引按 `chunk_index` 升序返回当前文档的全部切块（排除 `embedding` 向量字段），并校验当前用户对该文档的读取权限。\n\n返回：{ documentId, documentStatus, indexed, totalChunks, indexedAt, items: [{ chunkId, chunkIndex, totalChunks, heading, content, charLength, indexedAt }] }。\n\n草稿 / 待审核 / 已归档或 ES 关闭时返回 `indexed: false` 与空列表 `items: []`，不报错。"
+          }
+        },
+        {
           "name": "更新文档",
           "request": {
             "method": "PATCH",

@@ -5,10 +5,13 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
-import { EntityManager, SelectQueryBuilder } from 'typeorm';
+import { EntityManager, In, SelectQueryBuilder } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id.js';
+import { UserEntity } from '../user/entities/user.entity.js';
+import { TeamEntity } from '../team/entities/team.entity.js';
 import { CreateDocumentDto } from './dto/create-document.dto.js';
 import { UpdateDocumentDto } from './dto/update-document.dto.js';
 import { QueryDocumentDto } from './dto/query-document.dto.js';
@@ -42,6 +45,10 @@ import {
 import { CategoryService } from './category.service.js';
 import { DocumentVersionService } from './document-version.service.js';
 import { stripNullBytes } from './parser/utils/markdown.util.js';
+import {
+  VectorIndexService,
+  type StoredDocumentChunk,
+} from '../rag/vector-index.service.js';
 
 /**
  * 文档主键为 bigint：非数字 id 直接抛 400。
@@ -113,6 +120,15 @@ export interface IndexCleanupResult {
  * 本服务持有三条索引链路的编排能力，DocumentReviewService 只管审核流水表，
  * 依赖保持单向（本服务 → 审核服务），避免循环依赖。
  */
+export interface DocumentChunksResult {
+  documentId: string;
+  documentStatus: number;
+  indexed: boolean;
+  totalChunks: number;
+  indexedAt: string | null;
+  items: StoredDocumentChunk[];
+}
+
 @Injectable()
 export class DocumentService implements OnModuleInit {
   private readonly logger = new Logger(DocumentService.name);
@@ -137,6 +153,9 @@ export class DocumentService implements OnModuleInit {
     private readonly versions: DocumentVersionService,
     /** 审计日志（首页「近期操作记录」；fire-and-forget） */
     private readonly audit: AuditLogService,
+    /** ES 文档切块只读查询（可选注入，兼容既有单测构造） */
+    @Optional()
+    private readonly vectorIndex?: VectorIndexService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -438,9 +457,11 @@ export class DocumentService implements OnModuleInit {
       .take(pageSize);
 
     const [items, total] = await qb.getManyAndCount();
-    const categoryNames = await this.categories.namesByIds(
-      items.map((item) => item.categoryId),
-    );
+    const [categoryNames, authorNames, teamNames] = await Promise.all([
+      this.categories.namesByIds(items.map((item) => item.categoryId)),
+      this.authorNamesByIds(items.map((item) => item.authorId)),
+      this.teamNamesByIds(items.map((item) => item.teamId)),
+    ]);
 
     return {
       items: items.map((item) => ({
@@ -448,6 +469,10 @@ export class DocumentService implements OnModuleInit {
         categoryName: item.categoryId
           ? (categoryNames.get(item.categoryId) ?? null)
           : null,
+        authorName: item.authorId
+          ? (authorNames.get(item.authorId) ?? null)
+          : null,
+        teamName: item.teamId ? (teamNames.get(item.teamId) ?? null) : null,
       })),
       total,
       page,
@@ -609,19 +634,102 @@ export class DocumentService implements OnModuleInit {
       throw new ForbiddenException('无权查看该文档');
     }
 
-    const categoryNames = await this.categories.namesByIds([doc.categoryId]);
+    const [categoryNames, authorNames, teamNames] = await Promise.all([
+      this.categories.namesByIds([doc.categoryId]),
+      this.authorNamesByIds([doc.authorId]),
+      this.teamNamesByIds([doc.teamId]),
+    ]);
     const categoryName = doc.categoryId
       ? (categoryNames.get(doc.categoryId) ?? null)
       : null;
+    const authorName = doc.authorId
+      ? (authorNames.get(doc.authorId) ?? null)
+      : null;
+    const teamName = doc.teamId ? (teamNames.get(doc.teamId) ?? null) : null;
 
     if (!withContent) {
-      return { ...doc, categoryName };
+      return { ...doc, categoryName, authorName, teamName };
     }
 
+    const { content, version } = await this.loadContentRow(id);
     return {
       ...doc,
       categoryName,
-      content: await this.loadContent(id),
+      authorName,
+      teamName,
+      content,
+      version,
+    };
+  }
+
+  /** 查询文档在 ES kh_chunk 中的切块列表（排除向量，复用文档读取鉴权） */
+  async listChunks(
+    id: string,
+    user?: AuthUser,
+  ): Promise<DocumentChunksResult> {
+    const doc = await this.findOne(id, false, user);
+    if (doc.status !== DocumentStatus.Published || !this.vectorIndex) {
+      return {
+        documentId: doc.id,
+        documentStatus: doc.status,
+        indexed: false,
+        totalChunks: 0,
+        indexedAt: null,
+        items: [],
+      };
+    }
+
+    const { items, total } = await this.vectorIndex.findByDocumentId(doc.id);
+    const totalChunks = Math.max(total, items[0]?.totalChunks ?? 0, items.length);
+    return {
+      documentId: doc.id,
+      documentStatus: doc.status,
+      indexed: items.length > 0,
+      totalChunks,
+      indexedAt: items[0]?.indexedAt ?? null,
+      items,
+    };
+  }
+
+  /** 批量按 ID 回填作者展示名（优先 realName，兜底 username），防 N+1 */
+  private async authorNamesByIds(
+    ids: Array<string | null | undefined>,
+  ): Promise<Map<string, string>> {
+    const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+    if (!unique.length) return new Map();
+    const rows = await this.em.find(UserEntity, {
+      where: { id: In(unique) },
+      select: { id: true, realName: true, username: true },
+    });
+    return new Map(
+      rows.map((u) => [u.id, u.realName?.trim() || u.username]),
+    );
+  }
+
+  /** 批量按 ID 回填团队名称，防 N+1 */
+  private async teamNamesByIds(
+    ids: Array<string | null | undefined>,
+  ): Promise<Map<string, string>> {
+    const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+    if (!unique.length) return new Map();
+    const rows = await this.em.find(TeamEntity, {
+      where: { id: In(unique) },
+      select: { id: true, teamName: true },
+    });
+    return new Map(rows.map((t) => [t.id, t.teamName]));
+  }
+
+  /** 读取未删除正文与当前版本号；内容行缺失时返回空串与默认 v1 */
+  private async loadContentRow(
+    documentId: string,
+    manager: EntityManager = this.em,
+  ): Promise<{ content: string; version: number }> {
+    const row = await manager.findOne(DocumentContentEntity, {
+      where: { documentId, deleted: false },
+    });
+    return {
+      content: row?.content ?? '',
+      version: row?.version ?? 1,
     };
   }
 
@@ -630,15 +738,14 @@ export class DocumentService implements OnModuleInit {
     documentId: string,
     manager: EntityManager = this.em,
   ): Promise<string> {
-    const row = await manager.findOne(DocumentContentEntity, {
-      where: { documentId, deleted: false },
-    });
-    return row?.content ?? '';
+    const { content } = await this.loadContentRow(documentId, manager);
+    return content;
   }
 
   /**
    * 更新文档
-   * - 有 content：更新 kh_document_content 正文，并递增 version
+   * - content 与当前正文字符串不同：更新 kh_document_content、递增 version 并记录快照
+   * - content 未传或字符串相同：不生成正文版本
    * - 仅改 summary：同步更新内容表 contentSummary
    * - 其余字段只更新 Postgres 元数据
    *
@@ -659,23 +766,50 @@ export class DocumentService implements OnModuleInit {
     }
     this.assertWritable(doc, actor);
 
-    if (!canEditContent(doc.status)) {
-      throw new BadRequestException(
-        doc.status === DocumentStatus.PendingReview
-          ? '审核中的文档不可编辑'
-          : '当前文档状态不允许编辑',
-      );
-    }
     if (dto.status !== undefined && dto.status !== doc.status) {
       throw new BadRequestException(
         '请使用 publish / archive / save-draft / 审核接口变更文档状态',
       );
     }
 
+    const hasContentOrMetaEdit =
+      dto.title !== undefined ||
+      dto.content !== undefined ||
+      dto.summary !== undefined ||
+      dto.categoryId !== undefined ||
+      dto.coverImage !== undefined ||
+      dto.tags !== undefined ||
+      dto.remark !== undefined;
+    const isVisibilityOnlyUpdate =
+      !hasContentOrMetaEdit &&
+      (dto.isPublic !== undefined ||
+        dto.teamId !== undefined ||
+        dto.authorId !== undefined);
+
+    if (!canEditContent(doc.status)) {
+      if (!(doc.status === DocumentStatus.Published && isVisibilityOnlyUpdate)) {
+        const reason =
+          doc.status === DocumentStatus.PendingReview
+            ? '审核中的文档不可编辑'
+            : doc.status === DocumentStatus.Published
+              ? '已发布文档不可直接编辑，请先下架为草稿后再修改'
+              : doc.status === DocumentStatus.Archived
+                ? '已归档文档不可编辑'
+                : '当前文档状态不允许编辑';
+        throw new BadRequestException(reason);
+      }
+    }
+
     const oldStatus = doc.status;
     const oldIsPublic = doc.isPublic;
     const oldTeamId = doc.teamId ?? null;
     const oldAuthorId = doc.authorId ?? null;
+    const oldIndexedMetadata = {
+      title: doc.title,
+      summary: doc.summary ?? null,
+      tags: doc.tags ?? null,
+      categoryId: doc.categoryId ?? null,
+    };
     let newContent: string | undefined;
 
     this.assertAuditFieldsAllowed(dto, actor);
@@ -692,11 +826,8 @@ export class DocumentService implements OnModuleInit {
         : undefined;
 
     const { saved, finalContent } = await this.em.transaction(async (tx) => {
-      // —— 正文变更 ——
+      // 请求携带 content 不等于正文发生变化：加锁后按清洗后的字符串值比较。
       if (dto.content !== undefined) {
-        newContent = dto.content;
-        const contentSummary =
-          dto.summary ?? this.buildContentSummary(dto.content);
         const contentRow = await tx.findOne(DocumentContentEntity, {
           where: { documentId: id, deleted: false },
           lock: { mode: 'pessimistic_write' },
@@ -704,40 +835,47 @@ export class DocumentService implements OnModuleInit {
         if (!contentRow) {
           throw new BadRequestException(`Document content ${id} not found`);
         }
-        const previousVersion = contentRow.version > 0 ? contentRow.version : 1;
-        const nextVersion = previousVersion + 1;
         const previousContent = contentRow.content ?? '';
-        contentRow.content = dto.content;
-        contentRow.contentLength = dto.content.length;
-        contentRow.contentSummary = contentSummary;
-        contentRow.version = nextVersion;
-        await tx.save(contentRow);
-        doc.wordCount = this.countWords(dto.content);
+        if (dto.content !== previousContent) {
+          newContent = dto.content;
+          const contentSummary =
+            dto.summary ?? this.buildContentSummary(dto.content);
+          const previousVersion = contentRow.version > 0 ? contentRow.version : 1;
+          const nextVersion = previousVersion + 1;
+          contentRow.content = dto.content;
+          contentRow.contentLength = dto.content.length;
+          contentRow.contentSummary = contentSummary;
+          contentRow.version = nextVersion;
+          await tx.save(contentRow);
+          doc.wordCount = this.countWords(dto.content);
 
-        // 正文与历史快照同事务：要么都写成功，要么一起回滚
-        await this.versions.recordContentChange(
-          {
-            previous: {
-              documentId: id,
-              version: previousVersion,
-              title: doc.title,
-              content: previousContent,
-              summary: doc.summary ?? null,
-              userId: actor?.userId ?? null,
+          // 正文与历史快照同事务：要么都写成功，要么一起回滚
+          await this.versions.recordContentChange(
+            {
+              previous: {
+                documentId: id,
+                version: previousVersion,
+                title: doc.title,
+                content: previousContent,
+                summary: doc.summary ?? null,
+                userId: actor?.userId ?? null,
+              },
+              next: {
+                documentId: id,
+                version: nextVersion,
+                title: dto.title ?? doc.title,
+                content: dto.content,
+                summary: dto.summary ?? doc.summary ?? null,
+                userId: actor?.userId ?? null,
+              },
             },
-            next: {
-              documentId: id,
-              version: nextVersion,
-              title: dto.title ?? doc.title,
-              content: dto.content,
-              summary: dto.summary ?? doc.summary ?? null,
-              userId: actor?.userId ?? null,
-            },
-          },
-          tx,
-        );
-      } else if (dto.summary !== undefined) {
-        // 只改摘要时，同步内容表预览字段（update 不走生命周期钩子，手动带 updatedAt）
+            tx,
+          );
+        }
+      }
+
+      // 正文未变或未传正文时，显式修改摘要仍同步内容表预览字段。
+      if (newContent === undefined && dto.summary !== undefined) {
         await tx.update(
           DocumentContentEntity,
           { documentId: id },
@@ -772,11 +910,15 @@ export class DocumentService implements OnModuleInit {
       // 否则新作者按 author_id 过滤仍检索不到、旧作者反而继续可见
       (saved.authorId ?? null) !== oldAuthorId;
 
-    // 已发布文档改正文后的索引同步：
-    // 免审模式直接重建（整篇重建已包含最新 is_public/team_id）；
-    // 仅当「内容未变 且 已发布 且 可见性变更」时，才走就地轻量同步，二者互斥。
+    // 已发布文档正文或检索元数据变化后同步索引。
+    // 正文实际变化才生成版本；标题等元数据变化沿用整篇重建，避免搜索索引残留旧值。
+    const indexedMetadataChanged =
+      saved.title !== oldIndexedMetadata.title ||
+      (saved.summary ?? null) !== oldIndexedMetadata.summary ||
+      (saved.tags ?? null) !== oldIndexedMetadata.tags ||
+      (saved.categoryId ?? null) !== oldIndexedMetadata.categoryId;
     if (
-      newContent !== undefined &&
+      (newContent !== undefined || indexedMetadataChanged) &&
       oldStatus === DocumentStatus.Published &&
       !this.reviewService.isRequireApproval()
     ) {

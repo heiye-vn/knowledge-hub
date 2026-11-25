@@ -42,15 +42,12 @@ export function canPublishFrom(status: DocumentStatus): boolean {
 }
 
 /**
- * PATCH 是否允许改正文 / 标题
- * 待审核期间禁止改内容 —— 否则审核员看到的与被审核通过的内容可能不是同一份。
+ * PATCH 是否允许改正文 / 标题 / 摘要 / 标签 / 分类
+ * 仅草稿态可编辑内容：已发布需先下架为草稿（save-draft）再修改并重审/发布，
+ * 待审核与已归档（终态）一律禁止编辑，避免正文与检索索引割裂。
  */
 export function canEditContent(status: DocumentStatus): boolean {
-  return (
-    status === DocumentStatus.Draft ||
-    status === DocumentStatus.Published ||
-    status === DocumentStatus.Archived
-  );
+  return status === DocumentStatus.Draft;
 }
 
 /** 仅已发布文档可归档 */
