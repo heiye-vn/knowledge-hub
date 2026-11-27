@@ -185,4 +185,39 @@ describe('owned import jobs', () => {
     await nextUser.start()
     expect(nextUser.getSnapshot().items).toEqual([])
   })
+
+  it('uploads multiple files sequentially with shared metadata and unique requestIds', async () => {
+    const { store, backend } = create()
+    backend.uploadParse
+      .mockResolvedValueOnce({ ...task(), id: 't1', fileName: 'a.md' })
+      .mockResolvedValueOnce({ ...task(), id: 't2', fileName: 'b.pdf' })
+    await store.start()
+    await store.uploadBatch(
+      [new File(['a'], 'a.md'), new File(['b'], 'b.pdf')],
+      { categoryId: '10', isPublic: 'true' },
+    )
+    expect(backend.uploadParse).toHaveBeenCalledTimes(2)
+    const f1 = backend.uploadParse.mock.calls[0][0] as FormData
+    const f2 = backend.uploadParse.mock.calls[1][0] as FormData
+    expect(f1.get('categoryId')).toBe('10')
+    expect(f1.get('isPublic')).toBe('true')
+    expect(f2.get('categoryId')).toBe('10')
+    expect(f1.get('requestId')).not.toBe(f2.get('requestId'))
+    expect(store.getSnapshot().uploadError).toBeNull()
+    expect(store.getSnapshot().items).toHaveLength(2)
+  })
+
+  it('skips invalid files during uploadBatch while uploading valid ones and summarizes errors', async () => {
+    const { store, backend } = create()
+    backend.uploadParse.mockResolvedValueOnce({ ...task(), id: 't1', fileName: 'ok.md' })
+    await store.start()
+    await store.uploadBatch([
+      new File(['bad'], 'bad.svg'),
+      new File(['ok'], 'ok.md'),
+    ])
+    expect(backend.uploadParse).toHaveBeenCalledTimes(1)
+    expect(store.getSnapshot().uploadError).toContain('bad.svg')
+    expect(store.getSnapshot().canRetryUpload).toBe(false)
+    expect(store.getSnapshot().items).toHaveLength(1)
+  })
 })

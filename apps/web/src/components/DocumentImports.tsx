@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router-dom";
 import {
   Alert,
   Button,
   Empty,
   Popconfirm,
+  Select,
   Space,
   Spin,
   Tag,
@@ -23,6 +24,11 @@ import {
 import { ImportJobs, UPLOAD_ACCEPT } from "../document-imports";
 import type { ImportTaskView } from "../types";
 import { formatTime } from "../utils";
+
+type SelectOption = {
+  value: string;
+  label: string;
+};
 
 const states = {
   queued: { label: "排队中", color: "default" },
@@ -271,26 +277,70 @@ export function ImportJobList({
   );
 }
 
-/** 左侧顶部混合录入栏：上传文件为主入口，在线新建文档为轻量次入口 */
+/** 左侧顶部混合录入栏：上传文件为主入口（支持多选与预设归属），在线新建文档为轻量次入口 */
 export function DocumentImportBar({
   controller,
   onCreateClick,
+  categories,
+  teams,
 }: {
   controller: ImportJobsController;
   onCreateClick?: () => void;
+  categories?: SelectOption[];
+  teams?: SelectOption[];
 }) {
   const { jobs, state } = controller;
+  const [defaultCategoryId, setDefaultCategoryId] = useState<string>();
+  const [visibilityPreset, setVisibilityPreset] = useState<string>("private");
+  const batchRef = useRef<File[]>([]);
+  const scheduledRef = useRef(false);
+
+  const visibilityOptions = useMemo<SelectOption[]>(() => {
+    const opts: SelectOption[] = [
+      { value: "private", label: "仅自己可见" },
+      { value: "public", label: "公开（全员可见）" },
+    ];
+    for (const t of teams ?? []) {
+      opts.push({ value: `team:${t.value}`, label: `团队 · ${t.label}` });
+    }
+    return opts;
+  }, [teams]);
+
+  const buildMetadata = () => {
+    const meta: Record<string, string> = {};
+    if (defaultCategoryId) meta.categoryId = defaultCategoryId;
+    if (visibilityPreset === "public") {
+      meta.isPublic = "true";
+    } else if (visibilityPreset.startsWith("team:")) {
+      meta.teamId = visibilityPreset.slice(5);
+    }
+    return meta;
+  };
+
+  const enqueueFile = (file: File) => {
+    batchRef.current.push(file);
+    if (scheduledRef.current) return;
+    scheduledRef.current = true;
+    queueMicrotask(() => {
+      scheduledRef.current = false;
+      const files = batchRef.current.splice(0);
+      if (files.length) {
+        void jobs.uploadBatch(files, buildMetadata());
+      }
+    });
+  };
+
   return (
     <div className="kh-import-bar">
       <div className="kh-import-entry-row">
         <Upload
           accept={UPLOAD_ACCEPT}
-          multiple={false}
+          multiple
           showUploadList={false}
           disabled={state.submitting}
           className="kh-import-upload-trigger"
           beforeUpload={(file) => {
-            void jobs.upload(file);
+            enqueueFile(file);
             return false;
           }}
         >
@@ -307,8 +357,8 @@ export function DocumentImportBar({
                   : "上传文件，后台自动解析"}
               </strong>
               <span>
-                支持 PDF / DOCX / PPTX / XLSX / TXT / MD 与 PNG / JPG / JPEG /
-                WEBP，单个不超过 50MB
+                支持多选，PDF / DOCX / PPTX / XLSX / TXT / MD 与 PNG / JPG / JPEG
+                / WEBP，单个不超过 50MB
               </span>
             </span>
           </button>
@@ -327,6 +377,27 @@ export function DocumentImportBar({
           </button>
         ) : null}
       </div>
+      {categories !== undefined ? (
+        <div className="kh-import-defaults">
+          <span className="kh-import-defaults-label">上传预设：</span>
+          <Select
+            allowClear
+            size="small"
+            placeholder="默认分类（不选则未分类）"
+            style={{ width: 190 }}
+            value={defaultCategoryId}
+            onChange={setDefaultCategoryId}
+            options={categories}
+          />
+          <Select
+            size="small"
+            style={{ width: 180 }}
+            value={visibilityPreset}
+            onChange={setVisibilityPreset}
+            options={visibilityOptions}
+          />
+        </div>
+      ) : null}
       {state.uploadError ? (
         <Alert
           style={{ marginTop: 8 }}

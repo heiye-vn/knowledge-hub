@@ -191,6 +191,57 @@ export class ImportJobs {
     this.pendingForm = form;
     await this.retryUpload();
   }
+
+  /**
+   * 批量上传多文件：单文件直接走 upload() 保留断点重试体验；
+   * 多文件串行提交，跳过非法格式并汇总展示失败详情。
+   */
+  async uploadBatch(files: File[], metadata: Record<string, string> = {}) {
+    if (!this.active || !files.length) return;
+    if (files.length === 1) {
+      await this.upload(files[0], metadata);
+      return;
+    }
+    if (this.snapshot.submitting) return;
+    const generation = this.generation;
+    this.pendingForm = null;
+    this.update({ submitting: true, uploadError: null, canRetryUpload: false });
+
+    const failures: string[] = [];
+    for (const file of files) {
+      if (!this.current(generation)) return;
+      const invalid = validateUploadFile(file);
+      if (invalid) {
+        failures.push(`${file.name}：${invalid}`);
+        continue;
+      }
+      const form = new FormData();
+      for (const [key, value] of Object.entries(metadata)) {
+        if (key !== "file" && key !== "requestId") form.append(key, value);
+      }
+      form.append("file", file);
+      form.append("requestId", crypto.randomUUID());
+      try {
+        const task = await this.api.uploadParse(form, this.signal(300000));
+        if (!this.current(generation)) return;
+        this.upsert(task);
+      } catch (error) {
+        if (!this.current(generation)) return;
+        failures.push(`${file.name}：${errorText(error)}`);
+      }
+    }
+
+    if (this.current(generation)) {
+      this.update({
+        submitting: false,
+        canRetryUpload: false,
+        uploadError: failures.length
+          ? `部分文件上传失败：${failures.join("；")}`
+          : null,
+      });
+      this.schedule();
+    }
+  }
   async retryUpload() {
     if (!this.active || this.snapshot.submitting || !this.pendingForm) return;
     const generation = this.generation;

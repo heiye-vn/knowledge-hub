@@ -1777,6 +1777,24 @@ body,
   gap: 12px;
 }
 
+.kh-import-defaults {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--kh-border);
+  border-radius: 8px;
+  background: var(--kh-surface-warm, #faf9f5);
+}
+
+.kh-import-defaults-label {
+  font-size: 12px;
+  color: var(--kh-text-2);
+  white-space: nowrap;
+}
+
 /* 虚线上传主卡 */
 .kh-import-upload-trigger {
   display: block;
