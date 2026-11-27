@@ -116,6 +116,31 @@ export class DocumentReviewService {
     return (tx ?? this.em).save(review);
   }
 
+  /** 提交人主动撤回待审任务（释放部分唯一索引，避免历史脏数据卡死状态恢复） */
+  async withdrawByDocumentId(
+    documentId: string,
+    actor?: { userId?: string; username?: string; realName?: string | null },
+    tx?: EntityManager,
+  ): Promise<DocumentReviewEntity | null> {
+    assertNumericDocumentId(documentId);
+    const manager = tx ?? this.em;
+    const review = await manager.findOne(DocumentReviewEntity, {
+      where: { documentId, reviewResult: IsNull() },
+      order: { createdAt: 'DESC' },
+    });
+    if (!review) return null;
+
+    review.reviewResult = ReviewResult.Withdrawn;
+    review.reviewerId = actor?.userId ?? null;
+    review.reviewerName = actor
+      ? (actor.realName ?? actor.username ?? null)
+      : null;
+    review.reviewComment = '提交人主动撤回';
+    review.reviewedAt = new Date();
+
+    return manager.save(review);
+  }
+
   /** 待办 / 已通过 / 已驳回列表 */
   async listTasks(query: QueryReviewTasksDto) {
     const page = query.page ?? 1;

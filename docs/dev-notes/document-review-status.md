@@ -127,7 +127,17 @@ curl -X PUT localhost:3000/documents/{id}/archive
   `reviewerId` / `reviewerName` 暂由请求体传入 —— **任何人都能 approve，无权限校验**。
   接入登录后应改为从登录态取值，DTO 这两个字段随之废弃。
 - **索引失败无自动补偿**：靠 `POST /rag/reindex` 人工 / 定时兜底，没有失败任务表。
-- **审核任务无撤回、无超时**：作者提交后只能等审核员处理，没有 withdraw 接口与超时策略。
+- **审核任务无超时**：作者提交后可通过 `POST /documents/:id/reviews/withdraw` 主动撤回，但暂无自动超时策略。
 - **归档不可恢复**：定为终态是产品决策（避免已下线文档被重新向量化），
   若日后要支持「重新上架」，需明确是否重新走审核。
 - **审核记录无软删除**：`kh_document_review` 与文档生命周期绑定，文档硬删时需另行约定清理策略。
+
+---
+
+## 六、 撤回提审与待审核删除守卫（2026-11-25 增量）
+
+- **问题**：此前缺少撤回接口，且直接删除待审核（`status=3`）文档会在 `kh_document_review` 中留下无主待审单，导致审核列表出现孤儿任务。
+- **决策与实现**：
+  - 在 `ReviewResult` 新增 `Withdrawn = 3`；撤回时于事务内将 `review_result` 置为 `3`（自动释放部分唯一索引 `uq_kh_document_review_pending`），并将文档状态原子回退为 `Draft`。若历史脏数据缺失待审行，仍允许文档回退草稿以防状态卡死。
+  - `DocumentService.remove` 增加 `canDeleteDocument` 守卫，待审核文档禁止直接删除（返回 400），必须先撤回提审再删。
+- **如何验证**：运行 `pnpm --filter @knowledge-hub/server exec vitest run src/document/document.service.spec.ts`，覆盖撤回提审、非待审/越权撤回拦截及待审核删除拦截用例。

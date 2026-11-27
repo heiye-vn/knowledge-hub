@@ -59,7 +59,7 @@ export class DocumentController {
   @Get('reviews/tasks')
   @Roles(RoleCode.REVIEWER, RoleCode.ADMIN)
   listReviewTasks(@Query() query: QueryReviewTasksDto) {
-    return this.reviewService.listTasks(query);
+    return this.documentService.listReviewTasks(query);
   }
 
   /** 待审核数量（工作台角标） */
@@ -170,6 +170,13 @@ export class DocumentController {
     return this.documentService.submitForReview(id, user);
   }
 
+  /** 撤回提审：待审核 → 草稿（关闭当前待审任务，作者可继续编辑或删除） */
+  @Post(':id/reviews/withdraw')
+  @RequirePermission('document:edit')
+  withdrawReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.withdrawReview(id, user);
+  }
+
   /** 查询文档切块列表（按 chunk_index 升序，排除向量字段，校验文档读取权限） */
   @Get(':id/chunks')
   @RequirePermission('document:list')
@@ -180,15 +187,15 @@ export class DocumentController {
   /** 当前待审任务（无则 null） */
   @Get(':id/reviews/current')
   @RequirePermission('document:list')
-  getCurrentReview(@Param('id') id: string) {
-    return this.reviewService.getCurrentReview(id);
+  getCurrentReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.getCurrentReview(id, user);
   }
 
   /** 该文档全部审核记录（含已通过 / 已驳回），按提交时间倒序 */
   @Get(':id/reviews/history')
   @RequirePermission('document:list')
-  getReviewHistory(@Param('id') id: string) {
-    return this.reviewService.getReviewHistory(id);
+  getReviewHistory(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.getReviewHistory(id, user);
   }
 
   /** 归档：已发布 → 已归档（终态），清索引但保留正文 */

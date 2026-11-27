@@ -8,10 +8,11 @@ import {
 import { bigintTransformer } from '../../common/transformers/bigint.transformer.js';
 import type { DocumentStatus } from '../document-status.js';
 
-/** 审核结果：1 通过，2 驳回（NULL 表示待审） */
+/** 审核结果：1 通过，2 驳回，3 已撤回（NULL 表示待审） */
 export enum ReviewResult {
   Approved = 1,
   Rejected = 2,
+  Withdrawn = 3,
 }
 
 /**

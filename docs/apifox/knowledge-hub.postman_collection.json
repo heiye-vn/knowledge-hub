@@ -393,7 +393,7 @@
                 "{{docId}}"
               ]
             },
-            "description": "软删除：kh_document 与 kh_document_content 的 deleted 同时置 true，不物理删数据。\n\n仅**已发布**文档删除时清理三条索引（草稿 / 待审 / 归档本就不在索引里，跳过清理）：\n- vectorsCleaned：ES kh_chunk 向量块已清理\n- searchCleaned：ES kh_document 搜索记录已清理\n- kgDeleteQueued：KG 图谱清理任务已入队（异步执行）\n\n跨系统无事务，清理失败只记日志、不阻断删除；检索侧另有 PG 复核兜底。"
+            "description": "软删除：kh_document 与 kh_document_content 的 deleted 同时置 true，不物理删数据。\n\n⚠️ **待审核（status=3）文档禁止直接删除**（返回 400「文档正在审核中，请先撤回提审后再删除」），请先调 `POST /documents/:id/reviews/withdraw` 撤回提审后再删，避免残留孤儿审核任务。\n\n仅**已发布**文档删除时清理三条索引（草稿 / 已归档本就不在索引里，跳过清理）：\n- vectorsCleaned：ES kh_chunk 向量块已清理\n- searchCleaned：ES kh_document 搜索记录已清理\n- kgDeleteQueued：KG 图谱清理任务已入队（异步执行）\n\n跨系统无事务，清理失败只记日志、不阻断删除；检索侧另有 PG 复核兜底。"
           }
         }
       ]
@@ -745,6 +745,26 @@
           }
         },
         {
+          "name": "撤回提审（待审核 → 草稿）",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{docId}}/reviews/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{docId}}",
+                "reviews",
+                "withdraw"
+              ]
+            },
+            "description": "将待审核（status=3）文档撤回为草稿（status=0），并在同一事务内把当前待审记录置为已撤回（review_result=3），释放部分唯一索引。\n\n- 仅系统管理员或作者本人（需 `document:edit` 权限）可调用\n- 预期返回：`{ id, status: 0, reviewId }`\n- 非待审核状态调用返回 400「只有待审核状态的文档可以撤回提审」"
+          }
+        },
+        {
           "name": "当前待审任务",
           "request": {
             "method": "GET",
@@ -794,7 +814,7 @@
                 }
               ]
             },
-            "description": "审核员工作台列表。status=pending（默认，省略同义）/ approved / rejected。\n返回 { items, total, page, pageSize }，按提交时间倒序。"
+            "description": "审核员工作台列表。status=pending（默认，省略同义）/ approved / rejected。\n返回 { items, total, page, pageSize }，按提交时间倒序。\n每条任务额外关联返回 documentTitle / authorName / categoryName / documentStatus / documentDeleted 字段（文档已软删时 documentDeleted=true）。"
           }
         },
         {

@@ -66,3 +66,13 @@ export function canSubmitReview(status: DocumentStatus): boolean {
 export function canSaveAsDraft(status: DocumentStatus): boolean {
   return status === DocumentStatus.Published;
 }
+
+/** 仅待审核文档可撤回提审（回到草稿） */
+export function canWithdrawReview(status: DocumentStatus): boolean {
+  return status === DocumentStatus.PendingReview;
+}
+
+/** 待审核文档禁止直接删除，需先撤回提审后再删，避免残留孤儿审核单 */
+export function canDeleteDocument(status: DocumentStatus): boolean {
+  return status !== DocumentStatus.PendingReview;
+}

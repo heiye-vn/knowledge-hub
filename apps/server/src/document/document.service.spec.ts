@@ -130,6 +130,7 @@ function makeService(
   };
 
   const createdReviews: Array<{ documentId: string; beforeStatus: number }> = [];
+  const withdrawnReviews: Array<{ documentId: string }> = [];
   const reviewService = {
     isRequireApproval: () => opts.requireApproval === true,
     createPendingReview: async (
@@ -141,6 +142,13 @@ function makeService(
     },
     approve: async () => ({ id: 'review-1', documentId: doc?.id ?? '1001' }),
     reject: async () => ({ id: 'review-1', documentId: doc?.id ?? '1001' }),
+    withdrawByDocumentId: vi.fn(async (documentId: string) => {
+      withdrawnReviews.push({ documentId });
+      return { id: 'review-1', documentId };
+    }),
+    listTasks: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20 })),
+    getCurrentReview: vi.fn(async () => null),
+    getReviewHistory: vi.fn(async () => []),
   };
 
   const versions = {
@@ -173,6 +181,8 @@ function makeService(
     contentUpdates,
     versions,
     createdReviews,
+    withdrawnReviews,
+    reviewService,
     outbox,
     ragOrchestrator,
     searchIndexService,
@@ -261,14 +271,21 @@ describe('DocumentService.remove 双索引清理', () => {
     });
   });
 
-  it('删除草稿 / 待审核文档不触发索引清理（本来就不在索引里）', async () => {
-    const { service } = makeService(makeDoc(0));
-    await expect(service.remove('1001')).resolves.toMatchObject({
-      deleted: true,
-      vectorsCleaned: false,
-      searchCleaned: false,
-      kgDeleteQueued: false,
-    });
+  it('删除草稿 / 已归档文档不触发索引清理（本来就不在索引里）', async () => {
+    for (const st of [Status.Draft, Status.Archived]) {
+      const { service } = makeService(makeDoc(st));
+      await expect(service.remove('1001')).resolves.toMatchObject({
+        deleted: true,
+        vectorsCleaned: false,
+        searchCleaned: false,
+        kgDeleteQueued: false,
+      });
+    }
+  });
+
+  it('待审核文档禁止直接删除，需先撤回提审', async () => {
+    const { service } = makeService(makeDoc(Status.PendingReview));
+    await expect(service.remove('1001')).rejects.toThrow(BadRequestException);
   });
 });
 
@@ -338,6 +355,54 @@ describe('DocumentService 发布审核流程', () => {
       status: Status.Draft,
       reviewId: 'review-1',
     });
+  });
+
+  it('待审核文档可撤回提审：回草稿并关闭待审任务', async () => {
+    const doc = {
+      ...makeDoc(Status.PendingReview),
+      authorId: 'u1',
+    } as unknown as DocumentEntity;
+    const { service, withdrawnReviews } = makeService(doc);
+    await expect(
+      service.withdrawReview('1001', {
+        userId: 'u1',
+        username: 'author',
+        roles: [],
+        permissions: [],
+        teamIds: [],
+      }),
+    ).resolves.toEqual({
+      id: '1001',
+      status: Status.Draft,
+      reviewId: 'review-1',
+    });
+    expect(withdrawnReviews).toEqual([{ documentId: '1001' }]);
+  });
+
+  it('非待审核文档（草稿 / 已发布 / 已归档）撤回提审抛 BadRequest', async () => {
+    for (const st of [Status.Draft, Status.Published, Status.Archived]) {
+      const { service } = makeService(makeDoc(st));
+      await expect(service.withdrawReview('1001')).rejects.toThrow(
+        BadRequestException,
+      );
+    }
+  });
+
+  it('非作者且非管理员撤回提审抛 Forbidden', async () => {
+    const doc = {
+      ...makeDoc(Status.PendingReview),
+      authorId: 'u1',
+    } as unknown as DocumentEntity;
+    const { service } = makeService(doc);
+    await expect(
+      service.withdrawReview('1001', {
+        userId: 'u2',
+        username: 'other',
+        roles: [],
+        permissions: [],
+        teamIds: [],
+      }),
+    ).rejects.toThrow(ForbiddenException);
   });
 });
 
@@ -946,6 +1011,84 @@ describe('DocumentService 索引补偿 outbox', () => {
       indexedAt: null,
       items: [],
     });
+  });
+});
+
+describe('DocumentService 审核列表关联与读取权限', () => {
+  it('listReviewTasks 关联补齐文档标题、作者、分类与软删标记', async () => {
+    const doc = {
+      ...makeDoc(Status.PendingReview),
+      id: '1001',
+      title: '报销规范 v2',
+      authorId: 'u1',
+      categoryId: 'c1',
+      deleted: false,
+    } as unknown as DocumentEntity;
+    const { service, em, reviewService } = makeService(doc);
+    reviewService.listTasks = vi.fn(async () => ({
+      items: [
+        { id: 'r1', documentId: '1001', reviewResult: null, beforeStatus: 0 },
+        { id: 'r2', documentId: '9999', reviewResult: null, beforeStatus: 0 },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 20,
+    })) as never;
+    em.find = async (entity: unknown) => {
+      const name = (entity as { name?: string })?.name;
+      if (name === 'DocumentEntity') return [doc];
+      if (name === 'UserEntity') {
+        return [{ id: 'u1', username: 'zhangsan', realName: '张三' }];
+      }
+      return [];
+    };
+
+    const res = await service.listReviewTasks({ status: 'pending' });
+    expect(res.items[0]).toMatchObject({
+      id: 'r1',
+      documentTitle: '报销规范 v2',
+      authorName: '张三',
+      documentStatus: Status.PendingReview,
+      documentDeleted: false,
+    });
+    expect(res.items[1]).toMatchObject({
+      id: 'r2',
+      documentTitle: null,
+      documentDeleted: true,
+    });
+  });
+
+  it('getCurrentReview / getReviewHistory 校验文档读权限', async () => {
+    const privateDoc = {
+      ...makeDoc(Status.Draft),
+      authorId: 'u1',
+      isPublic: false,
+      teamId: null,
+    } as unknown as DocumentEntity;
+    const { service } = makeService(privateDoc);
+    const otherUser = {
+      userId: 'u2',
+      username: 'other',
+      roles: [],
+      permissions: [],
+      teamIds: [],
+    };
+    const authorUser = {
+      userId: 'u1',
+      username: 'author',
+      roles: [],
+      permissions: [],
+      teamIds: [],
+    };
+
+    await expect(service.getCurrentReview('1001', otherUser)).rejects.toThrow(
+      ForbiddenException,
+    );
+    await expect(service.getReviewHistory('1001', otherUser)).rejects.toThrow(
+      ForbiddenException,
+    );
+    await expect(service.getCurrentReview('1001', authorUser)).resolves.toBeNull();
+    await expect(service.getReviewHistory('1001', authorUser)).resolves.toEqual([]);
   });
 });
 

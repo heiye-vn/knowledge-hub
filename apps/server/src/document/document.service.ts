@@ -15,15 +15,20 @@ import { TeamEntity } from '../team/entities/team.entity.js';
 import { CreateDocumentDto } from './dto/create-document.dto.js';
 import { UpdateDocumentDto } from './dto/update-document.dto.js';
 import { QueryDocumentDto } from './dto/query-document.dto.js';
-import type { ReviewDecisionDto } from './dto/review.dto.js';
+import type {
+  QueryReviewTasksDto,
+  ReviewDecisionDto,
+} from './dto/review.dto.js';
 import { DocumentEntity } from './entities/document.entity.js';
 import { DocumentViewLogEntity } from './entities/document-view-log.entity.js';
 import {
   canArchive,
+  canDeleteDocument,
   canEditContent,
   canPublishFrom,
   canSaveAsDraft,
   canSubmitReview,
+  canWithdrawReview,
   DocumentStatus,
 } from './document-status.js';
 import { DocumentContentEntity } from './entities/document-content.entity.js';
@@ -1176,6 +1181,106 @@ export class DocumentService implements OnModuleInit {
     };
   }
 
+  /** 撤回提审：待审核 → 草稿，同时关闭当前待审记录以便继续编辑或删除 */
+  async withdrawReview(id: string, actor?: AuthUser) {
+    assertNumericId(id);
+    const { doc, review } = await this.em.transaction(async (tx) => {
+      const target = await tx.findOne(DocumentEntity, {
+        where: { id, deleted: false },
+      });
+      if (!target) {
+        throw new NotFoundException(`Document ${id} not found`);
+      }
+      this.assertWritable(target, actor);
+      if (!canWithdrawReview(target.status)) {
+        throw new BadRequestException('只有待审核状态的文档可以撤回提审');
+      }
+
+      const withdrawn = await this.reviewService.withdrawByDocumentId(
+        target.id,
+        actor,
+        tx,
+      );
+      target.status = DocumentStatus.Draft;
+      const saved = await tx.save(target);
+      return { doc: saved, review: withdrawn };
+    });
+
+    this.logger.log(
+      `撤回提审：documentId=${doc.id}, reviewId=${review?.id ?? 'none'}`,
+    );
+
+    if (actor) {
+      this.audit.record({
+        actor,
+        action: 'withdraw-review',
+        targetType: 'document',
+        targetId: doc.id,
+        targetName: doc.title,
+      });
+    }
+
+    return {
+      id: doc.id,
+      status: doc.status,
+      reviewId: review?.id ?? null,
+    };
+  }
+
+  /** 审核任务列表：关联补齐文档标题、作者、分类、状态及是否已软删（防 N+1） */
+  async listReviewTasks(query: QueryReviewTasksDto) {
+    const page = await this.reviewService.listTasks(query);
+    if (!page.items.length) return page;
+
+    const documentIds = [...new Set(page.items.map((item) => item.documentId))];
+    const docs = await this.em.find(DocumentEntity, {
+      where: { id: In(documentIds) },
+    });
+    const docMap = new Map(docs.map((d) => [d.id, d]));
+
+    const [authorNames, categoryNames] = await Promise.all([
+      this.authorNamesByIds(docs.map((d) => d.authorId)),
+      this.categories.namesByIds(docs.map((d) => d.categoryId)),
+    ]);
+
+    return {
+      ...page,
+      items: page.items.map((item) => {
+        const doc = docMap.get(item.documentId);
+        return {
+          ...item,
+          documentTitle: doc?.title ?? null,
+          authorName: doc?.authorId
+            ? (authorNames.get(doc.authorId) ?? null)
+            : null,
+          categoryName: doc?.categoryId
+            ? (categoryNames.get(doc.categoryId) ?? null)
+            : null,
+          documentStatus: doc?.status ?? null,
+          documentDeleted: !doc || Boolean(doc.deleted),
+        };
+      }),
+    };
+  }
+
+  /** 当前待审任务（复用文档读取权限校验，防止越权窥探审核动态） */
+  async getCurrentReview(id: string, actor?: AuthUser) {
+    const doc = await this.findActive(id);
+    if (actor && !canReadDocument(doc, accessFromUser(actor))) {
+      throw new ForbiddenException('无权查看该文档');
+    }
+    return this.reviewService.getCurrentReview(id);
+  }
+
+  /** 文档全部审核记录（复用文档读取权限校验） */
+  async getReviewHistory(id: string, actor?: AuthUser) {
+    const doc = await this.findActive(id);
+    if (actor && !canReadDocument(doc, accessFromUser(actor))) {
+      throw new ForbiddenException('无权查看该文档');
+    }
+    return this.reviewService.getReviewHistory(id);
+  }
+
   /** 归档：已发布 → 已归档（终态），清索引但保留正文 */
   async archive(id: string, actor?: AuthUser) {
     const doc = await this.findActive(id);
@@ -1487,7 +1592,8 @@ export class DocumentService implements OnModuleInit {
    * 软删除文档
    * kh_document 与 kh_document_content 两侧都将 deleted 置为 true（不物理删正文）
    *
-   * 仅已发布文档需要清索引——草稿 / 待审核 / 归档本来就不在索引里，
+   * 待审核文档禁止直接删除（需先撤回提审再删，避免残留孤儿审核任务）；
+   * 仅已发布文档需要清索引——草稿 / 已归档本来就不在索引里，
    * 无条件投递清理消息只会给 ES 和 Neo4j 增加无谓的写放大。
    */
   async remove(id: string, actor?: AuthUser) {
@@ -1499,6 +1605,9 @@ export class DocumentService implements OnModuleInit {
       throw new NotFoundException(`Document ${id} not found`);
     }
     this.assertWritable(doc, actor);
+    if (!canDeleteDocument(doc.status)) {
+      throw new BadRequestException('文档正在审核中，请先撤回提审后再删除');
+    }
 
     doc.deleted = true;
     await this.em.save(doc);
