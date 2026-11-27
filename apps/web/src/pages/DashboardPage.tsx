@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -15,34 +15,41 @@ import {
   FolderOutlined,
   InboxOutlined,
   LikeOutlined,
+  ReloadOutlined,
+  RollbackOutlined,
+  SyncOutlined,
 } from '@ant-design/icons'
 import {
+  Alert,
   Button,
   Card,
   Col,
   Collapse,
   Empty,
+  Popconfirm,
   Row,
   Segmented,
   Space,
   Spin,
+  Statistic,
   Table,
   Tag,
   message,
 } from 'antd'
 import type { TableColumnsType } from 'antd'
 import * as echarts from 'echarts'
-import { auditApi, documentApi, teamApi } from '../api'
+import { auditApi, documentApi, indexingApi, teamApi } from '../api'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth'
 import type {
   AuditLogItem,
   CategoryStatItem,
   DocumentOverviewStats,
+  IndexOutboxStats,
   TeamItem,
   ViewTrendPoint,
 } from '../types'
-import { displayName, formatTime } from '../utils'
+import { displayName, formatTime, isAdmin } from '../utils'
 
 /** 分类环形图配色（承接深墨蓝 × 青铜金 × 克制语义色） */
 const CHART_COLORS = [
@@ -69,6 +76,11 @@ const ACTION_META: Record<
     label: '提交审核',
     color: 'orange',
     icon: <AuditOutlined />,
+  },
+  'withdraw-review': {
+    label: '撤回提审',
+    color: 'default',
+    icon: <RollbackOutlined />,
   },
   archive: { label: '归档文档', color: 'default', icon: <InboxOutlined /> },
   approve: { label: '审核通过', color: 'green', icon: <CheckCircleOutlined /> },
@@ -280,6 +292,7 @@ function ViewTrendChart({
 export default function DashboardPage() {
   const user = useAuth()
   const navigate = useNavigate()
+  const admin = isAdmin(user)
   const [stats, setStats] = useState<DocumentOverviewStats | null>(null)
   const [categoryStats, setCategoryStats] = useState<CategoryStatItem[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([])
@@ -289,9 +302,34 @@ export default function DashboardPage() {
   const [trendLoading, setTrendLoading] = useState(true)
   const [loading, setLoading] = useState(true)
 
+  const [outboxStats, setOutboxStats] = useState<IndexOutboxStats | null>(null)
+  const [outboxLoading, setOutboxLoading] = useState(false)
+  const [outboxError, setOutboxError] = useState<string | null>(null)
+  const [reindexing, setReindexing] = useState(false)
+  const [patrolling, setPatrolling] = useState(false)
+
+  const loadOutboxStats = useCallback(async () => {
+    if (!admin) return
+    setOutboxLoading(true)
+    setOutboxError(null)
+    try {
+      setOutboxStats(await indexingApi.outboxStats())
+    } catch (error) {
+      setOutboxError(
+        error instanceof ApiError ? error.message : '获取索引补偿状态失败',
+      )
+    } finally {
+      setOutboxLoading(false)
+    }
+  }, [admin])
+
   useEffect(() => {
     teamApi.mine().then(setMyTeams).catch(() => setMyTeams([]))
   }, [])
+
+  useEffect(() => {
+    if (admin) void loadOutboxStats()
+  }, [admin, loadOutboxStats])
 
   useEffect(() => {
     let cancelled = false
@@ -467,6 +505,19 @@ export default function DashboardPage() {
     [navigate],
   )
 
+  const pendingCnt = outboxStats?.pending ?? 0
+  const retryCnt = outboxStats?.retry ?? 0
+  const succeededCnt = outboxStats?.succeeded ?? 0
+  const deadCnt = outboxStats?.dead ?? 0
+  const healthTag =
+    deadCnt > 0 ? (
+      <Tag color="error">存在失败死信任务</Tag>
+    ) : pendingCnt + retryCnt > 0 ? (
+      <Tag color="processing">有补偿任务处理中</Tag>
+    ) : (
+      <Tag color="success">索引同步正常</Tag>
+    )
+
   return (
     <div className="kh-page kh-dashboard">
       <div className="kh-dash-head">
@@ -534,6 +585,113 @@ export default function DashboardPage() {
           </Card>
         </Col>
       </Row>
+
+      {admin ? (
+        <Card
+          title="索引健康与运维"
+          className="kh-dash-card"
+          style={{ marginBottom: 16 }}
+          extra={
+            <Space size={8}>
+              {healthTag}
+              <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                loading={outboxLoading}
+                onClick={() => void loadOutboxStats()}
+              >
+                刷新
+              </Button>
+            </Space>
+          }
+        >
+          {outboxError ? (
+            <Alert
+              type="error"
+              showIcon
+              title={outboxError}
+              style={{ marginBottom: 12 }}
+            />
+          ) : null}
+          <Row gutter={[16, 16]} align="middle">
+            <Col xs={24} lg={14}>
+              <Row gutter={[16, 12]}>
+                <Col span={6}>
+                  <Statistic title="待补偿" value={pendingCnt} />
+                </Col>
+                <Col span={6}>
+                  <Statistic title="重试中" value={retryCnt} />
+                </Col>
+                <Col span={6}>
+                  <Statistic title="已完成" value={succeededCnt} />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="失败死信"
+                    value={deadCnt}
+                    valueStyle={deadCnt > 0 ? { color: '#dc2626' } : undefined}
+                  />
+                </Col>
+              </Row>
+            </Col>
+            <Col xs={24} lg={10} style={{ textAlign: 'right' }}>
+              <Space wrap>
+                <Popconfirm
+                  title="确认全量重建 RAG 索引？"
+                  description="将把全部已发布文档提交至异步重建队列，适用于更换模型或索引异常修复。"
+                  okText="开始重建"
+                  cancelText="取消"
+                  onConfirm={async () => {
+                    setReindexing(true)
+                    try {
+                      const res = await indexingApi.reindex()
+                      message.success(
+                        `已入队 ${res.queued} 篇文档（任务 ID：${res.taskId}）`,
+                      )
+                    } catch (error) {
+                      message.error(
+                        error instanceof ApiError
+                          ? error.message
+                          : '触发重建失败',
+                      )
+                    } finally {
+                      setReindexing(false)
+                    }
+                  }}
+                >
+                  <Button icon={<ReloadOutlined />} loading={reindexing}>
+                    全量重建 RAG 索引
+                  </Button>
+                </Popconfirm>
+                <Button
+                  icon={<SyncOutlined />}
+                  loading={patrolling}
+                  onClick={async () => {
+                    setPatrolling(true)
+                    try {
+                      const res = await indexingApi.runPatrol()
+                      message.success(
+                        `巡检完成：扫描 ${res.scanned} 篇，同步 ${res.synced} 篇，失败 ${res.failed} 篇`,
+                      )
+                      void loadOutboxStats()
+                    } catch (error) {
+                      message.error(
+                        error instanceof ApiError
+                          ? error.message
+                          : '执行巡检失败',
+                      )
+                    } finally {
+                      setPatrolling(false)
+                    }
+                  }}
+                >
+                  执行可见性巡检
+                </Button>
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+      ) : null}
 
       <Card title="近期操作记录" className="kh-dash-card" style={{ marginBottom: 16 }}>
         <Table<AuditLogItem>

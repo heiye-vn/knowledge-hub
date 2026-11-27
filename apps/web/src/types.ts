@@ -272,6 +272,11 @@ export interface TeamTreeNode extends TeamItem {
 export interface ReviewTask {
   id: string
   documentId: string
+  documentTitle?: string | null
+  authorName?: string | null
+  categoryName?: string | null
+  documentStatus?: number | null
+  documentDeleted?: boolean
   reviewerId?: string | null
   reviewerName?: string | null
   reviewResult?: number | null
@@ -279,6 +284,25 @@ export interface ReviewTask {
   beforeStatus: number
   reviewedAt?: string | null
   createdAt: string
+}
+
+export interface RagReindexResult {
+  taskId: string
+  queued: number
+}
+
+export interface IndexOutboxStats {
+  pending?: number
+  retry?: number
+  succeeded?: number
+  dead?: number
+  [key: string]: number | undefined
+}
+
+export interface VisibilityPatrolResult {
+  scanned: number
+  synced: number
+  failed: number
 }
 
 export interface UserStats {

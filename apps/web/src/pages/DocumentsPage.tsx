@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EditOutlined, RollbackOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, RollbackOutlined } from '@ant-design/icons'
 import {
   Button,
   Checkbox,
@@ -13,7 +13,7 @@ import {
   Tooltip,
   message,
 } from 'antd'
-import { categoryApi, documentApi } from '../api'
+import { categoryApi, documentApi, teamApi } from '../api'
 import { ApiError } from '../api/client'
 import type { DocumentItem } from '../types'
 import { useAuth } from '../auth'
@@ -23,8 +23,10 @@ import {
   can,
   canWriteDocument,
   flattenCategories,
+  flattenTeams,
   formatTime,
   getVisibilityMeta,
+  isAdmin,
 } from '../utils'
 import { FileTypeIcon, fileTypeLabel } from '../components/FileTypeIcon'
 import { KhIcon } from '../components/icons'
@@ -36,13 +38,23 @@ import {
 import { CreateDocumentModal } from '../components/CreateDocumentModal'
 import { DocumentStatusGuide } from '../components/DocumentStatusGuide'
 
+type FilterOverrides = {
+  title?: string
+  status?: number
+  categoryId?: string
+  teamId?: string
+  mineOnly?: boolean
+}
+
 function DocumentsWorkspace() {
   const user = useAuth()
   const navigate = useNavigate()
   const [title, setTitle] = useState('')
   const [status, setStatus] = useState<number | undefined>()
   const [categoryId, setCategoryId] = useState<string>()
+  const [teamId, setTeamId] = useState<string>()
   const [categories, setCategories] = useState<{ value: string; label: string }[]>([])
+  const [teams, setTeams] = useState<{ value: string; label: string }[]>([])
   const [mineOnly, setMineOnly] = useState(false)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -53,16 +65,25 @@ function DocumentsWorkspace() {
   const canCreate = can(user, 'document:create')
 
   const load = useCallback(
-    async (nextPage: number) => {
+    async (nextPage: number, overrides: FilterOverrides = {}) => {
+      const nextTitle = 'title' in overrides ? (overrides.title ?? '') : title
+      const nextStatus = 'status' in overrides ? overrides.status : status
+      const nextCategoryId =
+        'categoryId' in overrides ? overrides.categoryId : categoryId
+      const nextTeamId = 'teamId' in overrides ? overrides.teamId : teamId
+      const nextMineOnly =
+        'mineOnly' in overrides ? Boolean(overrides.mineOnly) : mineOnly
+
       setLoading(true)
       try {
         const res = await documentApi.list({
           page: nextPage,
           pageSize,
-          title: title.trim() || undefined,
-          status,
-          categoryId,
-          authorId: mineOnly ? user?.userId : undefined,
+          title: nextTitle.trim() || undefined,
+          status: nextStatus,
+          categoryId: nextCategoryId,
+          teamId: nextTeamId,
+          authorId: nextMineOnly ? user?.userId : undefined,
         })
         setItems(res.items)
         setTotal(res.total)
@@ -73,7 +94,7 @@ function DocumentsWorkspace() {
         setLoading(false)
       }
     },
-    [title, status, categoryId, mineOnly, user?.userId],
+    [title, status, categoryId, teamId, mineOnly, user?.userId],
   )
 
   // 有后台导入任务完成时自动刷新第 1 页文档列表
@@ -95,10 +116,33 @@ function DocumentsWorkspace() {
         ),
       )
       .catch(() => setCategories([]))
+    const teamReq = isAdmin(user)
+      ? teamApi
+          .tree()
+          .then((tree) =>
+            flattenTeams(tree).map((t) => ({ value: t.id, label: t.name })),
+          )
+      : teamApi
+          .mine()
+          .then((rows) =>
+            rows.map((t) => ({ value: t.id, label: t.teamName })),
+          )
+    teamReq.then(setTeams).catch(() => setTeams([]))
     void load(1)
-    // 仅在首次挂载时拉取分类与默认列表；后续查询由用户点击触发
+    // 仅在首次挂载时拉取分类、团队与默认列表；后续查询由筛选变更或用户点击触发
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const handleDeleteRow = async (docId: string) => {
+    try {
+      await documentApi.remove(docId)
+      message.success('已删除')
+      const nextPage = items.length === 1 && page > 1 ? page - 1 : page
+      void load(nextPage)
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : '删除失败')
+    }
+  }
 
   return (
     <div className={`kh-docs-layout${canCreate ? ' has-aside' : ''}`}>
@@ -112,6 +156,8 @@ function DocumentsWorkspace() {
         {canCreate ? (
           <DocumentImportBar
             controller={importJobs}
+            categories={categories}
+            teams={teams}
             onCreateClick={() => setCreateOpen(true)}
           />
         ) : null}
@@ -119,25 +165,48 @@ function DocumentsWorkspace() {
           <Input
             allowClear
             placeholder="标题搜索"
-            style={{ width: 220 }}
+            style={{ width: 200 }}
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value
+              setTitle(next)
+              if (next === '' && title !== '') {
+                void load(1, { title: '' })
+              }
+            }}
             onPressEnter={() => void load(1)}
           />
           <Select
             allowClear
             placeholder="分类"
-            style={{ width: 160 }}
+            style={{ width: 150 }}
             value={categoryId}
-            onChange={setCategoryId}
+            onChange={(val) => {
+              setCategoryId(val)
+              void load(1, { categoryId: val })
+            }}
             options={categories}
           />
           <Select
             allowClear
+            placeholder="所属团队"
+            style={{ width: 150 }}
+            value={teamId}
+            onChange={(val) => {
+              setTeamId(val)
+              void load(1, { teamId: val })
+            }}
+            options={teams}
+          />
+          <Select
+            allowClear
             placeholder="状态"
-            style={{ width: 130 }}
+            style={{ width: 120 }}
             value={status}
-            onChange={setStatus}
+            onChange={(val) => {
+              setStatus(val)
+              void load(1, { status: val })
+            }}
             options={DOC_STATUS_LIST.map((item) => ({
               value: item.code,
               label: item.label,
@@ -145,7 +214,11 @@ function DocumentsWorkspace() {
           />
           <Checkbox
             checked={mineOnly}
-            onChange={(e) => setMineOnly(e.target.checked)}
+            onChange={(e) => {
+              const checked = e.target.checked
+              setMineOnly(checked)
+              void load(1, { mineOnly: checked })
+            }}
           >
             仅我的
           </Checkbox>
@@ -264,90 +337,219 @@ function DocumentsWorkspace() {
             },
             {
               title: '操作',
-              width: 148,
+              width: 196,
               render: (_: unknown, row: DocumentItem) => {
                 const writable =
                   can(user, 'document:edit') && canWriteDocument(row, user)
-                if (!writable) {
-                  return <span style={{ color: '#bfbfbf' }}>-</span>
-                }
+                const canDelete =
+                  can(user, 'document:delete') && canWriteDocument(row, user)
+
                 if (row.status === 0) {
+                  if (!writable && !canDelete) {
+                    return <span style={{ color: '#bfbfbf' }}>-</span>
+                  }
                   return (
                     <Space size={10}>
-                      <Tooltip title="编辑草稿">
-                        <a
-                          onClick={() => navigate(`/documents/${row.id}/edit`)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
+                      {writable ? (
+                        <>
+                          <Tooltip title="编辑草稿">
+                            <a
+                              onClick={() => navigate(`/documents/${row.id}/edit`)}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                              }}
+                            >
+                              <EditOutlined /> 编辑
+                            </a>
+                          </Tooltip>
+                          <Tooltip title="提交发布（触发 RAG 索引重建）">
+                            <a
+                              onClick={async () => {
+                                try {
+                                  await documentApi.publish(row.id)
+                                  message.success('已提交发布')
+                                  void load(page)
+                                } catch (error) {
+                                  message.error(
+                                    error instanceof ApiError
+                                      ? error.message
+                                      : '发布失败',
+                                  )
+                                }
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                              }}
+                            >
+                              <KhIcon name="publish" size={14} /> 发布
+                            </a>
+                          </Tooltip>
+                        </>
+                      ) : null}
+                      {canDelete ? (
+                        <Popconfirm
+                          title="确认删除该草稿文档？"
+                          description="删除后将从文档列表中移除。"
+                          okText="删除"
+                          okType="danger"
+                          cancelText="取消"
+                          onConfirm={() => handleDeleteRow(row.id)}
                         >
-                          <EditOutlined /> 编辑
-                        </a>
-                      </Tooltip>
-                      <Tooltip title="提交发布（触发 RAG 索引重建）">
-                        <a
-                          onClick={async () => {
-                            try {
-                              await documentApi.publish(row.id)
-                              message.success('已提交发布')
-                              void load(page)
-                            } catch (error) {
-                              message.error(
-                                error instanceof ApiError
-                                  ? error.message
-                                  : '发布失败',
-                              )
-                            }
-                          }}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
-                        >
-                          <KhIcon name="publish" size={14} /> 发布
-                        </a>
-                      </Tooltip>
+                          <a
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              color: '#dc2626',
+                            }}
+                          >
+                            <DeleteOutlined /> 删除
+                          </a>
+                        </Popconfirm>
+                      ) : null}
                     </Space>
                   )
                 }
+
                 if (row.status === 1) {
+                  if (!writable) {
+                    return <span style={{ color: '#bfbfbf' }}>-</span>
+                  }
+                  return (
+                    <Space size={10}>
+                      <Popconfirm
+                        title="确认下架为草稿？"
+                        description="下架后将暂时从搜索与 AI 问答中移除，修改完成后可重新发布。"
+                        okText="下架"
+                        cancelText="取消"
+                        onConfirm={async () => {
+                          try {
+                            await documentApi.saveDraft(row.id)
+                            message.success('已下架为草稿，现在可以编辑')
+                            void load(page)
+                          } catch (error) {
+                            message.error(
+                              error instanceof ApiError
+                                ? error.message
+                                : '操作失败',
+                            )
+                          }
+                        }}
+                      >
+                        <Tooltip title="已发布文档需先下架为草稿才能修改内容">
+                          <a
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                          >
+                            <RollbackOutlined /> 下架编辑
+                          </a>
+                        </Tooltip>
+                      </Popconfirm>
+                      <Popconfirm
+                        title="确认归档该文档？"
+                        description="归档为只读终态，将从搜索与 AI 问答索引移除且不可重新发布。"
+                        okText="归档"
+                        okType="danger"
+                        cancelText="取消"
+                        onConfirm={async () => {
+                          try {
+                            await documentApi.archive(row.id)
+                            message.success('已归档')
+                            void load(page)
+                          } catch (error) {
+                            message.error(
+                              error instanceof ApiError
+                                ? error.message
+                                : '归档失败',
+                            )
+                          }
+                        }}
+                      >
+                        <a
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <KhIcon name="archive" size={14} /> 归档
+                        </a>
+                      </Popconfirm>
+                    </Space>
+                  )
+                }
+
+                if (row.status === 3) {
+                  if (!writable) {
+                    return <span style={{ color: '#bfbfbf' }}>-</span>
+                  }
                   return (
                     <Popconfirm
-                      title="确认下架为草稿？"
-                      description="下架后将暂时从搜索与 AI 问答中移除，修改完成后可重新发布。"
-                      okText="下架"
+                      title="确认撤回提审？"
+                      description="撤回后将关闭当前待审任务并退回草稿，可继续编辑或删除。"
+                      okText="撤回"
                       cancelText="取消"
                       onConfirm={async () => {
                         try {
-                          await documentApi.saveDraft(row.id)
-                          message.success('已下架为草稿，现在可以编辑')
+                          await documentApi.withdrawReview(row.id)
+                          message.success('已撤回至草稿')
                           void load(page)
                         } catch (error) {
                           message.error(
                             error instanceof ApiError
                               ? error.message
-                              : '操作失败',
+                              : '撤回失败',
                           )
                         }
                       }}
                     >
-                      <Tooltip title="已发布文档需先下架为草稿才能修改内容">
-                        <a
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
-                        >
-                          <RollbackOutlined /> 下架编辑
-                        </a>
-                      </Tooltip>
+                      <a
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <RollbackOutlined /> 撤回提审
+                      </a>
                     </Popconfirm>
                   )
                 }
+
+                if (row.status === 2) {
+                  if (!canDelete) {
+                    return <span style={{ color: '#bfbfbf' }}>-</span>
+                  }
+                  return (
+                    <Popconfirm
+                      title="确认删除该归档文档？"
+                      description="删除后将从文档列表中移除。"
+                      okText="删除"
+                      okType="danger"
+                      cancelText="取消"
+                      onConfirm={() => handleDeleteRow(row.id)}
+                    >
+                      <a
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          color: '#dc2626',
+                        }}
+                      >
+                        <DeleteOutlined /> 删除
+                      </a>
+                    </Popconfirm>
+                  )
+                }
+
                 return <span style={{ color: '#bfbfbf' }}>-</span>
               },
             },

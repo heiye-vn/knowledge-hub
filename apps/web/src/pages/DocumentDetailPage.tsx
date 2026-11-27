@@ -1,10 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  Alert,
   Button,
+  Form,
+  List,
+  Modal,
   Popconfirm,
+  Select,
   Space,
   Spin,
+  Switch,
   Tag,
   Tooltip,
   Typography,
@@ -14,6 +20,9 @@ import {
   ArrowLeftOutlined,
   DeleteOutlined,
   EditOutlined,
+  EyeOutlined,
+  HistoryOutlined,
+  ReloadOutlined,
   RollbackOutlined,
 } from '@ant-design/icons'
 import {
@@ -25,27 +34,37 @@ import { SourceFileAction } from '../components/SourceFileAction'
 import type { LocateTarget } from '../components/markdown-locate'
 import { KhIcon } from '../components/icons'
 import { KhEmpty } from '../components/KhEmpty'
-import { documentApi } from '../api'
+import { documentApi, indexingApi, teamApi } from '../api'
 import { ApiError } from '../api/client'
 import type {
   DocumentChunkItem,
   DocumentChunksResponse,
   DocumentItem,
+  ReviewTask,
 } from '../types'
 import { useAuth } from '../auth'
 import {
   DOC_STATUS,
   can,
   canWriteDocument,
+  flattenTeams,
   formatFileSize,
   formatTime,
   getVisibilityMeta,
+  isAdmin,
 } from '../utils'
 import { FileTypeIcon } from '../components/FileTypeIcon'
 
 function parseTabParam(raw: string | null): InspectorTabKey {
   if (raw === 'source' || raw === 'chunks') return raw
   return 'content'
+}
+
+function renderReviewResultTag(result?: number | null) {
+  if (result == null) return <Tag color="processing">待审</Tag>
+  if (result === 1) return <Tag color="success">通过</Tag>
+  if (result === 3) return <Tag>已撤回</Tag>
+  return <Tag color="error">驳回</Tag>
 }
 
 export default function DocumentDetailPage() {
@@ -56,6 +75,19 @@ export default function DocumentDetailPage() {
   const [doc, setDoc] = useState<DocumentItem | null>(null)
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
+
+  const [reviewHistory, setReviewHistory] = useState<ReviewTask[]>([])
+  const [reviewModalOpen, setReviewModalOpen] = useState(false)
+
+  const [visModalOpen, setVisModalOpen] = useState(false)
+  const [visSaving, setVisSaving] = useState(false)
+  const [baseTeamOptions, setBaseTeamOptions] = useState<
+    { value: string; label: string }[]
+  >([])
+  const [teamsLoaded, setTeamsLoaded] = useState(false)
+  const [visForm] = Form.useForm<{ isPublic: boolean; teamId?: string }>()
+
+  const [reindexing, setReindexing] = useState(false)
 
   const [chunksData, setChunksData] = useState<DocumentChunksResponse | null>(
     null,
@@ -115,11 +147,16 @@ export default function DocumentDetailPage() {
     }
   }, [])
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     setForbidden(false)
     try {
-      setDoc(await documentApi.get(id))
+      const [detail, history] = await Promise.all([
+        documentApi.get(id),
+        documentApi.reviewHistory(id).catch(() => [] as ReviewTask[]),
+      ])
+      setDoc(detail)
+      setReviewHistory(history)
     } catch (error) {
       setDoc(null)
       // 后端对无权文档返回 403，前端据此给出友好空状态
@@ -132,12 +169,12 @@ export default function DocumentDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
 
   useEffect(() => {
     void load()
     void loadChunks(id)
-  }, [id, loadChunks])
+  }, [id, load, loadChunks])
 
   // 当切块到达且 URL 带 chunk 参数时，自动用完整 chunk.content 增强正文精定位
   useEffect(() => {
@@ -158,6 +195,66 @@ export default function DocumentDetailPage() {
         : prev,
     )
   }, [chunksData, parsedChunkIdx])
+
+  const teamOptions = useMemo(() => {
+    const options = [...baseTeamOptions]
+    if (doc?.teamId && !options.some((item) => item.value === doc.teamId)) {
+      options.push({
+        value: doc.teamId,
+        label: doc.teamName || '当前团队',
+      })
+    }
+    return options
+  }, [baseTeamOptions, doc?.teamId, doc?.teamName])
+
+  const openVisibilityModal = () => {
+    if (!doc) return
+    visForm.setFieldsValue({
+      isPublic: Boolean(doc.isPublic),
+      teamId: doc.teamId || undefined,
+    })
+    setVisModalOpen(true)
+    if (!teamsLoaded) {
+      const req = isAdmin(user)
+        ? teamApi
+            .tree()
+            .then((tree) =>
+              flattenTeams(tree).map((t) => ({ value: t.id, label: t.name })),
+            )
+        : teamApi
+            .mine()
+            .then((rows) =>
+              rows.map((t) => ({ value: t.id, label: t.teamName })),
+            )
+      req
+        .then((opts) => {
+          setBaseTeamOptions(opts)
+          setTeamsLoaded(true)
+        })
+        .catch(() => setBaseTeamOptions([]))
+    }
+  }
+
+  const handleSaveVisibility = async () => {
+    const values = await visForm.validateFields()
+    setVisSaving(true)
+    try {
+      // 仅传可见性字段，命中后端 isVisibilityOnlyUpdate 分支直接同步三套索引
+      await documentApi.update(id, {
+        isPublic: Boolean(values.isPublic),
+        teamId: values.teamId || null,
+      })
+      message.success('可见性已更新并同步索引')
+      setVisModalOpen(false)
+      await load()
+    } catch (error) {
+      message.error(
+        error instanceof ApiError ? error.message : '更新可见性失败',
+      )
+    } finally {
+      setVisSaving(false)
+    }
+  }
 
   const handleTabChange = (nextTab: InspectorTabKey) => {
     setActiveTab(nextTab)
@@ -219,9 +316,50 @@ export default function DocumentDetailPage() {
   const status = DOC_STATUS[doc.status]
   const vis = getVisibilityMeta(doc)
   const writable = can(user, 'document:edit') && canWriteDocument(doc, user)
+  const canDelete = can(user, 'document:delete') && canWriteDocument(doc, user)
+  const deleteDescription =
+    doc.status === 1
+      ? '该文档当前已发布，删除后将立即从搜索、AI 问答与知识图谱中移除。'
+      : doc.status === 2
+        ? '删除后该归档文档将从列表中移除。'
+        : '删除后该草稿将从列表中移除。'
+  const latestReview = reviewHistory[0]
+  const rejectedNotice =
+    doc.status === 0 && latestReview?.reviewResult === 2 ? latestReview : null
 
   return (
     <div className="kh-page kh-document-page">
+      {rejectedNotice ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          title="最近一次发布审核未通过"
+          description={
+            <div>
+              <div>驳回原因：{rejectedNotice.reviewComment || '未填写'}</div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+                审核人：{rejectedNotice.reviewerName || '-'} ·{' '}
+                {formatTime(
+                  rejectedNotice.reviewedAt || rejectedNotice.createdAt,
+                )}
+              </div>
+            </div>
+          }
+          action={
+            writable ? (
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => navigate(`/documents/${id}/edit`)}
+              >
+                前往修改
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
+
       <Space className="kh-doc-actions" wrap>
         <Button
           icon={<ArrowLeftOutlined />}
@@ -246,14 +384,23 @@ export default function DocumentDetailPage() {
             版本
           </Button>
         ) : null}
+        {reviewHistory.length ? (
+          <Button
+            icon={<HistoryOutlined />}
+            onClick={() => setReviewModalOpen(true)}
+          >
+            审核记录（{reviewHistory.length}）
+          </Button>
+        ) : null}
         {writable && doc.status === 0 ? (
           <Button
             type="primary"
             icon={<KhIcon name="publish" size={16} />}
             onClick={async () => {
               try {
-                setDoc(await documentApi.publish(id))
+                await documentApi.publish(id)
                 message.success('已发布（若开启审核则进入待审状态）')
+                await Promise.all([load(), loadChunks(id)])
               } catch (error) {
                 message.error(
                   error instanceof ApiError ? error.message : '发布失败',
@@ -266,6 +413,9 @@ export default function DocumentDetailPage() {
         ) : null}
         {writable && doc.status === 1 ? (
           <>
+            <Button icon={<EyeOutlined />} onClick={openVisibilityModal}>
+              调整可见性
+            </Button>
             <Popconfirm
               title="确认下架为草稿？"
               description="下架后将变为草稿并暂时移出搜索与 AI 问答索引，修改完成后可重新发布。"
@@ -273,8 +423,9 @@ export default function DocumentDetailPage() {
               cancelText="取消"
               onConfirm={async () => {
                 try {
-                  setDoc(await documentApi.saveDraft(id))
+                  await documentApi.saveDraft(id)
                   message.success('已下架为草稿')
+                  await Promise.all([load(), loadChunks(id)])
                 } catch (error) {
                   message.error(
                     error instanceof ApiError ? error.message : '操作失败',
@@ -292,8 +443,9 @@ export default function DocumentDetailPage() {
               cancelText="取消"
               onConfirm={async () => {
                 try {
-                  setDoc(await documentApi.archive(id))
+                  await documentApi.archive(id)
                   message.success('已归档')
+                  await Promise.all([load(), loadChunks(id)])
                 } catch (error) {
                   message.error(
                     error instanceof ApiError ? error.message : '归档失败',
@@ -305,9 +457,59 @@ export default function DocumentDetailPage() {
             </Popconfirm>
           </>
         ) : null}
-        {can(user, 'document:delete') && writable ? (
+        {isAdmin(user) && doc.status === 1 ? (
+          <Popconfirm
+            title="确认重建该文档的 RAG 索引？"
+            description="将提交异步队列重新切块并写入向量索引，适用于检索召回异常时纠偏。"
+            okText="重建"
+            cancelText="取消"
+            onConfirm={async () => {
+              setReindexing(true)
+              try {
+                const res = await indexingApi.reindex([id])
+                message.success(`已提交重建索引任务（任务 ID：${res.taskId}）`)
+              } catch (error) {
+                message.error(
+                  error instanceof ApiError ? error.message : '提交重建失败',
+                )
+              } finally {
+                setReindexing(false)
+              }
+            }}
+          >
+            <Button icon={<ReloadOutlined />} loading={reindexing}>
+              重建索引
+            </Button>
+          </Popconfirm>
+        ) : null}
+        {writable && doc.status === 3 ? (
+          <Popconfirm
+            title="确认撤回提审？"
+            description="撤回后将关闭当前待审任务并退回草稿，可继续编辑或删除。"
+            okText="撤回"
+            cancelText="取消"
+            onConfirm={async () => {
+              try {
+                await documentApi.withdrawReview(id)
+                message.success('已撤回至草稿')
+                await Promise.all([load(), loadChunks(id)])
+              } catch (error) {
+                message.error(
+                  error instanceof ApiError ? error.message : '撤回失败',
+                )
+              }
+            }}
+          >
+            <Button icon={<RollbackOutlined />}>撤回提审</Button>
+          </Popconfirm>
+        ) : null}
+        {canDelete && doc.status !== 3 ? (
           <Popconfirm
             title="确认删除该文档？"
+            description={deleteDescription}
+            okText="删除"
+            okType="danger"
+            cancelText="取消"
             onConfirm={async () => {
               try {
                 await documentApi.remove(id)
@@ -439,6 +641,77 @@ export default function DocumentDetailPage() {
         activeChunkId={activeChunkId}
       />
       <DocumentEngagement doc={doc} onChange={setDoc} />
+
+      <Modal
+        title="审核记录"
+        open={reviewModalOpen}
+        footer={null}
+        onCancel={() => setReviewModalOpen(false)}
+      >
+        <List
+          dataSource={reviewHistory}
+          renderItem={(item) => (
+            <List.Item>
+              <div style={{ width: '100%' }}>
+                <Space style={{ marginBottom: 4 }} wrap>
+                  {renderReviewResultTag(item.reviewResult)}
+                  {item.reviewerName ? (
+                    <Typography.Text strong>{item.reviewerName}</Typography.Text>
+                  ) : null}
+                  <Typography.Text type="secondary">
+                    {formatTime(item.reviewedAt || item.createdAt)}
+                  </Typography.Text>
+                </Space>
+                {item.reviewComment ? (
+                  <div>{item.reviewComment}</div>
+                ) : (
+                  <Typography.Text type="secondary">无审核意见</Typography.Text>
+                )}
+              </div>
+            </List.Item>
+          )}
+        />
+      </Modal>
+
+      <Modal
+        title="调整可见性"
+        open={visModalOpen}
+        okText="保存并同步索引"
+        cancelText="取消"
+        confirmLoading={visSaving}
+        onCancel={() => setVisModalOpen(false)}
+        onOk={() => void handleSaveVisibility()}
+      >
+        <p className="kh-access-hint" style={{ marginBottom: 14 }}>
+          修改后将直接同步更新搜索、AI 问答与知识图谱的访问范围，无需下架重审。
+        </p>
+        <Form form={visForm} layout="vertical">
+          <Form.Item
+            name="isPublic"
+            label="公开可见"
+            valuePropName="checked"
+            extra="打开后对所有登录用户可见"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name="teamId"
+            label="所属团队"
+            extra={
+              teamOptions.length
+                ? '未公开时，仅作者本人及该团队成员可见'
+                : '你尚未加入团队，仅可设为公开或仅自己可见'
+            }
+          >
+            <Select
+              allowClear
+              placeholder="不指定则仅自己可见（未公开时）"
+              options={teamOptions}
+              disabled={!teamOptions.length}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }

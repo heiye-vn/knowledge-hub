@@ -59,6 +59,7 @@ export default function ReviewsPage() {
         rowKey="id"
         loading={loading}
         dataSource={items}
+        scroll={{ x: 'max-content' }}
         pagination={{
           current: page,
           pageSize: 10,
@@ -67,30 +68,72 @@ export default function ReviewsPage() {
         }}
         columns={[
           {
-            title: '文档 ID',
-            dataIndex: 'documentId',
-            render: (docId: string) => (
-              <Link to={`/documents/${docId}`}>{docId}</Link>
-            ),
+            title: '文档',
+            dataIndex: 'documentTitle',
+            ellipsis: true,
+            render: (_: unknown, row: ReviewTask) => {
+              const title = row.documentTitle || row.documentId
+              if (row.documentDeleted) {
+                return (
+                  <Space size={6}>
+                    <span style={{ color: '#8c8c8c' }}>{title}</span>
+                    <Tag style={{ marginInlineEnd: 0 }}>已删除</Tag>
+                  </Space>
+                )
+              }
+              return <Link to={`/documents/${row.documentId}`}>{title}</Link>
+            },
+          },
+          {
+            title: '分类',
+            dataIndex: 'categoryName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string | null) => v || '-',
+          },
+          {
+            title: '作者',
+            dataIndex: 'authorName',
+            width: 110,
+            ellipsis: true,
+            render: (v?: string | null) => v || '-',
           },
           {
             title: '审核状态',
             dataIndex: 'reviewResult',
+            width: 100,
             render: (v: number | null) =>
               v == null ? (
                 <Tag color="processing">待审</Tag>
               ) : v === 1 ? (
                 <Tag color="success">通过</Tag>
+              ) : v === 3 ? (
+                <Tag>已撤回</Tag>
               ) : (
                 <Tag color="error">驳回</Tag>
               ),
           },
-          { title: '审核意见', dataIndex: 'reviewComment' },
-          { title: '提交时间', dataIndex: 'createdAt', render: formatTime },
+          {
+            title: '审核意见',
+            dataIndex: 'reviewComment',
+            ellipsis: true,
+            render: (v?: string | null) => v || '-',
+          },
+          {
+            title: '提交时间',
+            dataIndex: 'createdAt',
+            width: 156,
+            render: formatTime,
+          },
           {
             title: '操作',
-            render: (_: unknown, row: ReviewTask) =>
-              row.reviewResult == null ? (
+            width: 120,
+            render: (_: unknown, row: ReviewTask) => {
+              if (row.reviewResult != null) return '-'
+              if (row.documentDeleted) {
+                return <span style={{ color: '#8c8c8c' }}>文档已删</span>
+              }
+              return (
                 <Space>
                   <a
                     onClick={() => {
@@ -112,9 +155,8 @@ export default function ReviewsPage() {
                     驳回
                   </a>
                 </Space>
-              ) : (
-                '-'
-              ),
+              )
+            },
           },
         ]}
       />
@@ -146,7 +188,7 @@ export default function ReviewsPage() {
           }
         }}
       >
-        <p>文档 ID：{task?.documentId}</p>
+        <p>文档：{task?.documentTitle || task?.documentId}</p>
         <Input.TextArea
           rows={4}
           value={comment}

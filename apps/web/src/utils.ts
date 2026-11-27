@@ -45,7 +45,7 @@ export const DOC_STATUS: Record<number, DocStatusMeta> = {
     variant: 'solid',
     searchable: false,
     description:
-      '已提交审批，内容暂时锁定不可编辑；审核通过后自动发布，驳回后退回草稿。',
+      '已提交审批，内容暂时锁定不可编辑或删除；如需修改可先撤回提审，审核通过后自动发布，驳回后退回草稿。',
   },
 }
 

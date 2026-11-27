@@ -19,11 +19,13 @@ import type {
   GraphNode,
   GraphOverview,
   ImportTaskView,
+  IndexOutboxStats,
   LoginResult,
   MemoryItem,
   NotificationItem,
   PageResult,
   PermissionNode,
+  RagReindexResult,
   ReviewTask,
   RoleItem,
   SearchHit,
@@ -36,6 +38,7 @@ import type {
   UserStats,
   UserVO,
   ViewTrendPoint,
+  VisibilityPatrolResult,
 } from '../types'
 
 export const authApi = {
@@ -104,6 +107,14 @@ export const documentApi = {
     post<DocumentItem>(`/documents/reviews/tasks/${taskId}/reject`, {
       reviewComment,
     }),
+  withdrawReview: (id: string) =>
+    post<{ id: string; status: number; reviewId: string | null }>(
+      `/documents/${id}/reviews/withdraw`,
+    ),
+  currentReview: (id: string) =>
+    get<ReviewTask | null>(`/documents/${id}/reviews/current`),
+  reviewHistory: (id: string) =>
+    get<ReviewTask[]>(`/documents/${id}/reviews/history`),
   toggleLike: (id: string) =>
     post<{ liked: boolean; likeCount: number }>(`/documents/${id}/likes`),
   toggleFavorite: (id: string) =>
@@ -335,6 +346,16 @@ export const teamApi = {
     post<unknown>(`/teams/${id}/members`, userIds),
   removeMembers: (id: string, userIds: string[]) =>
     del<unknown>(`/teams/${id}/members`, userIds),
+}
+
+export const indexingApi = {
+  reindex: (documentIds?: string[]) =>
+    post<RagReindexResult>(
+      '/rag/reindex',
+      documentIds?.length ? { documentIds } : {},
+    ),
+  outboxStats: () => get<IndexOutboxStats>('/indexing/outbox/stats'),
+  runPatrol: () => post<VisibilityPatrolResult>('/indexing/patrol/run'),
 }
 
 /** 审计日志（首页「近期操作记录」；管理员看全部，普通用户只看自己的） */

@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Empty, Form, Input, Select, Spin, Switch, message } from 'antd'
+import { Alert, Button, Empty, Form, Input, Select, Spin, Switch, message } from 'antd'
 import { categoryApi, documentApi, teamApi } from '../api'
 import { ApiError } from '../api/client'
-import type { DocumentItem } from '../types'
+import type { DocumentItem, ReviewTask } from '../types'
 import { useAuth } from '../auth'
-import { canWriteDocument, flattenCategories, flattenTeams, isAdmin } from '../utils'
+import {
+  canWriteDocument,
+  flattenCategories,
+  flattenTeams,
+  formatTime,
+  isAdmin,
+} from '../utils'
 
 export default function DocumentEditPage() {
   const { id } = useParams()
@@ -19,6 +25,7 @@ export default function DocumentEditPage() {
   >([])
   const [categories, setCategories] = useState<{ value: string; label: string }[]>([])
   const [doc, setDoc] = useState<DocumentItem | null>(null)
+  const [reviewHistory, setReviewHistory] = useState<ReviewTask[]>([])
 
   // 团队下拉数据源：管理员看全量团队树（打平带层级缩进），普通用户只看自己所在团队
   useEffect(() => {
@@ -49,9 +56,11 @@ export default function DocumentEditPage() {
 
   useEffect(() => {
     if (!id) return
-    documentApi
-      .get(id)
-      .then((next) => {
+    Promise.all([
+      documentApi.get(id),
+      documentApi.reviewHistory(id).catch(() => [] as ReviewTask[]),
+    ])
+      .then(([next, history]) => {
         // 仅作者本人或管理员可编辑，其余直接收敛到 403 空状态
         if (!canWriteDocument(next, user)) {
           setForbidden(true)
@@ -59,6 +68,7 @@ export default function DocumentEditPage() {
           return
         }
         setDoc(next)
+        setReviewHistory(history)
         form.setFieldsValue({
           title: next.title,
           summary: next.summary,
@@ -125,9 +135,30 @@ export default function DocumentEditPage() {
     )
   }
 
+  const latestReview = reviewHistory[0]
+  const rejectedNotice =
+    doc?.status === 0 && latestReview?.reviewResult === 2 ? latestReview : null
+
   return (
     <div className="kh-page">
       <h2 style={{ marginTop: 0 }}>编辑文档</h2>
+      {rejectedNotice ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          title="最近一次发布审核未通过"
+          description={
+            <div>
+              <div>驳回原因：{rejectedNotice.reviewComment || '未填写'}</div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+                审核人：{rejectedNotice.reviewerName || '-'} ·{' '}
+                {formatTime(rejectedNotice.reviewedAt || rejectedNotice.createdAt)}
+              </div>
+            </div>
+          }
+        />
+      ) : null}
       <p className="kh-access-hint">
         公开：所有登录用户可见。指定团队：发布后团队成员可见。都不选：仅自己可见。
       </p>
